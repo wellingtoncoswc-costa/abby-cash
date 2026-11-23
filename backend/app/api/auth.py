@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated
 
 import pyotp
@@ -7,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.api.deps import CurrentUser, Session
 from app.core.redis import redis
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_password
 from app.domain.users.service import (
     AuthError,
     authenticate,
@@ -19,7 +20,7 @@ from app.domain.users.service import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-MAX_FAILS, MAX_IP_FAILS, FAIL_TTL = 5, 30, 900
+MAX_FAILS, MAX_IP_FAILS, MAX_REGISTER_PER_IP, FAIL_TTL = 5, 30, 10, 900
 REFRESH_MAX_AGE = 30 * 86400
 
 
@@ -40,6 +41,10 @@ class CodeIn(BaseModel):
     code: str
 
 
+class PasswordIn(BaseModel):
+    password: str = Field(max_length=128)
+
+
 def _set_cookie(resp: Response, raw: str) -> None:
     resp.set_cookie(
         "refresh_token", raw, max_age=REFRESH_MAX_AGE, path="/auth",
@@ -47,15 +52,21 @@ def _set_cookie(resp: Response, raw: str) -> None:
     )  # fmt: skip
 
 
+async def _count(key: str) -> int:
+    await redis.set(key, 0, ex=FAIL_TTL, nx=True)  # TTL garantido antes do INCR
+    return int(await redis.incr(key))
+
+
 async def _hit(key: str, limit: int) -> None:
     """Conta a tentativa (INCR atômico); acima do limite -> 429."""
-    await redis.set(key, 0, ex=FAIL_TTL, nx=True)  # TTL garantido antes do INCR
-    if await redis.incr(key) > limit:
+    if await _count(key) > limit:
         raise HTTPException(429, "too_many_attempts")
 
 
 @router.post("/register", status_code=201)
-async def register(body: RegisterIn, session: Session) -> dict[str, str]:
+async def register(body: RegisterIn, session: Session, request: Request) -> dict[str, str]:
+    ip = request.client.host if request.client else "unknown"
+    await _hit(f"register_ip:{ip}", MAX_REGISTER_PER_IP)  # toda tentativa conta
     try:
         user = await register_user(
             session, email=body.email, name=body.name,
@@ -80,8 +91,10 @@ async def login(
     try:
         user = await authenticate(session, body.email, body.password, body.totp)
     except AuthError as e:
-        await redis.set(ip_key, 0, ex=FAIL_TTL, nx=True)
-        await redis.incr(ip_key)
+        if str(e) == "totp_required":  # senha certa: não é falha, devolve a tentativa
+            await redis.decr(key)
+        else:
+            await _count(ip_key)
         raise HTTPException(401, str(e)) from None
     await redis.delete(key)
     _set_cookie(resp, await issue_refresh(session, user.id))
@@ -113,9 +126,14 @@ async def logout(
 
 
 @router.post("/2fa/setup")
-async def setup_2fa(user: CurrentUser, session: Session) -> dict[str, str]:
+async def setup_2fa(body: PasswordIn, user: CurrentUser, session: Session) -> dict[str, str]:
+    await _hit(f"setup_pw:{user.id}", MAX_FAILS)  # re-auth também é alvo de brute force
+    if not await asyncio.to_thread(verify_password, body.password, user.password_hash):
+        raise HTTPException(401, "invalid_credentials")
+    await redis.delete(f"setup_pw:{user.id}")
     if user.totp_enabled:
         raise HTTPException(409, "totp_already_enabled")
+    # ponytail: segredo TOTP em texto puro no banco; cifrar com chave do env no M8
     user.totp_secret = pyotp.random_base32()
     await session.commit()
     uri = pyotp.TOTP(user.totp_secret).provisioning_uri(name=user.email, issuer_name="Abby Cash")
@@ -125,11 +143,8 @@ async def setup_2fa(user: CurrentUser, session: Session) -> dict[str, str]:
 @router.post("/2fa/verify")
 async def verify_2fa(body: CodeIn, user: CurrentUser, session: Session) -> dict[str, bool]:
     key = f"totp_fail:{user.id}"
-    if int(await redis.get(key) or 0) >= MAX_FAILS:
-        raise HTTPException(429, "too_many_attempts")
+    await _hit(key, MAX_FAILS)  # incr primeiro: atômico sob concorrência
     if not user.totp_secret or not await check_totp(user, body.code, consume=False):
-        await redis.set(key, 0, ex=FAIL_TTL, nx=True)
-        await redis.incr(key)
         raise HTTPException(400, "invalid_code")
     await redis.delete(key)
     user.totp_enabled = True

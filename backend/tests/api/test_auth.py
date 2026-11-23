@@ -78,7 +78,8 @@ async def test_2fa_required_when_enabled(client, session):
     await _register(client, await _invite(session))
     login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
     h = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    secret = (await client.post("/auth/2fa/setup", headers=h)).json()["secret"]
+    r = await client.post("/auth/2fa/setup", headers=h, json={"password": PWD})
+    secret = r.json()["secret"]
     ok = await client.post("/auth/2fa/verify", headers=h, json={"code": pyotp.TOTP(secret).now()})
     assert ok.status_code == 200
     r = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
@@ -94,7 +95,8 @@ async def test_2fa_required_when_enabled(client, session):
 async def _enable_2fa(client):
     login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
     h = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    secret = (await client.post("/auth/2fa/setup", headers=h)).json()["secret"]
+    r = await client.post("/auth/2fa/setup", headers=h, json={"password": PWD})
+    secret = r.json()["secret"]
     code = pyotp.TOTP(secret).now()
     assert (
         await client.post("/auth/2fa/verify", headers=h, json={"code": code})
@@ -114,7 +116,7 @@ async def test_2fa_verify_brute_force_limited(client, session):
     await _register(client, await _invite(session))
     login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
     h = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    await client.post("/auth/2fa/setup", headers=h)
+    await client.post("/auth/2fa/setup", headers=h, json={"password": PWD})
     for _ in range(5):
         r = await client.post("/auth/2fa/verify", headers=h, json={"code": "000000"})
         assert r.status_code == 400
@@ -159,7 +161,9 @@ async def test_garbage_and_expired_jwt_rejected(client):
     ]
     assert decode_access_token(bad[2]) is None
     for t in bad:
-        r = await client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {t}"})
+        r = await client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {t}"}, json={"password": PWD}
+        )
         assert r.status_code == 401
 
 
@@ -202,7 +206,8 @@ async def test_totp_fail_cleared_on_success(client, session):
     await _register(client, await _invite(session))
     login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
     h = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    secret = (await client.post("/auth/2fa/setup", headers=h)).json()["secret"]
+    r = await client.post("/auth/2fa/setup", headers=h, json={"password": PWD})
+    secret = r.json()["secret"]
     await client.post("/auth/2fa/verify", headers=h, json={"code": "000000"})
     assert await redis.keys("totp_fail:*")
     await client.post("/auth/2fa/verify", headers=h, json={"code": pyotp.TOTP(secret).now()})
@@ -254,3 +259,43 @@ async def test_refresh_family_has_absolute_lifetime(client, session):
     await session.commit()
     r = await client.post("/auth/refresh", cookies={"refresh_token": r.cookies["refresh_token"]})
     assert r.status_code == 401
+
+
+async def _token_headers(client):
+    login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+async def test_2fa_setup_requires_password_and_409_when_enabled(client, session):
+    await _register(client, await _invite(session))
+    h = await _token_headers(client)
+    r = await client.post("/auth/2fa/setup", headers=h, json={"password": "wrong-password"})
+    assert r.status_code == 401
+    h, _, _ = await _enable_2fa(client)
+    r = await client.post("/auth/2fa/setup", headers=h, json={"password": PWD})
+    assert r.status_code == 409
+
+
+async def test_concurrent_2fa_verify_limited_atomically(client, session):
+    await _register(client, await _invite(session))
+    h = await _token_headers(client)
+    await client.post("/auth/2fa/setup", headers=h, json={"password": PWD})
+    rs = await asyncio.gather(
+        *[client.post("/auth/2fa/verify", headers=h, json={"code": "000000"}) for _ in range(10)]
+    )
+    codes = sorted(r.status_code for r in rs)
+    assert codes == [400] * 5 + [429] * 5
+
+
+async def test_totp_required_does_not_count_as_failure(client, session):
+    await _register(client, await _invite(session))
+    await _enable_2fa(client)
+    for _ in range(40):
+        r = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+        assert r.status_code == 401 and r.json()["detail"] == "totp_required"
+
+
+async def test_register_rate_limited_per_ip(client):
+    for _ in range(10):
+        assert (await _register(client, "nope")).status_code == 400
+    assert (await _register(client, "nope")).status_code == 429
