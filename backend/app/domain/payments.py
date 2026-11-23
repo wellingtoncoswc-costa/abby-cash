@@ -61,7 +61,8 @@ async def pay_invoice(
     bill = await session.scalar(
         select(Bill).where(Bill.invoice_id == inv.id).with_for_update()
     )  # trava contra pagamento duplo
-    assert bill is not None
+    if bill is None:
+        raise DomainError("invoice_without_bill")
     remaining = await invoice_remaining(session, inv.id)
     if amount_cents <= 0 or amount_cents > remaining:
         raise DomainError("invalid_payment_amount")
