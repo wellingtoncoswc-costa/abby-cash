@@ -1,4 +1,6 @@
 name: abby-cash
+# Rodar com: docker compose --env-file .env -f infra/docker-compose.prod.yml ...
+# (--env-file alimenta a interpolação de ${POSTGRES_PASSWORD}).
 # Esqueleto: o M8 completa (proxy, volumes, backups). Sem portas públicas.
 services:
   api:
@@ -24,7 +26,7 @@ services:
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
   postgres:
     image: postgres:16
-    env_file: ../.env
+    # sem env_file: o postgres não deve receber JWT_SECRET, chaves de API etc.
     environment: {POSTGRES_USER: abby, POSTGRES_DB: abby, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"}
     volumes: [pgdata:/var/lib/postgresql/data]
     networks: [abby-cash-net]

@@ -11,3 +11,5 @@ curl localhost:8000/health
 ```
 
 Testes: veja `CLAUDE.md`.
+
+Prod: `docker compose --env-file .env -f infra/docker-compose.prod.yml up -d` (o `--env-file` é necessário para `${POSTGRES_PASSWORD}`; o postgres não recebe o `.env` inteiro).

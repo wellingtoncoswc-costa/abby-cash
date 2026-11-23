@@ -12,6 +12,8 @@ cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy
 cd web && npm run lint && npm run typecheck && npm test
 ```
 
+Prod: `docker compose --env-file .env -f infra/docker-compose.prod.yml up -d` (o `--env-file` é necessário para `${POSTGRES_PASSWORD}`; o postgres não recebe o `.env` inteiro).
+
 ## Restrições globais
 
 - Valores monetários **sempre `int` em centavos** (coluna `BIGINT`). Proibido `float` para dinheiro em qualquer camada, inclusive JSON da API (campo `amount_cents`).
