@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from app.core.dates import add_months, clamp_day
 from app.domain.errors import DomainError
@@ -17,6 +17,8 @@ def invoice_dates_for_month(closing_day: int, due_day: int, year: int, month: in
     first = date(year, month, 1)
     due_month = first if due_day > closing_day else add_months(first, 1)
     due = clamp_day(due_month.year, due_month.month, due_day)  # compara dias nominais, não clamped
+    if due <= closing:  # mês curto: nunca vence no dia em que fecha
+        due = closing + timedelta(days=1)
     return InvoiceDates(closing, due)
 
 

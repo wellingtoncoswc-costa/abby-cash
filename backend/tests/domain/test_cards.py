@@ -78,10 +78,14 @@ def test_due_day_31_is_clamped_to_month_end():
 
 
 def test_due_month_uses_nominal_days_not_clamped_dates():
-    assert invoice_dates_for_month(30, 31, 2026, 4) == _inv(date(2026, 4, 30), date(2026, 4, 30))
-    assert invoice_dates_for_month(28, 31, 2026, 2) == _inv(date(2026, 2, 28), date(2026, 2, 28))
+    assert invoice_dates_for_month(30, 31, 2026, 4) == _inv(date(2026, 4, 30), date(2026, 5, 1))
+    assert invoice_dates_for_month(28, 31, 2026, 2) == _inv(date(2026, 2, 28), date(2026, 3, 1))
     assert invoice_dates_for_month(31, 10, 2026, 4) == _inv(date(2026, 4, 30), date(2026, 5, 10))
     assert invoice_dates_for_month(5, 5, 2026, 3) == _inv(date(2026, 3, 5), date(2026, 4, 5))
+
+
+def test_due_never_same_day_as_closing_in_short_month():
+    assert invoice_dates_for_month(30, 31, 2026, 2) == _inv(date(2026, 2, 28), date(2026, 3, 1))
 
 
 def test_purchase_2330_local_uses_local_date():
