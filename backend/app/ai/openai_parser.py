@@ -113,6 +113,8 @@ class OpenAIIntentParser:
                 ],
             )
         except Exception as e:
+            # ponytail: chamadas que falham não entram em ai_usage (sem usage na resposta; o custo
+            # real fica só no painel da OpenAI). Contar tokens estimados se isso importar.
             # só o nome da classe: corpo da resposta e texto do usuário nunca vazam por repr/log
             raise IntentParseError(type(e).__name__) from None
         if completion.usage is not None:
