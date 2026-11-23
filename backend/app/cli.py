@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import re
 from getpass import getpass
 
 from sqlalchemy import select
@@ -44,6 +45,11 @@ async def _set_webhook(url: str | None) -> None:
     from app.channels.registry import telegram_adapter
     from app.core.config import get_settings
 
+    s = get_settings()
+    if not s.TELEGRAM_BOT_TOKEN:
+        raise SystemExit("TELEGRAM_BOT_TOKEN is empty")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", s.TELEGRAM_WEBHOOK_SECRET):
+        raise SystemExit("TELEGRAM_WEBHOOK_SECRET must be 1-256 chars of [A-Za-z0-9_-]")
     target = url or f"{get_settings().PUBLIC_BASE_URL.rstrip('/')}/webhooks/telegram"
     if not target.startswith("https://"):
         raise SystemExit("the Telegram webhook needs a public https URL (use telegram-poll in dev)")
