@@ -1,0 +1,100 @@
+from datetime import date
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+
+from app.api.deps import CurrentUser, Session
+from app.api.schemas import Cents
+from app.core.dates import local_today
+from app.core.serialize import row
+from app.domain.goals.models import Goal
+from app.domain.goals.service import (
+    GoalProgress,
+    contribute,
+    create_goal,
+    goal_progress,
+    visible_goal,
+    withdraw,
+)
+from app.domain.spaces.access import require_member
+
+router = APIRouter(tags=["goals"])
+
+
+class GoalIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    target_cents: Cents
+    deadline: date | None = None
+    account_id: UUID | None = None
+
+
+class ContributionIn(BaseModel):
+    from_account_id: UUID
+    amount_cents: Cents
+    occurred_on: date | None = None
+
+
+class WithdrawalIn(BaseModel):
+    to_account_id: UUID
+    amount_cents: Cents
+    occurred_on: date | None = None
+
+
+def _progress(p: GoalProgress) -> dict[str, Any]:
+    return {
+        "saved_cents": p.saved, "target_cents": p.target,
+        "monthly_needed_cents": p.monthly_needed, "behind": p.behind,
+    }  # fmt: skip
+
+
+@router.post("/spaces/{space_id}/goals", status_code=201)
+async def create(
+    space_id: UUID, body: GoalIn, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    goal = await create_goal(
+        session, actor_id=user.id, space_id=space_id, name=body.name,
+        target_cents=body.target_cents, deadline=body.deadline, account_id=body.account_id,
+        created_on=local_today(user.tz),
+    )  # fmt: skip
+    return row(goal)
+
+
+@router.get("/spaces/{space_id}/goals")
+async def list_goals(space_id: UUID, user: CurrentUser, session: Session) -> list[dict[str, Any]]:
+    await require_member(session, user.id, space_id)
+    goals = await session.scalars(
+        select(Goal).where(Goal.space_id == space_id).order_by(Goal.created_at)
+    )
+    return [row(g) | _progress(await goal_progress(session, g.id, today=local_today(user.tz)))
+            for g in goals]  # fmt: skip
+
+
+@router.get("/goals/{goal_id}")
+async def get_goal(goal_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    goal = await visible_goal(session, user.id, goal_id)
+    return row(goal) | _progress(await goal_progress(session, goal.id, today=local_today(user.tz)))
+
+
+@router.post("/goals/{goal_id}/contributions", status_code=201)
+async def add_contribution(
+    goal_id: UUID, body: ContributionIn, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    tx = await contribute(
+        session, actor_id=user.id, goal_id=goal_id, from_account_id=body.from_account_id,
+        amount_cents=body.amount_cents, on=body.occurred_on or local_today(user.tz),
+    )  # fmt: skip
+    return row(tx)
+
+
+@router.post("/goals/{goal_id}/withdrawals", status_code=201)
+async def add_withdrawal(
+    goal_id: UUID, body: WithdrawalIn, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    tx = await withdraw(
+        session, actor_id=user.id, goal_id=goal_id, to_account_id=body.to_account_id,
+        amount_cents=body.amount_cents, on=body.occurred_on or local_today(user.tz),
+    )  # fmt: skip
+    return row(tx)

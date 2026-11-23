@@ -13,6 +13,7 @@ from app.domain.budgets.service import (
 )
 from app.domain.cards.service import register_card_purchase
 from app.domain.errors import DomainError
+from app.domain.goals.service import contribute, create_goal, withdraw
 from app.domain.payments import pay_bill, pay_invoice
 from app.domain.transactions.service import create_transaction
 from tests.factories import category_id, make_account, make_card, make_family, make_user
@@ -243,3 +244,24 @@ async def test_concurrent_first_set_budget_is_race_safe(session):
 
     await asyncio.gather(*[run(i) for i in range(5)])
     assert await session.scalar(select(func.count()).select_from(Budget)) == 1
+
+
+async def test_goal_contribution_not_counted(session):
+    a = await make_user(session, "a@x.com")
+    sp = a.default_space_id
+    acc = await make_account(session, sp, initial=100_000)
+    goal = await create_goal(
+        session, actor_id=a.id, space_id=sp, name="Viagem", target_cents=50_000,
+        created_on=date(2026, 11, 1),
+    )  # fmt: skip
+    await contribute(
+        session, actor_id=a.id, goal_id=goal.id, from_account_id=acc.id, amount_cents=20_000,
+        on=date(2026, 11, 12),
+    )  # fmt: skip
+    await _spend(session, a, acc, 3_000)
+    assert await month_spending(session, sp, NOV) == 3_000  # o aporte não conta
+    await withdraw(
+        session, actor_id=a.id, goal_id=goal.id, to_account_id=acc.id, amount_cents=5_000,
+        on=date(2026, 11, 20),
+    )  # fmt: skip
+    assert await month_spending(session, sp, NOV) == 3_000  # a retirada também não

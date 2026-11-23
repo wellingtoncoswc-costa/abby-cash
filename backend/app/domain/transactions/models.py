@@ -37,6 +37,7 @@ class Transaction(Base):
     card_id: Mapped[UUID | None] = mapped_column(ForeignKey("credit_cards.id"), index=True)
     invoice_id: Mapped[UUID | None] = mapped_column(ForeignKey("invoices.id"), index=True)
     bill_id: Mapped[UUID | None] = mapped_column(ForeignKey("bills.id"), index=True)
+    goal_id: Mapped[UUID | None] = mapped_column(ForeignKey("goals.id"), index=True)
     installment_group_id: Mapped[UUID | None] = mapped_column(index=True)
     installment_number: Mapped[int | None] = mapped_column(Integer)
     installment_total: Mapped[int | None] = mapped_column(Integer)

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import accounts, auth, bills, budgets, cards, spaces, transactions
+from app.api import accounts, auth, bills, budgets, cards, goals, spaces, transactions
 from app.core.db import engine
 from app.core.redis import redis
 from app.domain.errors import DomainError
@@ -15,6 +15,7 @@ app.include_router(transactions.router)
 app.include_router(cards.router)
 app.include_router(bills.router)
 app.include_router(budgets.router)
+app.include_router(goals.router)
 
 
 @app.exception_handler(DomainError)
