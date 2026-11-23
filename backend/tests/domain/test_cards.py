@@ -240,3 +240,43 @@ async def test_removed_member_loses_card_and_invoice_access(session):
     assert e.value.status_code == 403
     st_w = await invoice_statement(session, w.id, tx.invoice_id)
     assert [i.amount_cents for i in st_w.items] == [3_000]  # o histórico (espaço família) fica
+
+
+async def test_concurrent_purchases_same_card_month_create_one_invoice(session):
+    import asyncio
+
+    from app.core.db import SessionLocal
+
+    a = await make_user(session, "a@x.com")
+    card = await make_card(session, a, a.default_space_id)
+
+    async def buy(i: int):
+        async with SessionLocal() as s:
+            return await _buy(s, a, card, 1_000 + i, date(2026, 11, 1))
+
+    await asyncio.gather(*(buy(i) for i in range(5)))
+    invoices = (await session.scalars(select(Invoice))).all()
+    bills = (await session.scalars(select(Bill))).all()
+    assert len(invoices) == 1 and len(bills) == 1
+    assert await invoice_total(session, invoices[0].id) == sum(1_000 + i for i in range(5))
+    await session.refresh(bills[0])
+    assert bills[0].amount_cents == await invoice_total(session, invoices[0].id)
+
+
+async def test_bill_status_matches_invoice_payments(session):
+    from app.domain.cards.service import invoice_paid
+    from app.domain.payments import pay_invoice
+    from tests.factories import make_account
+
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    card = await make_card(session, a, a.default_space_id)
+    (buy,) = await _buy(session, a, card, 10_000, date(2026, 11, 1))
+    for amount, status in ((4_000, "partial"), (6_000, "paid")):
+        await pay_invoice(
+            session, actor_id=a.id, invoice_id=buy.invoice_id, account_id=acc.id,
+            paid_on=date(2026, 11, 20), amount_cents=amount,
+        )  # fmt: skip
+        bill = await session.scalar(select(Bill).where(Bill.invoice_id == buy.invoice_id))
+        assert bill.status == status
+    assert await invoice_paid(session, buy.invoice_id) == 10_000

@@ -4,13 +4,14 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dates import add_months
 from app.domain.accounts.access import use_account
 from app.domain.accounts.statement import Statement, build_statement
 from app.domain.bills.models import Bill
-from app.domain.bills.status import refresh_status
+from app.domain.bills.status import invoice_paid, refresh_status
 from app.domain.cards.billing import (
     InvoiceDates,
     invoice_dates_for_month,
@@ -84,15 +85,6 @@ async def invoice_total(session: AsyncSession, invoice_id: UUID) -> int:
     return int(total or 0)
 
 
-async def invoice_paid(session: AsyncSession, invoice_id: UUID) -> int:
-    paid = await session.scalar(
-        select(func.coalesce(func.sum(Transaction.amount_cents), 0)).where(
-            Transaction.invoice_id == invoice_id, Transaction.type == "transfer"
-        )
-    )
-    return int(paid or 0)
-
-
 async def invoice_remaining(session: AsyncSession, invoice_id: UUID) -> int:
     return await invoice_total(session, invoice_id) - await invoice_paid(session, invoice_id)
 
@@ -110,30 +102,38 @@ async def invoice_summary(session: AsyncSession, invoice: Invoice) -> dict[str, 
 async def get_or_create_invoice(
     session: AsyncSession, card: CreditCard, dates: InvoiceDates
 ) -> Invoice:
-    inv = await session.scalar(
-        select(Invoice).where(Invoice.card_id == card.id, Invoice.closing_on == dates.closing)
+    # corrida (mesma fatura em compras simultâneas): INSERT ... ON CONFLICT DO NOTHING e relê;
+    # a perdedora espera o commit da vencedora, então vê a fatura e a conta espelho dela
+    await session.execute(
+        pg_insert(Invoice)
+        .values(card_id=card.id, closing_on=dates.closing, due_on=dates.due)
+        .on_conflict_do_nothing(constraint="uq_invoices_card_closing")
     )
-    if inv is None:
-        # ponytail: sem lock; a restrição única (card_id, closing_on) barra a corrida
-        inv = Invoice(card_id=card.id, closing_on=dates.closing, due_on=dates.due)
-        session.add(inv)
-        await session.flush()
-        session.add(
-            Bill(
-                space_id=card.space_id,
-                kind="invoice",
-                amount_cents=0,
-                due_on=dates.due,
-                description=f"Fatura {card.name} {dates.closing:%m/%Y}",
-                invoice_id=inv.id,
-            )  # fmt: skip
+    inv = await session.scalar(
+        select(Invoice)
+        .where(Invoice.card_id == card.id, Invoice.closing_on == dates.closing)
+        .execution_options(populate_existing=True)
+    )
+    assert inv is not None
+    await session.execute(
+        pg_insert(Bill)
+        .values(
+            space_id=card.space_id, kind="invoice", amount_cents=0, due_on=dates.due,
+            description=f"Fatura {card.name} {dates.closing:%m/%Y}", invoice_id=inv.id,
         )
+        .on_conflict_do_nothing(index_elements=[Bill.invoice_id])
+    )  # fmt: skip
     return inv
 
 
 async def sync_invoice_bill(session: AsyncSession, invoice: Invoice) -> None:
     """Mantém a conta espelho = total da fatura (chamar após gravar/alterar compras)."""
-    bill = await session.scalar(select(Bill).where(Bill.invoice_id == invoice.id))
+    bill = await session.scalar(
+        select(Bill)
+        .where(Bill.invoice_id == invoice.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )  # trava antes de somar: compras simultâneas não sobrescrevem o total com valor velho
     assert bill is not None
     bill.amount_cents = await invoice_total(session, invoice.id)
     bill.due_on = invoice.due_on
