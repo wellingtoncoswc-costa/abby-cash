@@ -554,3 +554,105 @@ async def test_a_deleted_transaction_confirmed_later_is_reported_politely(ana, p
     [tx] = await txs(session)
     await delete_transaction(session, actor_id=ana.user.id, tx_id=tx.id)  # apagado pela web
     assert (await ana.say("sim")).startswith("Não encontrei isso")
+
+
+async def test_pay_one_pending_bill_from_default_account(ana, session, parser):
+    from app.domain.bills.service import create_bill
+
+    sp = ana.user.default_space_id
+    bill = await create_bill(
+        session, actor_id=ana.user.id, space_id=sp, description="Luz", amount_cents=15_000,
+        due_on=date(2026, 11, 30),
+    )  # fmt: skip
+    assert (await ana.say("paguei")).startswith("✅ Paguei R$ 150,00 · Luz · hoje · Carteira")
+    await session.refresh(bill)
+    assert bill.status == "paid" and parser.calls == []
+    assert await ana.say("paguei") == "Não encontrei contas em aberto."
+    assert (await ana.say("apagar último")).startswith("Apagar R$ 150,00 · Luz")
+    reply = await ana.say("sim")  # desfaz o pagamento e reabre a conta
+    assert reply.startswith("🗑️ Apaguei: R$ 150,00")
+    await session.refresh(bill)
+    assert bill.status == "open"
+
+
+async def test_pay_many_lists_and_choose_second(ana, session, parser):
+    from app.domain.bills.models import Bill
+    from app.domain.bills.service import create_bill
+
+    sp = ana.user.default_space_id
+    for name, day in (("Luz", 28), ("Internet", 30)):
+        await create_bill(
+            session, actor_id=ana.user.id, space_id=sp, description=name, amount_cents=10_000,
+            due_on=date(2026, 11, day),
+        )  # fmt: skip
+    reply = await ana.say("paguei")
+    assert reply.startswith("Qual conta você pagou? Responda com o número:\n1) Luz")
+    assert "2) Internet · vence 30/11 · R$ 100,00" in reply
+    assert await ana.say("9") == "Responda com um dos números da lista."
+    assert (await ana.say("2")).startswith("✅ Paguei R$ 100,00 · Internet")
+    status = {b.description: b.status for b in await session.scalars(select(Bill))}
+    assert status == {"Luz": "open", "Internet": "paid"}
+
+
+async def test_pay_never_offers_other_peoples_bills(session, new_chat):
+    from app.domain.bills.service import create_bill
+
+    ana, bia = await new_chat("ana@x.com", "111"), await new_chat("bia@x.com", "222")
+    await create_bill(
+        session, actor_id=bia.user.id, space_id=bia.user.default_space_id, description="Aluguel",
+        amount_cents=100_000, due_on=date(2026, 11, 30),
+    )  # fmt: skip
+    assert await ana.say("paguei") == "Não encontrei contas em aberto."
+
+
+async def test_pay_invoice_from_wallet(ana, session):
+    sp = ana.user.default_space_id
+    card = await make_card(session, ana.user, sp, name="Visa")
+    from app.domain.cards.service import register_card_purchase
+
+    await register_card_purchase(
+        session, actor_id=ana.user.id, space_id=sp, card_id=card.id, amount_cents=10_000,
+        occurred_on=date(2026, 11, 5),
+    )  # fmt: skip
+    assert (await ana.say("paguei")).startswith("✅ Paguei R$ 100,00")
+    assert await ana.say("faturas") == "Nenhuma fatura em aberto."
+
+
+async def test_aporte_meta(ana, session, parser):
+    from app.domain.goals.service import create_goal
+
+    sp = ana.user.default_space_id
+    await create_goal(
+        session, actor_id=ana.user.id, space_id=sp, name="Viagem", target_cents=500_000,
+        created_on=date(2026, 11, 1),
+    )  # fmt: skip
+    parser.add(intent("aporte_meta", amount_cents=50_000, goal_hint="viagem"))
+    reply = await ana.say("guardei 500 na viagem")
+    assert reply == (
+        "✅ R$ 500,00 · Aporte na meta Viagem · hoje · Carteira\n"
+        "Guardado: R$ 500,00 de R$ 5.000,00."
+    )
+    parser.add(intent("aporte_meta", amount_cents=1_000, goal_hint="carro"))
+    assert (await ana.say("guardei 10 no carro")).startswith("Qual meta? Suas metas: Viagem.")
+    parser.add(intent("aporte_meta", goal_hint="viagem"))
+    assert await ana.say("guardei na viagem") == "Quanto você guardou? (ex.: 500)"
+    assert (await ana.say("100")).startswith("✅ R$ 100,00 · Aporte na meta Viagem")
+
+
+async def test_nova_conta_a_pagar(ana, session, parser):
+    from app.domain.bills.models import Bill
+
+    parser.add(
+        intent(
+            "nova_conta_a_pagar",
+            amount_cents=12_000,
+            description="Internet",
+            occurred_on=date(2026, 12, 10),
+        )
+    )
+    reply = await ana.say("conta de internet 120 vence dia 10")
+    assert reply.startswith("📌 Anotei: Internet · R$ 120,00 · vence 10/12")
+    bill = await session.scalar(select(Bill))
+    assert (bill.amount_cents, bill.due_on, bill.status) == (12_000, date(2026, 12, 10), "open")
+    parser.add(intent("nova_conta_a_pagar", amount_cents=12_000, description="Luz"))
+    assert (await ana.say("conta de luz 120")).startswith("Para anotar uma conta a pagar preciso")

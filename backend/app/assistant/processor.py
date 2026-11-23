@@ -11,7 +11,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.flows import edit, launch, query
+from app.assistant.flows import edit, extras, launch, pay, query
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
 from app.assistant.intents import Intent, ParsedIntent
@@ -157,6 +157,10 @@ async def target_space(t: Turn, h: Hints) -> tuple[UUID | None, str | None]:
 
 
 async def run_draft(t: Turn, d: Draft) -> str:
+    if d.action == "pay":
+        return await pay.run(t, d)
+    if d.action == "aporte":
+        return await extras.run_aporte(t, d)
     return await launch.run(t, d)
 
 
@@ -201,7 +205,10 @@ async def resume(t: Turn, text: str) -> str | None:
             await clear_state(t.session, t.user_id, t.channel)
             return None
         d.options = []
-        d.payment = picked
+        if kind == "pick_bill":
+            d.bill_id = picked.id
+        else:
+            d.payment = picked
     await clear_state(t.session, t.user_id, t.channel)
     return await run_draft(t, d)
 
@@ -244,6 +251,12 @@ async def fresh(t: Turn, text: str) -> str:
             return await edit.corrigir(t, p, space_id)
         case "apagar":
             return await edit.apagar(t)
+        case "pagar_conta":
+            return await pay.start(t, p)
+        case "nova_conta_a_pagar":
+            return await extras.nova_conta(t, p, space_id)
+        case "aporte_meta":
+            return await extras.aporte(t, p, space_id)
         case "consultar_gastos":
             return await query.gastos(t, p, space_id)
         case "consultar_teto":
