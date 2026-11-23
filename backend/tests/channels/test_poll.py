@@ -91,3 +91,35 @@ async def test_poll_forever_survives_errors_with_backoff_and_no_token(monkeypatc
         await poll.poll_forever(fake_adapter([]), sleep=sleep)
     assert slept[:3] == [1, 2, 4] and seen_offsets[:4] == [None] * 4 and seen_offsets[4] == 42
     assert "T0KEN" not in caplog.text and "RuntimeError" in caplog.text
+
+
+async def test_malformed_last_update_still_advances_offset_past_it(session):
+    good = fixture("text")
+    bad = {"update_id": good["update_id"] + 5, "message": "lixo"}
+    got: list[UUID] = []
+
+    async def enqueue(i: UUID) -> None:
+        got.append(i)
+
+    offset = await poll_once(fake_adapter([good, bad]), None, enqueue)
+    assert offset == bad["update_id"] + 1 and len(got) == 1
+
+
+async def test_ingest_failure_skips_that_update_and_advances(session, monkeypatch, caplog):
+    first, second = fixture("text"), dict(fixture("text"))
+    second["update_id"] = first["update_id"] + 1
+    second["message"] = {**first["message"], "message_id": 99}
+    calls = 0
+
+    async def boom(session, msgs, enqueue):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("secret user text")
+
+    monkeypatch.setattr(poll, "ingest", boom)
+
+    async def enqueue(i: UUID) -> None: ...
+
+    offset = await poll_once(fake_adapter([first, second]), None, enqueue)
+    assert calls == 2 and offset == second["update_id"] + 1
+    assert "secret user text" not in caplog.text and "RuntimeError" in caplog.text

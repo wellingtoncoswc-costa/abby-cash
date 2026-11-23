@@ -17,15 +17,20 @@ async def poll_once(
     """Um getUpdates: manda cada mensagem pela MESMA porta do webhook (`ingest`)."""
     for update in await adapter.get_updates(offset):
         try:
-            msg = adapter.parse_update(update)
             next_offset = update["update_id"] + 1
-        except (ValueError, KeyError, TypeError):
-            log.warning("telegram poll: skipping malformed update")  # sem conteúdo: pode ter dados
-            continue  # ponytail: update sem update_id não avança o offset; o próximo avança
-        if msg is not None:
-            async with SessionLocal() as session:
-                await ingest(session, [msg], enqueue)
-        offset = next_offset  # só avança depois de gravar/enfileirar
+        except (KeyError, TypeError):
+            log.warning("telegram poll: update without update_id")
+            continue  # ponytail: sem update_id não há como avançar; o próximo update avança
+        try:
+            if (msg := adapter.parse_update(update)) is not None:
+                async with SessionLocal() as session:
+                    await ingest(session, [msg], enqueue)
+        except Exception as e:
+            # update venenoso (formato ou erro determinístico): pula, senão trava/gira em loop.
+            # ponytail: erro transitório também descarta o update; o usuário reenvia. Só o tipo no
+            # log (a mensagem pode ter texto do usuário).
+            log.warning("telegram poll: skipping update (%s)", type(e).__name__)
+        offset = next_offset  # avança sempre, mesmo após falha
     return offset
 
 
