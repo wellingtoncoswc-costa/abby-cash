@@ -7,7 +7,7 @@ Planos: `docs/superpowers/plans/`. Use o mindset ponytail (mínimo de código); 
 
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d postgres redis   # infra dos testes
-cd backend && uv run pytest
+cd backend && uv run pytest   # usa DB `<db>_test` (criado sozinho) e Redis DB 15; nunca o DB de dev
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app
 cd web && npm run lint && npm run typecheck && npm test
 ```

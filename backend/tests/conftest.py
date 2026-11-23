@@ -1,3 +1,44 @@
+import asyncio
+import os
+
+import asyncpg
+from sqlalchemy.engine import make_url
+
+from app.core.config import get_settings
+
+
+def _isolate_test_infra() -> None:
+    """Testes rodam em DB `<db>_test` e Redis DB 15: nunca no banco/cache de dev."""
+    assert get_settings().ENV != "prod", "testes apagam o schema: nunca rode com ENV=prod"
+    url = make_url(get_settings().DATABASE_URL)
+    name = url.database or ""
+    if not name.endswith("_test"):
+        name += "_test"
+    url = url.set(database=name)
+    assert name.endswith("_test")
+
+    async def _create() -> None:
+        conn = await asyncpg.connect(
+            user=url.username, password=url.password, host=url.host, port=url.port,
+            database="postgres",
+        )  # fmt: skip
+        try:
+            if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname=$1", name):
+                await conn.execute(f'CREATE DATABASE "{name}"')
+        finally:
+            await conn.close()
+
+    asyncio.run(_create())
+    os.environ["DATABASE_URL"] = url.render_as_string(hide_password=False)
+    os.environ["REDIS_URL"] = (
+        make_url(get_settings().REDIS_URL).set(database="15").render_as_string(hide_password=False)
+    )
+    get_settings.cache_clear()
+    assert get_settings().DATABASE_URL.rsplit("/", 1)[-1].endswith("_test")
+
+
+_isolate_test_infra()
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -6,7 +47,6 @@ import app.domain.accounts.models  # noqa: F401
 import app.domain.categories.models  # noqa: F401
 import app.domain.spaces.models  # noqa: F401
 import app.domain.users.models  # noqa: F401
-from app.core.config import get_settings
 from app.core.db import Base, SessionLocal, engine
 from app.core.redis import redis
 from app.main import app
