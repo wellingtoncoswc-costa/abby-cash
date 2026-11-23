@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
+from app.domain.accounts.access import use_account, visible_account
 from app.domain.accounts.models import Account
 from app.domain.bills.recurrence import (
     Recurrence,
@@ -56,7 +57,8 @@ def test_yearly_and_every_n_months():
 
 def test_invalid_recurrence_rules():
     for make in (
-        lambda: monthly(0), lambda: monthly(32), lambda: every_n_months(0, 5),
+        lambda: every_n_months(121, 5), lambda: monthly(0), lambda: monthly(32),
+        lambda: every_n_months(0, 5),
         lambda: yearly(13, 1), lambda: yearly(0, 1),
     ):  # fmt: skip
         with pytest.raises(DomainError, match="invalid_recurrence"):
@@ -312,3 +314,25 @@ async def _invoice_setup_for(session, a, acc):
         amount_cents=30_000, occurred_on=date(2026, 11, 5),
     )  # fmt: skip
     return a, acc, card, buy.invoice_id
+
+
+async def test_family_bill_paid_from_personal_account_stays_in_family_space(session):
+    w, h = await make_user(session, "w@x.com"), await make_user(session, "h@x.com")
+    fam = await make_family(session, w, h)
+    mine = await make_account(session, w.default_space_id, name="Itaú pessoal", initial=50_000)
+    bill = await create_bill(
+        session, actor_id=w.id, space_id=fam.id, description="Luz", amount_cents=12_000, due_on=DUE
+    )  # fmt: skip
+    tx = await pay_bill(
+        session, actor_id=w.id, bill_id=bill.id, account_id=mine.id, paid_on=DUE
+    )  # fmt: skip
+    assert (tx.space_id, tx.account_id) == (fam.id, mine.id)  # conta no orçamento da família
+    assert await account_balance(session, mine.id) == 38_000
+    seen_by_h = await list_transactions(session, viewer_id=h.id, space_id=fam.id)
+    assert tx.id in [t.id for t in seen_by_h]
+    with pytest.raises(HTTPException) as e:  # h não vê nem usa a conta pessoal da w
+        await use_account(session, h.id, mine.id)
+    assert e.value.status_code == 403
+    with pytest.raises(HTTPException) as e:
+        await visible_account(session, h.id, mine.id)
+    assert e.value.status_code == 404
