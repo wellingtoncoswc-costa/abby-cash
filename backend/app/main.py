@@ -8,6 +8,7 @@ from app.api import (
     bills,
     budgets,
     cards,
+    channel_links,
     goals,
     privacy,
     spaces,
@@ -27,6 +28,7 @@ app.include_router(cards.router)
 app.include_router(bills.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
+app.include_router(channel_links.router)
 app.include_router(privacy.router)
 app.include_router(webhooks.router)
 

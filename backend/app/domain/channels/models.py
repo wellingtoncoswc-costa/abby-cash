@@ -29,3 +29,19 @@ class InboundMessage(Base):
     status: Mapped[str] = mapped_column(String(16), default="received")
     result: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChannelLink(Base):
+    __tablename__ = "channel_links"
+    __table_args__ = (
+        UniqueConstraint("channel", "external_user_id", name="uq_channel_links_external"),
+        UniqueConstraint("user_id", "channel", name="uq_channel_links_user_channel"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    channel: Mapped[str] = mapped_column(String(32))
+    external_user_id: Mapped[str] = mapped_column(String(64))  # chat_id / telefone
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

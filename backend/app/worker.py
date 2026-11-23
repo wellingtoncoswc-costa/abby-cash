@@ -1,14 +1,10 @@
-from typing import Any
-
 from arq.connections import RedisSettings
 
 from app.core.config import get_settings
-
-
-async def noop(ctx: dict[str, Any]) -> None:  # ponytail: placeholder até o M3 trazer jobs reais
-    return None
+from app.jobs.inbound import process_inbound
 
 
 class WorkerSettings:
-    functions = [noop]
+    functions = [process_inbound]
     redis_settings = RedisSettings.from_dsn(get_settings().REDIS_URL)
+    max_tries = 1  # ponytail: sem retry; uma mensagem presa em "processing" exige reenvio manual

@@ -414,3 +414,18 @@ async def test_correct_password_refused_by_domain_is_never_rate_limited(client, 
     for _ in range(32):  # > MAX_IP_FAILS: senha certa não conta nem por usuário nem por IP
         assert (await _delete(client, a)).status_code == 422
     assert (await _delete(client, a, "senha errada aqui")).status_code == 401  # falha ainda conta
+
+
+async def test_delete_account_removes_channel_links_and_inbound_messages(client, session):
+    from app.domain.channels.models import ChannelLink, InboundMessage
+    from tests.factories import make_inbound, make_link
+
+    ana = await make_user(session, "ana@x.com")
+    await make_link(session, ana)
+    iid = await make_inbound(session, "gastei 45 no mercado")
+    row = await session.get(InboundMessage, iid)
+    row.user_id = ana.id
+    await session.commit()
+    assert (await _delete(client, ana)).status_code == 204
+    assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
+    assert await session.scalar(select(func.count()).select_from(InboundMessage)) == 0

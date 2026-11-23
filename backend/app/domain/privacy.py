@@ -15,6 +15,7 @@ from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.cards.service import sync_invoice_bill
 from app.domain.categories.models import Category
+from app.domain.channels.models import ChannelLink, InboundMessage
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
 from app.domain.spaces.models import Space, SpaceInvite, SpaceMember
@@ -192,6 +193,8 @@ async def delete_account(session: AsyncSession, user: User) -> None:
     )
     await session.execute(delete(SignupInvite).where(SignupInvite.created_by == uid))
     await session.execute(delete(RefreshToken).where(RefreshToken.user_id == uid))
+    await session.execute(delete(ChannelLink).where(ChannelLink.user_id == uid))
+    await session.execute(delete(InboundMessage).where(InboundMessage.user_id == uid))
     await session.execute(delete(User).where(User.id == uid))
     # LGPD: o UUID do titular some de TODA a trilha (actor_id, entity_id e valores em `data`);
     # as linhas ficam como registro de que a ação ocorreu, sem identificar ninguém.
