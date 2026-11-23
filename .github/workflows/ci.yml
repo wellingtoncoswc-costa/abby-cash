@@ -22,8 +22,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check . && uv run ruff format --check .
       - run: uv run mypy app
-      # Task 3 (T1.3) cria a migração; reativar então.
-      # - run: uv run alembic upgrade head && uv run alembic check
+      - run: uv run alembic upgrade head && uv run alembic check
       - run: uv run pytest -m "not slow"
   web:
     runs-on: ubuntu-latest
