@@ -224,3 +224,22 @@ async def test_concurrent_evaluations_register_alert_once(session):
 
     results = await asyncio.gather(*[run() for _ in range(5)])
     assert sum(len(r) for r in results) == 1
+
+
+async def test_concurrent_first_set_budget_is_race_safe(session):
+    import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.core.db import SessionLocal
+    from app.domain.budgets.models import Budget
+
+    a = await make_user(session, "a@x.com")
+    sp = a.default_space_id
+
+    async def run(i):
+        async with SessionLocal() as s:
+            return await set_budget(s, actor_id=a.id, space_id=sp, month=NOV, limit_cents=1_000 + i)
+
+    await asyncio.gather(*[run(i) for i in range(5)])
+    assert await session.scalar(select(func.count()).select_from(Budget)) == 1

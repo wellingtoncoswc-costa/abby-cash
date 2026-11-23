@@ -81,16 +81,18 @@ async def set_budget(
         category_id=None, occurred_on=month,
     )  # fmt: skip
     start = month.replace(day=1)
+    # upsert na unique: em corrida o 2º espera o lock da linha e atualiza (sem 500)
+    # ponytail: alertas já enviados não são zerados ao mudar o teto; resetar se o dono pedir
     budget = await session.scalar(
-        select(Budget).where(Budget.space_id == space_id, Budget.month == start)
+        insert(Budget)
+        .values(space_id=space_id, month=start, limit_cents=limit_cents)
+        .on_conflict_do_update(
+            constraint="uq_budgets_space_month", set_={"limit_cents": limit_cents}
+        )
+        .returning(Budget)
+        .execution_options(populate_existing=True)
     )
-    if budget is None:
-        budget = Budget(space_id=space_id, month=start, limit_cents=limit_cents)
-        session.add(budget)
-        await session.flush()
-    else:
-        # ponytail: alertas já enviados não são zerados ao mudar o teto; resetar se o dono pedir
-        budget.limit_cents = limit_cents
+    assert budget is not None
     await session.execute(delete(BudgetCategory).where(BudgetCategory.budget_id == budget.id))
     for cid, limit in (categories or {}).items():
         session.add(BudgetCategory(budget_id=budget.id, category_id=cid, limit_cents=limit))

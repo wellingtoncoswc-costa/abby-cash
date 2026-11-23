@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
@@ -23,6 +24,8 @@ class BudgetIn(BaseModel):
 
 
 def _month(value: str) -> date:
+    if not re.fullmatch(r"\d{4}-\d{2}", value):
+        raise HTTPException(status_code=422, detail="invalid_month")
     try:
         return datetime.strptime(value, "%Y-%m").date()
     except ValueError:
