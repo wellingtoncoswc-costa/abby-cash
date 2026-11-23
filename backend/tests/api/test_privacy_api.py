@@ -21,7 +21,7 @@ from app.domain.spaces.models import Space, SpaceMember
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.service import create_transaction, list_transactions
 from app.domain.users.models import User
-from tests.factories import PWD, auth, make_account, make_card, make_family, make_user
+from tests.factories import PWD, auth, category_id, make_account, make_card, make_family, make_user
 
 D = date(2026, 11, 10)
 
@@ -444,3 +444,19 @@ async def test_delete_account_cleans_channel_data(session):
     await delete_account(session, a)
     assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
     assert await session.scalar(select(func.count()).select_from(InboundMessage)) == 0
+
+
+async def test_delete_account_removes_category_rules_and_ai_usage(client, session):
+    from app.ai.models import AiUsage
+    from app.domain.categories.models import CategoryRule
+
+    ana = await make_user(session, "ana@x.com")
+    sp = ana.default_space_id
+    session.add(CategoryRule(
+        space_id=sp, merchant_norm="padaria", category_id=await category_id(session, sp)
+    ))  # fmt: skip
+    session.add(AiUsage(space_id=sp, kind="intent", input_tokens=10, output_tokens=2))
+    await session.commit()
+    assert (await _delete(client, ana)).status_code == 204
+    assert await session.scalar(select(func.count()).select_from(CategoryRule)) == 0
+    assert await session.scalar(select(func.count()).select_from(AiUsage)) == 0

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import Text, cast, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.models import AiUsage
 from app.core.serialize import row
 from app.domain.accounts.models import Account
 from app.domain.audit import AuditLog, audit
@@ -14,7 +15,7 @@ from app.domain.bills.models import Bill
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.cards.service import sync_invoice_bill
-from app.domain.categories.models import Category
+from app.domain.categories.models import Category, CategoryRule
 from app.domain.channels.models import ChannelLink, InboundMessage
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
@@ -152,6 +153,8 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> None:
     await session.execute(delete(Invoice).where(Invoice.card_id.in_(cards)))
     await session.execute(delete(CreditCard).where(CreditCard.space_id == space_id))
     await session.execute(delete(Account).where(Account.space_id == space_id))
+    await session.execute(delete(CategoryRule).where(CategoryRule.space_id == space_id))
+    await session.execute(delete(AiUsage).where(AiUsage.space_id == space_id))
     await session.execute(delete(Category).where(Category.space_id == space_id))
     await session.execute(delete(SpaceInvite).where(SpaceInvite.space_id == space_id))
     await session.execute(delete(Space).where(Space.id == space_id))
