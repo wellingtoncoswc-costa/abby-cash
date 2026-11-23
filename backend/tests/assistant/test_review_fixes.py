@@ -120,3 +120,26 @@ async def test_familia_picks_the_oldest_family_space(ana, new_chat, parser, sess
     parser.add(expense(1_000, "Mercado"))
     await ana.say("#familia mercado 10")
     assert parser.calls[0][1].space_id == first.id
+
+
+@pytest.mark.parametrize(
+    ("text", "model_cents", "total"),
+    [
+        ("iphone 15 por 5000 em 12x", 500_000, 500_000),
+        ("comprei 2 pneus 800 em 4x", 80_000, 80_000),
+    ],
+)
+async def test_installment_total_from_the_text_is_kept(
+    ana, parser, session, text, model_cents, total
+):
+    from app.domain.cards.models import Invoice
+    from tests.factories import make_card
+
+    await make_card(session, ana.user, ana.user.default_space_id, name="Visa")
+    parser.add(intent("lancar_parcelado", "Compras", amount_cents=model_cents, card_hint="visa"))
+    reply = await ana.say(text)
+    assert "Usei" not in reply
+    rows = await all_txs(session)
+    assert sum(t.amount_cents for t in rows) == total
+    assert len(rows) == int(text.split(" em ")[1].rstrip("x"))
+    assert len(list(await session.scalars(select(Invoice)))) == len(rows)

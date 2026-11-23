@@ -395,6 +395,7 @@ async def test_unexpected_error_marks_row_failed_and_apologizes(ana, parser, ses
     assert (await ana.say("gastei 45")).startswith("Tive um problema ao processar")
     row = await session.scalar(select(InboundMessage))
     assert row.status == "failed"
+    assert row.user_id == ana.user.id and row.text is None  # id durável; texto descartado
 
 
 async def test_one_failing_message_does_not_block_the_next(ana, parser, session, monkeypatch):
@@ -665,3 +666,94 @@ async def test_nova_conta_a_pagar(ana, session, parser):
     assert (bill.amount_cents, bill.due_on, bill.status) == (12_000, date(2026, 12, 10), "open")
     parser.add(intent("nova_conta_a_pagar", amount_cents=12_000, description="Luz"))
     assert (await ana.say("conta de luz 120")).startswith("Para anotar uma conta a pagar preciso")
+
+
+async def test_correction_of_a_personal_tx_uses_that_spaces_categories_and_rule(
+    ana, parser, session
+):
+    from app.domain.categories.models import Category, CategoryRule
+    from app.domain.users.models import User
+
+    fam = await make_family(session, ana.user)
+    session.add(Category(space_id=fam.id, kind="expense", name="Aaa só da família"))
+    await session.commit()
+    parser.add(expense(3000, "Alimentação", merchant="Padaria Sol"))
+    await ana.say("#pessoal gastei 30 na padaria sol")
+    [tx] = await txs(session)
+    personal = tx.space_id
+    assert personal != fam.id
+    await session.execute(
+        User.__table__.update().where(User.id == ana.user.id).values(default_space_id=fam.id)
+    )
+    await session.commit()
+
+    class ByFamilyList:  # o modelo vê a lista do espaço padrão (família) e responde o nº dela
+        async def parse(self, text, ctx):
+            assert ctx.space_id == fam.id
+            names = [c.name for c in ctx.categories]
+            n = names.index("Lazer") + 1
+            return intent("corrigir", category_index=n)
+
+    ana.parser = ByFamilyList()
+    reply = await ana.say("era lazer")
+    assert reply.startswith("✏️ Corrigi:") and "Lazer" in reply
+    session.expire_all()
+    lazer = await category_id(session, personal, "Lazer")
+    assert (await txs(session))[0].category_id == lazer
+    rule = await session.scalar(select(CategoryRule))
+    assert rule.space_id == personal and rule.category_id == lazer
+
+    class OnlyInFamily:
+        async def parse(self, text, ctx):
+            return intent(
+                "corrigir",
+                category_index=[c.name for c in ctx.categories].index("Aaa só da família") + 1,
+            )
+
+    ana.parser = OnlyInFamily()
+    assert (await ana.say("era aaa")).startswith("Não achei a categoria")
+
+
+class SlowParser:
+    """O modelo demora: abre a janela em que a segunda mensagem do usuário chega no meio."""
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+
+    async def parse(self, text, ctx):
+        await asyncio.sleep(0.3)
+        return await self.inner.parse(text, ctx)
+
+
+async def _inbound(session, text, n):
+    from tests.factories import make_inbound
+
+    return await make_inbound(session, text, msg_id=n)
+
+
+async def test_two_messages_of_one_user_are_serialized_in_arrival_order(ana, parser, session):
+    fam = await make_family(session, ana.user)
+    await make_account(session, fam.id, name="Casa")
+    parser.add(expense(4500, "Mercado"))
+    ctx = {"parser": SlowParser(parser)}
+    a, b = await _inbound(session, "#familia gastei 45", 1), await _inbound(session, "1", 2)
+
+    async def second():
+        await asyncio.sleep(0.1)  # chega com a primeira ainda no modelo
+        await process_inbound(ctx, str(b))
+
+    await asyncio.gather(process_inbound(ctx, str(a)), second())
+    assert len(await txs(session)) == 1  # a resposta "1" escolheu a conta; nada foi perdido
+    assert len(parser.calls) == 1
+
+
+async def test_double_yes_on_delete_confirmation_deletes_once(ana, parser, session):
+    parser.add(expense(4500, "Mercado", merchant="Mercado"))
+    await ana.say("gastei 45 no mercado")
+    await ana.say("apagar último")
+    a, b = await _inbound(session, "sim", 10), await _inbound(session, "sim", 11)
+    await asyncio.gather(process_inbound({}, str(a)), process_inbound({}, str(b)))
+    assert await txs(session) == []
+    texts = [t for _, t in ana.adapter.sent]
+    assert sum("Apaguei" in t for t in texts) == 1
+    assert sum(t.startswith("Tive um problema") for t in texts) == 0
