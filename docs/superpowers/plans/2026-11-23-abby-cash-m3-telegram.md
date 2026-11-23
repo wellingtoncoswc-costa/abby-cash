@@ -10,6 +10,15 @@
 
 **Interfaces:** exatamente as do plano mestre (`docs/superpowers/plans/2026-11-23-abby-cash-v1.md`), T3.1–T3.4. Nenhuma renomeada. Extensões usadas aqui: (a) funções com banco recebem `session` primeiro (como no M2); (b) `InboundMessage` (dataclass do canal) e `InboundMessage` (model) têm o mesmo nome em módulos diferentes (`app.channels.base` × `app.domain.channels.models`), o model é importado com alias onde convive; (c) `ParsedIntent` ganha `choice` (número escolhido numa lista) e `ParsedIntent.of(...)`; (d) `TelegramAdapter` tem métodos extras além do protocolo (`parse_update`, `get_updates`, `set_webhook`, `delete_webhook`, `bot_username`).
 
+## Decisões do dono (2026-11-23, respondidas durante a execução; prevalecem sobre o texto abaixo)
+
+1. **"apagar último" PEDE confirmação** antes de apagar ("Apagar R$ 45,00 · Mercado? Responda sim ou não"; estado em `conversation_state`, expira em 30 min; só "sim" apaga). Onde o plano diz que apaga direto, implemente a confirmação e ajuste os testes.
+2. **"gastos"/consultas somam pela data da compra** (`occurred_on`) também no cartão; o teto continua pelo mês de vencimento da fatura.
+3. **Alertas de teto vão a todos os membros do espaço** pelo canal de cada um.
+4. **`paguei`, aporte em meta e nova conta a pagar saem em versão mínima no M3**; ambiguidade com lista numerada e lembretes chegam no M5.
+5. Enviar texto da mensagem e nomes de categorias/contas/cartões/metas do espaço à OpenAI foi aceito pelo dono ao escolher o provedor.
+
+
 ## Decisões técnicas do marco (registradas)
 
 - **Provedor de IA: OpenAI (não Anthropic).** `OpenAIIntentParser` usa o SDK oficial `openai` (`AsyncOpenAI`), modelo de `settings.AI_MODEL` (padrão `gpt-4.1`), chave `OPENAI_API_KEY`, timeout `AI_TIMEOUT_S` (20 s) e `max_retries=1`. Saída estruturada pelo modelo Pydantic `ParsedIntent` via `client.chat.completions.parse(..., response_format=ParsedIntent)`.
