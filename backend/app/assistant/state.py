@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assistant.models import ConversationState
@@ -26,11 +27,12 @@ async def set_state(
     session: AsyncSession, user_id: UUID, channel: str, kind: str, data: dict[str, Any],
     now: datetime,
 ) -> None:  # fmt: skip
-    st = await session.get(ConversationState, (user_id, channel), populate_existing=True)
-    if st is None:
-        st = ConversationState(user_id=user_id, channel=channel)
-        session.add(st)
-    st.kind, st.data, st.expires_at = kind, data, now + TTL
+    values = {"kind": kind, "data": data, "expires_at": now + TTL}
+    await session.execute(
+        insert(ConversationState)
+        .values(user_id=user_id, channel=channel, **values)
+        .on_conflict_do_update(index_elements=["user_id", "channel"], set_=values)
+    )
     await session.commit()
 
 

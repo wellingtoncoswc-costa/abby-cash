@@ -16,3 +16,21 @@ async def test_state_roundtrip_expiry_and_clear(session):
     await set_state(session, ana.id, "telegram", "amount", {}, TS)
     await clear_state(session, ana.id, "telegram")
     assert await get_state(session, ana.id, "telegram", TS) is None
+
+
+async def test_concurrent_set_state_never_raises_and_keeps_one_row(session):
+    import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.assistant.models import ConversationState
+    from app.core.db import SessionLocal
+
+    ana = await make_user(session, "ana@x.com")
+
+    async def put(kind: str) -> None:
+        async with SessionLocal() as s:
+            await set_state(s, ana.id, "telegram", kind, {}, TS)
+
+    await asyncio.gather(*[put(f"k{i}") for i in range(8)])
+    assert await session.scalar(select(func.count()).select_from(ConversationState)) == 1

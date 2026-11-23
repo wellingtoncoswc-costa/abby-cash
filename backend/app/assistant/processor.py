@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +36,7 @@ from app.assistant.turn import Draft, Turn
 from app.channels.registry import get_adapter
 from app.core.config import get_settings
 from app.core.dates import to_local_date
-from app.core.db import SessionLocal
+from app.core.db import SessionLocal, engine
 from app.core.money import format_brl
 from app.core.text import fold
 from app.domain.channels.linking import find_user_by_link, link_with_code
@@ -315,6 +315,7 @@ async def handle(session: AsyncSession, ctx: dict[str, Any], row: InboundMessage
     if user is None:
         return await unlinked(session, row.channel, row.external_user_id, row.text or "")
     row.user_id = user.id
+    await session.commit()  # id durável: um rollback adiante não pode deixar a linha sem dono
     if row.media_kind is not None:  # áudio e foto entram no M6; a legenda não grava nada
         return MEDIA
     text = (row.text or "").strip()
@@ -336,6 +337,31 @@ def _where(e: BaseException) -> str:
 
 
 async def handle_inbound(ctx: dict[str, Any], inbound_id: UUID) -> None:
+    """Uma mensagem por vez por (canal, remetente): o ARQ roda jobs em paralelo, e "gastei 45" +
+    "1" não podem se atropelar. O lock fica numa conexão própria (os commits no meio do turno
+    devolvem a da sessão ao pool, e lock de sessão é por conexão).
+    ponytail: sem fila de chegada garantida (quem pega o lock primeiro roda primeiro)."""
+    async with SessionLocal() as s0:
+        who = (
+            await s0.execute(
+                select(InboundMessage.channel, InboundMessage.external_user_id).where(
+                    InboundMessage.id == inbound_id
+                )
+            )
+        ).first()
+    if who is None:
+        return
+    key = f"{who[0]}:{who[1]}"
+    async with engine.connect() as lock:
+        await lock.execute(text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": key})
+        try:
+            await _handle_inbound(ctx, inbound_id)
+        finally:
+            await lock.execute(text("SELECT pg_advisory_unlock(hashtext(:k))"), {"k": key})
+            await lock.rollback()
+
+
+async def _handle_inbound(ctx: dict[str, Any], inbound_id: UUID) -> None:
     async with SessionLocal() as session:
         if not await claim(session, inbound_id):
             return  # já processada (reentrega do ARQ, corrida)
@@ -365,7 +391,7 @@ async def handle_inbound(ctx: dict[str, Any], inbound_id: UUID) -> None:
             reply, status = FAILED, "failed"
         row = await session.get(InboundMessage, inbound_id, populate_existing=True)
         assert row is not None
-        row.status = status
+        row.status, row.text = status, None  # LGPD: terminal descarta o texto
         await session.commit()
         if reply:
             try:
