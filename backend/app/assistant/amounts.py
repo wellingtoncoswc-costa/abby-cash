@@ -71,6 +71,8 @@ _INSTALL_V = re.compile(r"\b\d{1,2}\s*(?:vezes|parcelas)\b")
 _THOUSAND = re.compile(rf"(?:r\$\s*)?({_NUM})\s*mil\b")
 _MONEY = re.compile(rf"(?:r\$\s*)?({_NUM})")
 _CURRENCY = re.compile(r"r\$|\b(?:reais|real|conto|contos)\b")
+# "0", "R$ 0,00", "-10": valor que o chat recusa (e o modelo estruturado nem devolve)
+ZERO_OR_NEG = re.compile(r"(?<![\w.,])(?:-\s?\d[\d.,]*|0+(?:[.,]0+)?)(?![\w.,])")
 
 
 def extract_amount(text: str) -> int | None:

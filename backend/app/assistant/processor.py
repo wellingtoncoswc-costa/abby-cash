@@ -10,8 +10,8 @@ from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.assistant.amounts import parse_bare_amount
-from app.assistant.flows import launch
+from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
+from app.assistant.flows import edit, launch
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
 from app.assistant.intents import Intent, ParsedIntent
@@ -60,8 +60,6 @@ _LAUNCH = {"lancar_despesa", "lancar_receita", "lancar_parcelado"}
 _NEEDS_AMOUNT = _LAUNCH | {"corrigir", "pagar_conta", "nova_conta_a_pagar", "aporte_meta"}
 _INCOME_VERBS = re.compile(r"\s*(recebi|ganhei|entrou|caiu)\b")
 _LEADING_VERB = re.compile(r"^\s*(gastei|paguei|comprei|recebi|ganhei|foi|deu)\b\s*", re.I)
-# "gastei 0", "R$ 0,00", "-10": o modelo não aceita esses valores (devolve nulo) e o texto decide
-_ZERO_OR_NEG = re.compile(r"(?<![\w.,])(?:-\s?\d[\d.,]*|0+(?:[.,]0+)?)(?![\w.,])")
 
 
 async def claim(session: AsyncSession, inbound_id: UUID) -> bool:
@@ -172,11 +170,20 @@ async def resume(t: Turn, text: str) -> str | None:
     if reply == "cancelar":
         await clear_state(t.session, t.user_id, t.channel)
         return "Ok, cancelei."
+    if kind == "correct":
+        await clear_state(t.session, t.user_id, t.channel)
+        fields = edit.parse_correction(text, t.today)
+        return await edit.apply_correction(t, fields) if fields else None
+    if kind == "delete":  # só um "sim" explícito apaga; "não" cancela; outra coisa é mensagem nova
+        await clear_state(t.session, t.user_id, t.channel)
+        if reply == "sim":
+            return await edit.confirm_delete(t, UUID(data["tx_id"]))
+        return "Ok, não apaguei." if reply == "nao" else None
     d = Draft.model_validate(data["draft"])
     if kind == "amount":
         amount = parse_bare_amount(text)
         if amount is None:
-            if _ZERO_OR_NEG.fullmatch(text.strip()):  # parece valor, mas é zero/negativo
+            if ZERO_OR_NEG.fullmatch(text.strip()):  # parece valor, mas é zero/negativo
                 return ZERO + " Quanto foi?"
             await clear_state(t.session, t.user_id, t.channel)
             return None
@@ -228,11 +235,15 @@ async def fresh(t: Turn, text: str) -> str:
     if p is None:
         return NOT_UNDERSTOOD
     t.intent = p.intent
-    if p.intent in _NEEDS_AMOUNT and p.amount_cents is None and _ZERO_OR_NEG.search(text):
+    if p.intent in _NEEDS_AMOUNT and p.amount_cents is None and ZERO_OR_NEG.search(text):
         p.amount_cents = 0  # sem validação: os fluxos recusam e perguntam de novo
     match p.intent:
         case "lancar_despesa" | "lancar_receita" | "lancar_parcelado":
             return await launch.start(t, p, space_id, h, warn)
+        case "corrigir":
+            return await edit.corrigir(t, p, space_id)
+        case "apagar":
+            return await edit.apagar(t)
         case "ajuda":
             return HELP
         case _:

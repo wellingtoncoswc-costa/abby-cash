@@ -414,3 +414,143 @@ async def test_replies_never_leak_internal_ids(ana, parser, session):
     parser.add(expense(1000))
     reply = await ana.say("gastei 10")
     assert str(ana.user.id) not in reply and "Traceback" not in reply
+
+
+async def test_correction_learns_rule(ana, parser, session):
+    from app.domain.categories.models import CategoryRule
+
+    parser.add(expense(3000, "Alimentação", merchant="Padaria Pão Quente 12"))
+    await ana.say("gastei 30 na padaria pão quente 12")
+    parser.add(intent("corrigir", "Mercado"))
+    reply = await ana.say("era mercado")
+    assert reply.startswith("✏️ Corrigi:\n✅ R$ 30,00 · Mercado · Padaria Pão Quente 12")
+    mercado = await category_id(session, ana.user.default_space_id, "Mercado")
+    rule = await session.scalar(select(CategoryRule))
+    assert rule is not None and rule.merchant_norm == "padaria pao quente"
+    assert rule.category_id == mercado
+    # a regra vence a sugestão do LLM na próxima vez
+    parser.add(expense(2000, "Alimentação", merchant="padaria pão quente"))
+    reply = await ana.say("20 na padaria pão quente")
+    assert "· Mercado ·" in reply
+    assert ("padaria pao quente", "Mercado") in parser.calls[-1][1].rules
+    # corrigir de novo troca a regra (não duplica)
+    parser.add(intent("corrigir", "Lazer"))
+    await ana.say("na verdade lazer")
+    rules = list(
+        await session.scalars(select(CategoryRule).execution_options(populate_existing=True))
+    )
+    assert len(rules) == 1 and rules[0].category_id != mercado
+
+
+async def test_correct_shortcut_asks_then_applies_value_and_unknown_category(ana, parser, session):
+    from app.assistant.replies import CORRECT_PROMPT
+
+    parser.add(expense(4500, "Mercado", merchant="Mercado"))
+    await ana.say("gastei 45 no mercado")
+    assert await ana.say("corrigir") == CORRECT_PROMPT
+    reply = await ana.say("valor 50")
+    assert reply.startswith("✏️ Corrigi:\n✅ R$ 50,00 · Mercado")
+    await ana.say("corrigir")
+    reply = await ana.say("categoria Inexistente")
+    assert reply.startswith("Não achei a categoria Inexistente. Opções:")
+    await ana.say("corrigir")
+    assert (await ana.say("data ontem")).startswith(
+        "✏️ Corrigi:\n✅ R$ 50,00 · Mercado · Mercado · ontem"
+    )
+    assert [t.amount_cents for t in await txs(session)] == [5000]
+
+
+async def test_correct_without_a_chat_transaction(ana, parser):
+    parser.add(intent("corrigir", amount_cents=100))
+    assert (await ana.say("era 1")).startswith("Não achei nenhum lançamento seu feito pelo chat")
+
+
+async def test_correct_zero_is_refused_and_installments_are_limited(ana, parser, session):
+    parser.add(expense(4500, "Mercado"))
+    await ana.say("gastei 45 no mercado")
+    await ana.say("corrigir")
+    assert (await ana.say("valor 0")).startswith("O valor precisa ser maior que zero.")
+    await make_card(session, ana.user, ana.user.default_space_id, name="Visa")
+    parser.add(intent("lancar_parcelado", amount_cents=30_000, installments=3, card_hint="visa"))
+    await ana.say("tv 300 em 3x no visa")
+    parser.add(intent("corrigir", amount_cents=100))
+    reply = await ana.say("era 1")
+    assert reply.startswith("Compra parcelada: só dá para corrigir categoria ou descrição")
+
+
+async def test_apagar_ultimo_asks_confirmation_and_only_yes_deletes(ana, parser, session):
+    parser.add(expense(4500, "Mercado", merchant="Mercado"))
+    await ana.say("gastei 45 no mercado")
+    assert await ana.say("apagar último") == "Apagar R$ 45,00 · Mercado? Responda sim ou não"
+    assert len(await txs(session)) == 1  # ainda não apagou
+    assert await ana.say("não") == "Ok, não apaguei."
+    assert len(await txs(session)) == 1
+    await ana.say("apagar último")
+    assert await ana.say("sim") == "🗑️ Apaguei: R$ 45,00 · Mercado · Mercado · hoje · Carteira"
+    assert await txs(session) == []
+    assert (await ana.say("sim")) == NOT_UNDERSTOOD  # "sim" solto não apaga mais nada
+
+
+async def test_apagar_confirmation_expires_and_anything_else_cancels(ana, parser, session):
+    parser.add(expense(4500, "Mercado", merchant="Mercado"))
+    await ana.say("gastei 45 no mercado")
+    await ana.say("apagar último")
+    assert await ana.say("sim", ts=TS + timedelta(minutes=31)) == NOT_UNDERSTOOD
+    assert len(await txs(session)) == 1  # expirou: o "sim" não apaga
+    await ana.say("apagar último")
+    parser.add(expense(1000, "Lazer", merchant="Cinema"))
+    reply = await ana.say("gastei 10 no cinema")  # outra coisa: cancela e segue como mensagem nova
+    assert reply.startswith("✅ R$ 10,00")
+    assert len(await txs(session)) == 2
+    assert (await ana.say("sim")) == NOT_UNDERSTOOD  # nada pendente
+    assert len(await txs(session)) == 2
+
+
+async def test_apagar_ultimo_deletes_only_my_chat_transaction(session, new_chat, parser):
+    ana, bia = await new_chat("ana@x.com", "111"), await new_chat("bia@x.com", "222")
+    parser.add(expense(4500, "Mercado", merchant="Mercado"))
+    await ana.say("gastei 45 no mercado")
+    assert (
+        await bia.say("apagar último")
+        == "Não achei nenhum lançamento seu feito pelo chat para apagar."
+    )
+    assert len(await txs(session)) == 1  # a da Ana continua
+    assert (await bia.say("sim")) == NOT_UNDERSTOOD
+    assert len(await txs(session)) == 1
+
+
+async def test_apagar_installment_group_and_resync_invoice(ana, parser, session):
+    from app.domain.bills.models import Bill
+
+    sp = ana.user.default_space_id
+    await make_card(session, ana.user, sp, name="Visa")
+    parser.add(
+        intent(
+            "lancar_parcelado",
+            "Compras",
+            amount_cents=30_000,
+            installments=3,
+            card_hint="visa",
+            merchant="TV",
+        )
+    )
+    await ana.say("tv 300 em 3x no visa")
+    assert len(await txs(session)) == 3
+    assert (
+        await ana.say("apagar último") == "Apagar R$ 300,00 · TV (3 parcelas)? Responda sim ou não"
+    )
+    reply = await ana.say("sim")
+    assert reply.endswith("(3 parcelas)") and await txs(session) == []
+    amounts = list(await session.scalars(select(Bill.amount_cents).where(Bill.kind == "invoice")))
+    assert amounts == [0, 0, 0]
+
+
+async def test_a_deleted_transaction_confirmed_later_is_reported_politely(ana, parser, session):
+    from app.domain.transactions.service import delete_transaction
+
+    parser.add(expense(4500, "Mercado", merchant="Mercado"))
+    await ana.say("gastei 45 no mercado")
+    await ana.say("apagar último")
+    [tx] = await txs(session)
+    await delete_transaction(session, actor_id=ana.user.id, tx_id=tx.id)  # apagado pela web
+    assert (await ana.say("sim")).startswith("Não encontrei isso")
