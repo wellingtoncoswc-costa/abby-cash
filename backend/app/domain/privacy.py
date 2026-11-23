@@ -13,6 +13,7 @@ from app.domain.audit import AuditLog, audit
 from app.domain.bills.models import Bill
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
+from app.domain.cards.service import sync_invoice_bill
 from app.domain.categories.models import Category
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
@@ -114,7 +115,23 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> None:
         await session.execute(
             update(model).where(model.space_id != space_id, col.in_(sub)).values({col.key: None})
         )
+    # faturas de OUTROS espaços tocadas por lançamentos deste (compras/pagamentos): re-sincroniza
+    foreign_invoices = list(
+        await session.scalars(
+            select(Transaction.invoice_id)
+            .where(
+                Transaction.space_id == space_id,
+                Transaction.invoice_id.is_not(None),
+                Transaction.invoice_id.not_in(invoices),
+            )
+            .distinct()
+        )
+    )
     await session.execute(delete(Transaction).where(Transaction.space_id == space_id))
+    for inv_id in foreign_invoices:
+        inv = await session.get(Invoice, inv_id)
+        if inv is not None:
+            await sync_invoice_bill(session, inv)  # total + status da conta espelho
     await session.execute(delete(SpaceMember).where(SpaceMember.space_id == space_id))
     await session.execute(delete(BudgetAlertSent).where(BudgetAlertSent.space_id == space_id))
     budgets = select(Budget.id).where(Budget.space_id == space_id)

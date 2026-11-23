@@ -335,3 +335,34 @@ async def test_goal_saved_survives_contributor_deleting_account(client, session)
     assert r.status_code == 204
     session.expire_all()
     assert await goal_saved(session, gid) == 4_000
+
+
+async def test_delete_member_resyncs_family_invoice_mirror_bill(client, session):
+    from app.domain.cards.service import invoice_total
+    from app.domain.payments import pay_invoice
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    pb = b.default_space_id
+    fam = await make_family(session, a, b)
+    acc_b = await make_account(session, pb, initial=100_000)
+    card = await make_card(session, a, fam.id, name="Familia")
+    (buy,) = await register_card_purchase(
+        session, actor_id=a.id, space_id=fam.id, card_id=card.id, amount_cents=6_000,
+        occurred_on=D,
+    )  # fmt: skip
+    inv_id = buy.invoice_id
+    await register_card_purchase(
+        session, actor_id=b.id, space_id=pb, card_id=card.id, amount_cents=4_000, occurred_on=D
+    )  # fmt: skip
+    await pay_invoice(
+        session, actor_id=b.id, invoice_id=inv_id, account_id=acc_b.id, paid_on=D,
+        amount_cents=10_000,
+    )  # fmt: skip
+    bill = await session.scalar(select(Bill).where(Bill.invoice_id == inv_id))
+    assert bill.status == "paid" and bill.amount_cents == 10_000
+    bill_id = bill.id
+    assert (await _delete(client, b)).status_code == 204
+    session.expire_all()
+    bill = await session.get(Bill, bill_id)
+    assert bill.status == "open"
+    assert bill.amount_cents == await invoice_total(session, inv_id) == 6_000
