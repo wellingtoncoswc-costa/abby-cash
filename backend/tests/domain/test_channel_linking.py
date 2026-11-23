@@ -73,12 +73,82 @@ async def test_attempts_are_limited_per_sender(session):
     assert await link_with_code(session, channel="telegram", external_user_id="8", code=code)
 
 
-async def test_code_dies_after_five_wrong_channel_tries(session):
+async def test_wrong_channel_code_is_not_consumed_and_looks_like_nonexistent(session):
     ana = await make_user(session, "ana@x.com")
     code = await create_link_code(ana.id, "telegram")
-    for i in range(5):
-        await link_with_code(session, channel="x", external_user_id=str(i), code=code)
-    assert await redis.get(f"linkcode:{code}") is None
+    for i in range(8):
+        assert (
+            await link_with_code(session, channel="x", external_user_id=str(i), code=code) is None
+        )
+    assert await redis.get(f"linkcode:{code}") is not None  # atacante não queima o código
+    missing = "000000" if code != "000000" else "000001"
+    assert await link_with_code(session, channel="x", external_user_id="1", code=missing) is None
+
+
+async def test_global_limit_blocks_valid_code_after_many_senders_fail(session):
+    ana = await make_user(session, "ana@x.com")
+    code = await create_link_code(ana.id, "telegram")
+    wrong = "000000" if code != "000000" else "000001"
+    for i in range(30):  # cada remetente erra uma vez: o limite por remetente nunca dispara
+        await link_with_code(session, channel="telegram", external_user_id=f"s{i}", code=wrong)
+    assert (
+        await link_with_code(session, channel="telegram", external_user_id="legit", code=code)
+        is None
+    )
+    assert await redis.get(f"linkcode:{code}") is not None  # nem foi consumido
+    assert await _links(session) == []
+    assert await redis.ttl("link_fails:global") > 0
+
+
+async def test_second_code_invalidates_first(session):
+    ana = await make_user(session, "ana@x.com")
+    c1 = await create_link_code(ana.id, "telegram")
+    c2 = await create_link_code(ana.id, "telegram")
+    assert await link_with_code(session, channel="telegram", external_user_id="1", code=c1) is None
+    assert await link_with_code(session, channel="telegram", external_user_id="1", code=c2)
+
+
+async def test_concurrent_double_use_links_once(session):
+    from app.core.db import SessionLocal
+
+    ana = await make_user(session, "ana@x.com")
+    code = await create_link_code(ana.id, "telegram")
+
+    async def use(ext: str):
+        async with SessionLocal() as s:
+            try:
+                return await link_with_code(s, channel="telegram", external_user_id=ext, code=code)
+            except DomainError:
+                return None
+
+    res = await asyncio.gather(*(use(str(i)) for i in range(5)))
+    assert sum(r is not None for r in res) == 1
+    assert len(await _links(session)) == 1
+
+
+async def test_counters_always_have_ttl(session):
+    from app.core.redis import incr_ttl
+
+    await redis.set("k", 5)  # chave pré-existente sem TTL é consertada
+    await incr_ttl("k", 100)
+    assert await redis.ttl("k") > 0
+
+
+async def test_unlink_resets_preferred_channel(session):
+    ana = await make_user(session, "ana@x.com")
+    await link_with_code(
+        session, channel="telegram", external_user_id="1",
+        code=await create_link_code(ana.id, "telegram"),
+    )  # fmt: skip
+    assert ana.preferred_channel == "telegram"
+    session.add(ChannelLink(user_id=ana.id, channel="whatsapp_evolution", external_user_id="5"))
+    await session.commit()
+    await unlink(session, ana.id, "telegram")
+    await session.refresh(ana)
+    assert ana.preferred_channel == "whatsapp_evolution"
+    await unlink(session, ana.id, "whatsapp_evolution")
+    await session.refresh(ana)
+    assert ana.preferred_channel is None
 
 
 async def test_external_id_cannot_be_linked_to_two_users(session):
