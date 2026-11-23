@@ -13,6 +13,7 @@ from app.domain.spaces.service import provision_user
 from app.domain.users.models import RefreshToken, SignupInvite, User
 
 REFRESH_DAYS = 30
+FAMILY_MAX_DAYS = 90  # teto absoluto: a rotação não estende além disso
 # hash válido de senha aleatória: iguala o custo quando o e-mail não existe
 _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
@@ -98,14 +99,24 @@ async def authenticate(session: AsyncSession, email: str, password: str, totp: s
     return user
 
 
-async def issue_refresh(session: AsyncSession, user_id: UUID, family_id: UUID | None = None) -> str:
+async def issue_refresh(
+    session: AsyncSession,
+    user_id: UUID,
+    family_id: UUID | None = None,
+    family_started_at: datetime | None = None,
+) -> str:
     raw, h = new_opaque_token()
+    now = datetime.now(UTC)
+    started = family_started_at or now
     session.add(
         RefreshToken(
             user_id=user_id,
             family_id=family_id or uuid4(),
             token_hash=h,
-            expires_at=datetime.now(UTC) + timedelta(days=REFRESH_DAYS),
+            family_started_at=started,
+            expires_at=min(
+                now + timedelta(days=REFRESH_DAYS), started + timedelta(days=FAMILY_MAX_DAYS)
+            ),
         )
     )
     await session.commit()
@@ -145,9 +156,15 @@ async def rotate_refresh(session: AsyncSession, raw: str) -> tuple[User, str]:
         await session.commit()
         raise AuthError("invalid_refresh")
     user = await session.get(User, tok.user_id)
-    if tok.expires_at <= now or user is None:
+    if (
+        tok.expires_at <= now
+        or user is None
+        or tok.family_started_at + timedelta(days=FAMILY_MAX_DAYS) <= now
+    ):
         await session.rollback()
         raise AuthError("invalid_refresh")
     tok.revoked_at = now
-    new = await issue_refresh(session, tok.user_id, tok.family_id)  # commita junto
+    new = await issue_refresh(
+        session, tok.user_id, tok.family_id, tok.family_started_at
+    )  # commita junto
     return user, new

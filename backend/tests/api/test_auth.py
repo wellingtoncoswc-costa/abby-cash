@@ -226,3 +226,31 @@ async def test_register_hashes_even_on_invalid_invite(client, monkeypatch):
     monkeypatch.setattr(svc, "hash_password", lambda p: calls.append(1) or real(p))
     assert (await _register(client, "nope")).status_code == 400
     assert calls == [1]
+
+
+async def test_refresh_family_has_absolute_lifetime(client, session):
+    from sqlalchemy import select, update
+
+    from app.domain.users.models import RefreshToken
+
+    await _register(client, await _invite(session))
+    login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    tok = login.cookies["refresh_token"]
+    start = datetime.now(UTC) - timedelta(days=80)
+    await session.execute(update(RefreshToken).values(family_started_at=start))
+    await session.commit()
+    r = await client.post("/auth/refresh", cookies={"refresh_token": tok})
+    assert r.status_code == 200  # rotação não passa de start + 90d
+    session.expire_all()
+    last = (
+        (await session.execute(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))))
+        .scalars()
+        .first()
+    )
+    assert last.expires_at <= start + timedelta(days=90)
+    await session.execute(
+        update(RefreshToken).values(family_started_at=datetime.now(UTC) - timedelta(days=91))
+    )
+    await session.commit()
+    r = await client.post("/auth/refresh", cookies={"refresh_token": r.cookies["refresh_token"]})
+    assert r.status_code == 401
