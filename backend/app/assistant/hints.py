@@ -2,8 +2,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.assistant.amounts import MAX_TEXT, MONTH_WORDS, extract_amount
-from app.core.dates import clamp_day
+from app.assistant.amounts import MAX_TEXT, MONTH_WORDS, amount_candidates, extract_amount
 from app.core.money import parse_brl
 from app.core.text import fold
 
@@ -25,14 +24,43 @@ class Hints:
     (valem mais que o LLM); o valor só preenche o que o LLM deixou vazio."""
 
     amount_cents: int | None
-    occurred_on: date | None
+    occurred_on: date | None  # data explícita: vale mais que a do modelo
     installments: int | None
     private: bool  # #pessoal
     family: bool  # #familia
+    amounts: frozenset[int] = frozenset()  # todos os valores em dígitos da mensagem
+    weekday_on: date | None = None  # "na sexta": só dica, nunca sobrescreve a data do modelo
+    bad_date: bool = False  # "31/02": perguntar a data
 
 
-def resolve_date(text: str, today: date) -> date | None:
-    """ "hoje", "ontem", "anteontem", "sexta" (a última), "dia 15", "23/11"; None se não houver."""
+class BadDate(ValueError):
+    """Data que não existe (31/02): não se chuta, pergunta-se."""
+
+
+_WD = "|".join(_WEEKDAYS)
+_NOT_ORDINAL = r"(?!\s+(?:via|parcela|vez|parte|serie))"  # "segunda via", "quarta parcela"
+# "na sexta", "sexta passada", "sexta-feira"; "terça/sábado/domingo" valem sozinhos
+_WEEKDAY = re.compile(
+    rf"\b(?:(?:na|no|nessa|nesse|desde|ultima|ultimo|a|o)\s+)({_WD})(?:-feira)?\b{_NOT_ORDINAL}"
+    rf"|\b({_WD})(?:-feira|\s+passad[ao])\b|\b(terca|sabado|domingo)\b"
+)
+
+
+def _recent(month: int, day: int, today: date) -> date:
+    """O dia/mês mais recente que não seja futuro (este ano ou o anterior)."""
+    for year in (today.year, today.year - 1):
+        try:
+            found = date(year, month, day)
+        except ValueError:
+            continue
+        if found <= today:
+            return found
+    raise BadDate
+
+
+def resolve_date(text: str, today: date, *, weekdays: bool = True) -> date | None:
+    """ "hoje", "ontem", "anteontem", "dia 15", "23/11" e, com `weekdays`, "na sexta" (a última);
+    None se não houver. Levanta BadDate se a data não existe (31/02)."""
     s = fold(text[:MAX_TEXT])
     for word, back in _RELATIVE.items():
         if re.search(rf"\b{word}\b", s):
@@ -43,27 +71,31 @@ def resolve_date(text: str, today: date) -> date | None:
             return None
         if m.group(3):
             year = int(m.group(3)) + (2000 if len(m.group(3)) == 2 else 0)
-            return clamp_day(year, month, day)
-        found = clamp_day(today.year, month, day)
-        return found if found <= today else clamp_day(today.year - 1, month, day)
+            try:
+                return date(year, month, day)
+            except ValueError:
+                raise BadDate from None
+        return _recent(month, day, today)
     if m := _DAY_OF_MONTH.search(s):  # "5 de outubro", "dia 25 de dezembro"
         day, month = int(m.group(1)), _MONTH_NUMBER[m.group(2)]
-        if not 1 <= day <= 31:
-            return None
-        found = clamp_day(today.year, month, day)
-        return found if found <= today else clamp_day(today.year - 1, month, day)
-    for word, weekday in _WEEKDAYS.items():
-        if re.search(rf"\b{word}(?:-feira)?\b", s):
-            return today - timedelta(days=(today.weekday() - weekday) % 7 or 7)
+        return _recent(month, day, today) if 1 <= day <= 31 else None
     if m := _DAY.search(s):
         day = int(m.group(1))
         if not 1 <= day <= 31:
             return None
-        this_month = clamp_day(today.year, today.month, day)
-        if this_month <= today:
-            return this_month
-        last = today.replace(day=1) - timedelta(days=1)
-        return clamp_day(last.year, last.month, day)
+        year, month = today.year, today.month
+        for _ in range(12):  # "dia 31" em novembro é 31/10
+            try:
+                found = date(year, month, day)
+            except ValueError:
+                found = None
+            if found and found <= today:
+                return found
+            year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+        raise BadDate
+    if weekdays and (m := _WEEKDAY.search(s)):
+        weekday = _WEEKDAYS[m.group(1) or m.group(2) or m.group(3)]
+        return today - timedelta(days=(today.weekday() - weekday) % 7 or 7)
     return None
 
 
@@ -79,9 +111,19 @@ def extract_hints(text: str, today: date) -> Hints:
     elif m := _X.search(plain):
         n = int(m.group(1) or m.group(2))
         installments = n if 2 <= n <= 48 else None
+    occurred = weekday_on = None
+    bad_date = False
+    try:
+        occurred = resolve_date(text, today, weekdays=False)
+        weekday_on = None if occurred else resolve_date(text, today)
+    except BadDate:
+        bad_date = True
     return Hints(
         amount_cents=amount,
-        occurred_on=resolve_date(text, today),
+        occurred_on=occurred,
+        weekday_on=weekday_on,
+        bad_date=bad_date,
+        amounts=frozenset(v for v, _ in amount_candidates(text)),
         installments=installments,
         private="#pessoal" in s,
         family="#familia" in s,

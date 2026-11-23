@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 import pytest
@@ -54,8 +55,8 @@ def test_parse_bare_amount_only_accepts_a_lone_value(text, cents):
     ("text", "want"),
     [
         ("ifood 67 ontem", date(2026, 11, 24)), ("anteontem 30", date(2026, 11, 23)),
-        ("hoje 10", date(2026, 11, 25)), ("sexta 50", date(2026, 11, 20)),
-        ("quarta 20", date(2026, 11, 18)), ("segunda-feira 10", date(2026, 11, 23)),
+        ("hoje 10", date(2026, 11, 25)), ("na sexta 50", date(2026, 11, 20)),
+        ("quarta passada 20", date(2026, 11, 18)), ("segunda-feira 10", date(2026, 11, 23)),
         ("sábado fui", date(2026, 11, 21)), ("dia 15 luz", date(2026, 11, 15)),
         ("dia 28 luz", date(2026, 10, 28)), ("23/11 uber", date(2026, 11, 23)),
         ("5 de outubro", date(2026, 10, 5)), ("dia 25 de dezembro", date(2025, 12, 25)),
@@ -96,7 +97,14 @@ def test_hints_agree_with_every_eval_case():
             assert h.private, case["text"]
         if h.occurred_on and "occurred_on" in expect and expect["intent"] != "nova_conta_a_pagar":
             assert h.occurred_on.isoformat() == expect["occurred_on"], case["text"]
-        if "amount_cents" in expect and expect["intent"] not in ("consultar_gastos",):
+        bare_words = h.amount_cents is None and not re.search(
+            r"\d|reais|real|conto|mil", case["text"]
+        )
+        if (
+            "amount_cents" in expect
+            and expect["intent"] not in ("consultar_gastos",)
+            and not bare_words
+        ):
             assert h.amount_cents == expect["amount_cents"], case["text"]  # extrai todos os valores
 
 
@@ -118,3 +126,55 @@ def test_adversarial_input_is_bounded_and_fast():
         assert h.amount_cents is None or 0 < h.amount_cents <= MAX_CENTS
         assert h.occurred_on is None or h.occurred_on.year > 1
     assert time.monotonic() - start < 2
+
+
+def test_amount_in_words_needs_a_unit():
+    assert extract_amount("tres amigos foram") is None
+    assert extract_amount("comprei dois pasteis") is None
+    assert extract_amount("gastei quarenta reais") == 4_000
+    assert extract_amount("gastei dois mil") == 200_000
+    assert parse_bare_amount("quarenta") == 4_000  # resposta a "quanto foi?"
+
+
+def test_extract_amount_prefers_marked_then_largest():
+    assert extract_amount("2 camisetas 100 em 2x") == 10_000
+    assert extract_amount("uber 2 pessoas 23") == 2_300
+    assert extract_amount("2 camisetas R$ 100") == 10_000
+    assert extract_amount("100 reais em 2 camisetas") == 10_000
+    h = extract_hints("2 camisetas 100 em 2x", TODAY)
+    assert (h.amount_cents, h.installments) == (10_000, 2)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["segunda via do documento 20", "quarta parcela do carro 300", "na quarta parcela 10",
+     "sexta 50", "gastei 10 na segunda via"],
+)  # fmt: skip
+def test_weekday_words_without_context_do_not_shift_the_date(text):
+    assert extract_hints(text, TODAY).weekday_on is None
+    assert resolve_date(text, TODAY) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "want"),
+    [("sexta passada 50", date(2026, 11, 20)), ("sexta-feira 5", date(2026, 11, 20)),
+     ("domingo 30", date(2026, 11, 22)), ("na segunda 5", date(2026, 11, 23))],
+)  # fmt: skip
+def test_weekday_with_context_is_a_weak_hint(text, want):
+    h = extract_hints(text, TODAY)
+    assert h.occurred_on is None and h.weekday_on == want
+
+
+def test_a_numeric_date_beats_a_weekday():
+    h = extract_hints("domingo 23/11 uber 10", TODAY)
+    assert h.occurred_on == date(2026, 11, 23) and h.weekday_on is None
+
+
+@pytest.mark.parametrize("text", ["31/02 uber 10", "gastei 10 em 30/02/2026", "29/02 x"])
+def test_impossible_dates_are_flagged_not_clamped(text):
+    h = extract_hints(text, TODAY)
+    assert h.bad_date and h.occurred_on is None
+
+
+def test_dia_31_in_a_30_day_month_goes_back_to_a_real_31():
+    assert resolve_date("dia 31 luz", TODAY) == date(2026, 10, 31)
