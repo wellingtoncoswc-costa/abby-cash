@@ -6,6 +6,7 @@ import app.domain.accounts.models  # noqa: F401
 import app.domain.categories.models  # noqa: F401
 import app.domain.spaces.models  # noqa: F401
 import app.domain.users.models  # noqa: F401
+from app.core.config import get_settings
 from app.core.db import Base, SessionLocal, engine
 from app.core.redis import redis
 from app.main import app
@@ -13,6 +14,7 @@ from app.main import app
 
 @pytest.fixture(scope="session", autouse=True)
 async def _schema():
+    assert get_settings().ENV != "prod", "testes apagam o schema: nunca rode com ENV=prod"
     async with engine.begin() as conn:
         # schema inteiro: drop_all falha se o banco tem FK use_alter de um estado antigo
         await conn.execute(text("DROP SCHEMA public CASCADE"))
