@@ -1,11 +1,13 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    ENV: str = "dev"
     DATABASE_URL: str = "postgresql+asyncpg://abby:abby@localhost:5432/abby"
     REDIS_URL: str = "redis://localhost:6379/0"
     JWT_SECRET: str = "dev-only-change-me"
@@ -22,6 +24,12 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = "./storage"
     PUBLIC_BASE_URL: str = "http://localhost:8000"
     DEFAULT_TZ: str = "America/Sao_Paulo"
+
+    @model_validator(mode="after")
+    def _reject_default_secret_in_prod(self) -> "Settings":
+        if self.ENV == "prod" and self.JWT_SECRET in {"dev-only-change-me", "change-me", ""}:
+            raise ValueError("JWT_SECRET must be set in prod")
+        return self
 
 
 @lru_cache

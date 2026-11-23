@@ -4,6 +4,10 @@ services:
   api:
     build: ../backend
     env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
+      REDIS_URL: redis://redis:6379/0
+      ENV: prod
     networks: [abby-cash-net]
     depends_on: [postgres, redis]
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
@@ -11,13 +15,17 @@ services:
     build: ../backend
     command: arq app.worker.WorkerSettings
     env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
+      REDIS_URL: redis://redis:6379/0
+      ENV: prod
     networks: [abby-cash-net]
     depends_on: [postgres, redis]
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
   postgres:
     image: postgres:16
     env_file: ../.env
-    environment: {POSTGRES_USER: abby, POSTGRES_DB: abby}
+    environment: {POSTGRES_USER: abby, POSTGRES_DB: abby, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"}
     volumes: [pgdata:/var/lib/postgresql/data]
     networks: [abby-cash-net]
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
