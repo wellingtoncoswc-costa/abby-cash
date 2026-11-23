@@ -4,8 +4,10 @@ from uuid import UUID, uuid4
 
 import pyotp
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import redis
 from app.core.security import hash_password, hash_token, new_opaque_token, verify_password
 from app.domain.users.models import RefreshToken, SignupInvite, User
 
@@ -58,10 +60,22 @@ async def register_user(
         raise ValueError("invalid_invite")  # mesmo erro p/ e-mail já usado: não vaza existência
     user = User(email=email, name=name, password_hash=hash_password(password))
     session.add(user)
-    await session.flush()
-    inv.used_by, inv.used_at = user.id, datetime.now(UTC)
-    await session.commit()
+    try:
+        await session.flush()
+        inv.used_by, inv.used_at = user.id, datetime.now(UTC)
+        await session.commit()
+    except IntegrityError:  # corrida no mesmo e-mail (unique)
+        await session.rollback()
+        raise ValueError("invalid_invite") from None
     return user
+
+
+async def check_totp(user: User, code: str) -> bool:
+    """Valida o código e o consome (anti-replay: cada código vale uma vez)."""
+    assert user.totp_secret
+    if not pyotp.TOTP(user.totp_secret).verify(code, valid_window=1):
+        return False
+    return bool(await redis.set(f"totp:{user.id}:{code}", 1, nx=True, ex=90))
 
 
 async def authenticate(session: AsyncSession, email: str, password: str, totp: str | None) -> User:
@@ -74,8 +88,7 @@ async def authenticate(session: AsyncSession, email: str, password: str, totp: s
     if user.totp_enabled:
         if not totp:
             raise AuthError("totp_required")
-        assert user.totp_secret
-        if not pyotp.TOTP(user.totp_secret).verify(totp, valid_window=1):
+        if not await check_totp(user, totp):
             raise AuthError("invalid_credentials")
     return user
 
@@ -92,6 +105,21 @@ async def issue_refresh(session: AsyncSession, user_id: UUID, family_id: UUID | 
     )
     await session.commit()
     return raw
+
+
+async def revoke_family(session: AsyncSession, raw: str) -> None:
+    fam = (
+        await session.execute(
+            select(RefreshToken.family_id).where(RefreshToken.token_hash == hash_token(raw))
+        )
+    ).scalar_one_or_none()
+    if fam is not None:
+        await session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.family_id == fam, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(UTC))
+        )
+        await session.commit()
 
 
 async def rotate_refresh(session: AsyncSession, raw: str) -> tuple[User, str]:

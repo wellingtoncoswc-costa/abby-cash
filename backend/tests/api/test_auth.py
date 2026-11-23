@@ -1,5 +1,8 @@
+import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pyotp
 
 from app.domain.users.service import create_admin, create_signup_invite
@@ -80,8 +83,89 @@ async def test_2fa_required_when_enabled(client, session):
     assert ok.status_code == 200
     r = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
     assert r.status_code == 401 and r.json()["detail"] == "totp_required"
+    # código distinto do usado no verify (anti-replay), ainda dentro da janela
     r = await client.post(
         "/auth/login",
-        json={"email": "a@x.com", "password": PWD, "totp": pyotp.TOTP(secret).now()},
+        json={"email": "a@x.com", "password": PWD, "totp": pyotp.TOTP(secret).at(time.time() + 30)},
     )
     assert r.status_code == 200
+
+
+async def _enable_2fa(client):
+    login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    h = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    secret = (await client.post("/auth/2fa/setup", headers=h)).json()["secret"]
+    code = pyotp.TOTP(secret).now()
+    assert (
+        await client.post("/auth/2fa/verify", headers=h, json={"code": code})
+    ).status_code == 200
+    return h, secret, code
+
+
+async def test_totp_code_cannot_be_replayed(client, session):
+    await _register(client, await _invite(session))
+    _, _, used = await _enable_2fa(client)
+    r = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD, "totp": used})
+    assert r.status_code == 401
+
+
+async def test_2fa_verify_brute_force_limited(client, session):
+    await _register(client, await _invite(session))
+    login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    h = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    await client.post("/auth/2fa/setup", headers=h)
+    for _ in range(5):
+        r = await client.post("/auth/2fa/verify", headers=h, json={"code": "000000"})
+        assert r.status_code == 400
+    r = await client.post("/auth/2fa/verify", headers=h, json={"code": "000000"})
+    assert r.status_code == 429
+
+
+async def test_short_password_rejected(client, session):
+    code = await _invite(session)
+    r = await client.post(
+        "/auth/register",
+        json={"email": "a@x.com", "name": "A", "password": "short", "invite_code": code},
+    )
+    assert r.status_code == 422
+
+
+async def test_concurrent_same_invite_one_wins(client, session):
+    code = await _invite(session)
+    rs = await asyncio.gather(
+        _register(client, code, "a@x.com"), _register(client, code, "b@x.com")
+    )
+    assert sorted(r.status_code for r in rs) == [201, 400]
+
+
+async def test_concurrent_same_email_no_500(client, session):
+    admin = await create_admin(session, email="admin@x.com", name="Admin", password=PWD)
+    c1 = (await create_signup_invite(session, created_by=admin.id)).code
+    c2 = (await create_signup_invite(session, created_by=admin.id)).code
+    rs = await asyncio.gather(_register(client, c1), _register(client, c2))
+    assert sorted(r.status_code for r in rs) == [201, 400]
+
+
+async def test_garbage_and_expired_jwt_rejected(client):
+    from app.core.config import get_settings
+    from app.core.security import decode_access_token
+
+    key = get_settings().JWT_SECRET
+    bad = [
+        "garbage",
+        jwt.encode({"sub": "x", "exp": int(time.time()) - 10}, key, "HS256"),
+        jwt.encode({"sub": "00000000-0000-0000-0000-000000000000"}, key, "HS256"),  # sem exp
+    ]
+    assert decode_access_token(bad[2]) is None
+    for t in bad:
+        r = await client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {t}"})
+        assert r.status_code == 401
+
+
+async def test_logout_revokes_refresh_family(client, session):
+    await _register(client, await _invite(session))
+    login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    old = login.cookies["refresh_token"]
+    assert (await client.post("/auth/logout", cookies={"refresh_token": old})).status_code == 204
+    assert (await client.post("/auth/refresh", cookies={"refresh_token": old})).status_code == 401
+    assert (await client.post("/auth/logout")).status_code == 204  # idempotente
