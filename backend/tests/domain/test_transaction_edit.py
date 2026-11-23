@@ -259,3 +259,64 @@ async def test_non_member_edit_is_404(session):
     with pytest.raises(HTTPException) as e:
         await update_transaction(session, actor_id=bob.id, tx_id=tx.id, amount_cents=1)
     assert e.value.status_code == 404
+
+
+async def _race(actor_id, *calls):
+    """Cada chamada roda na própria sessão, ao mesmo tempo; devolve resultados ou exceções."""
+    import asyncio
+
+    from app.core.db import SessionLocal
+
+    async def run(fn, **kw):
+        async with SessionLocal() as s:
+            return await fn(s, actor_id=actor_id, **kw)
+
+    return await asyncio.wait_for(
+        asyncio.gather(*(run(fn, **kw) for fn, kw in calls), return_exceptions=True), 10
+    )
+
+
+def _is_404(r) -> bool:
+    return isinstance(r, HTTPException) and r.status_code == 404
+
+
+async def test_concurrent_delete_of_same_transaction_one_wins(session):
+    ana = await make_user(session, "ana@x.com")
+    sp = ana.default_space_id
+    acc = await make_account(session, sp, initial=100_000)
+    tx = await expense(session, ana, sp, acc, 30_000)
+    res = await _race(ana.id, *[(delete_transaction, {"tx_id": tx.id})] * 2)
+    assert sum(isinstance(r, list) for r in res) == 1 and sum(_is_404(r) for r in res) == 1
+    assert await count(session) == 0 and await account_balance(session, acc.id) == 100_000
+
+
+async def test_concurrent_delete_of_same_installment_group_one_wins(session):
+    ana = await make_user(session, "ana@x.com")
+    sp = ana.default_space_id
+    card = await make_card(session, ana, sp)
+    txs = await register_card_purchase(
+        session, actor_id=ana.id, space_id=sp, card_id=card.id, amount_cents=30_000,
+        occurred_on=date(2026, 11, 5), installments=3,
+    )  # fmt: skip
+    res = await _race(  # parcelas diferentes do mesmo grupo: travam na mesma ordem, sem deadlock
+        ana.id,
+        (delete_transaction, {"tx_id": txs[0].id}),
+        (delete_transaction, {"tx_id": txs[2].id}),
+    )
+    assert sum(isinstance(r, list) and len(r) == 3 for r in res) == 1
+    assert sum(_is_404(r) for r in res) == 1
+    assert await count(session) == 0
+
+
+async def test_concurrent_delete_and_edit_serialize(session):
+    ana = await make_user(session, "ana@x.com")
+    sp = ana.default_space_id
+    acc = await make_account(session, sp, initial=100_000)
+    tx = await expense(session, ana, sp, acc, 30_000)
+    res = await _race(
+        ana.id, (delete_transaction, {"tx_id": tx.id}),
+        (update_transaction, {"tx_id": tx.id, "amount_cents": 5_000}),
+    )  # fmt: skip
+    assert isinstance(res[0], list)  # a exclusão sempre vence no fim
+    assert not isinstance(res[1], Exception) or _is_404(res[1])  # edição: aplicada antes, ou 404
+    assert await count(session) == 0 and await account_balance(session, acc.id) == 100_000
