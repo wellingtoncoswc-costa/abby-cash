@@ -21,7 +21,7 @@ def test_parse_brl_valid(text, cents):
     assert parse_brl(text) == cents
 
 
-@pytest.mark.parametrize("text", ["0", "0,00", "-10", "R$ -5", "abc", "", "1,2,3"])
+@pytest.mark.parametrize("text", ["0", "0,00", "-10", "R$ -5", "abc", "", "nan", "inf", "1,2,3"])
 def test_parse_brl_rejects_non_positive_or_garbage(text):
     assert parse_brl(text) is None
 
