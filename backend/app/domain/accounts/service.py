@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money import MAX_CENTS
 from app.domain.accounts.access import use_account
 from app.domain.accounts.models import Account
 from app.domain.errors import DomainError
@@ -17,6 +18,8 @@ async def create_account(
     await require_member(session, actor_id, space_id)
     if type not in ACCOUNT_TYPES:
         raise DomainError("invalid_account_type")
+    if abs(initial_balance_cents) > MAX_CENTS:
+        raise DomainError("amount_too_large")
     acc = Account(
         space_id=space_id, type=type, name=name, initial_balance_cents=initial_balance_cents
     )

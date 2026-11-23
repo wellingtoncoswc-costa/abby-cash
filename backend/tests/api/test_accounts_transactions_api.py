@@ -133,3 +133,23 @@ async def test_set_default_account(client, session):
     from app.domain.spaces.access import require_member
 
     assert (await require_member(session, a.id, a.default_space_id)).default_account_id == acc.id
+
+
+async def test_amount_upper_bound_is_422_over_http(client, session):
+    from app.core.money import MAX_CENTS
+
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id)
+    tx_url = f"/spaces/{a.default_space_id}/transactions"
+    body = {"type": "income", "account_id": str(acc.id)}
+    r = await client.post(tx_url, json=body | {"amount_cents": MAX_CENTS + 1}, headers=auth(a))
+    assert r.status_code == 422
+    r = await client.post(tx_url, json=body | {"amount_cents": MAX_CENTS}, headers=auth(a))
+    assert r.status_code == 201
+    acc_url = f"/spaces/{a.default_space_id}/accounts"
+    for bal, code in ((MAX_CENTS + 1, 422), (-MAX_CENTS - 1, 422), (-MAX_CENTS, 201)):
+        r = await client.post(
+            acc_url, json={"type": "checking", "name": "x", "initial_balance_cents": bal},
+            headers=auth(a),
+        )  # fmt: skip
+        assert r.status_code == code, bal

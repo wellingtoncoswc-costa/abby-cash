@@ -148,3 +148,24 @@ async def test_list_transactions_filters_by_period_category_account(session):
 )
 def test_normalize_merchant(raw, expected):
     assert normalize_merchant(raw) == expected
+
+
+async def test_amount_and_date_bounds(session):
+    from app.core.money import MAX_CENTS
+    from app.domain.accounts.service import create_account
+
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id)
+    ok = await _tx(session, a, acc, MAX_CENTS)
+    assert ok.amount_cents == MAX_CENTS
+    for bad in (MAX_CENTS + 1, 2**63):
+        with pytest.raises(DomainError, match="amount_too_large"):
+            await _tx(session, a, acc, bad)
+    for on in (date(1999, 12, 31), date(2101, 1, 1)):
+        with pytest.raises(DomainError, match="invalid_date"):
+            await _tx(session, a, acc, 100, on=on)
+    kw = dict(actor_id=a.id, space_id=a.default_space_id, type="checking", name="n")
+    await create_account(session, initial_balance_cents=-MAX_CENTS, **kw)
+    for bad in (MAX_CENTS + 1, -MAX_CENTS - 1):
+        with pytest.raises(DomainError, match="amount_too_large"):
+            await create_account(session, initial_balance_cents=bad, **kw)

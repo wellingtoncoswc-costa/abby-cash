@@ -36,7 +36,7 @@ async def create_transaction(
         raise DomainError("invalid_type")
     await check_common(
         session, actor_id=actor_id, space_id=space_id, type=type, amount_cents=amount_cents,
-        category_id=category_id,
+        category_id=category_id, occurred_on=occurred_on,
     )  # fmt: skip
     if account_id is None:
         raise DomainError("account_required")

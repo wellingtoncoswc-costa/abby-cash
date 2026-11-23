@@ -1,7 +1,9 @@
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money import MAX_CENTS
 from app.domain.categories.models import Category
 from app.domain.errors import DomainError
 from app.domain.spaces.access import require_member
@@ -10,11 +12,15 @@ from app.domain.transactions.models import Transaction
 
 async def check_common(
     session: AsyncSession, *, actor_id: UUID, space_id: UUID, type: str, amount_cents: int,
-    category_id: UUID | None,
+    category_id: UUID | None, occurred_on: date,
 ) -> None:  # fmt: skip
-    """Valor > 0, autor membro do espaço, categoria do mesmo espaço e do tipo certo."""
+    """Valor em 1..MAX_CENTS, data plausível, autor membro, categoria do espaço e do tipo."""
     if amount_cents <= 0:
         raise DomainError("amount_must_be_positive")
+    if amount_cents > MAX_CENTS:
+        raise DomainError("amount_too_large")
+    if not date(2000, 1, 1) <= occurred_on <= date(2100, 12, 31):
+        raise DomainError("invalid_date")
     await require_member(session, actor_id, space_id)
     if category_id is not None:
         cat = await session.get(Category, category_id)
