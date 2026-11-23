@@ -20,7 +20,7 @@ class RecurrenceIn(BaseModel):
     kind: Literal["monthly", "yearly", "every_n_months"]
     day: Annotated[int, Field(strict=True, ge=1, le=31)]
     month: Annotated[int, Field(strict=True, ge=1, le=12)] | None = None
-    n: Annotated[int, Field(strict=True, ge=1)] = 1
+    n: Annotated[int, Field(strict=True, ge=1, le=120)] = 1
 
 
 class BillIn(BaseModel):

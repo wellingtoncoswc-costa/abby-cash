@@ -17,7 +17,7 @@ class Recurrence:
         yearly_ok = self.kind != "yearly" or (self.month is not None and 1 <= self.month <= 12)
         if not (
             self.kind in ("monthly", "yearly", "every_n_months")
-            and 1 <= self.day <= 31 and self.n >= 1 and yearly_ok
+            and 1 <= self.day <= 31 and 1 <= self.n <= 120 and yearly_ok
         ):  # fmt: skip
             raise DomainError("invalid_recurrence")
 

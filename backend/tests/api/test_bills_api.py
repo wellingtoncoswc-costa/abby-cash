@@ -74,6 +74,7 @@ async def test_bill_validation_422(client, session):
     base = {"description": "Luz", "amount_cents": 100, "due_on": "2026-11-20"}
     for bad in (
         {"amount_cents": 10.5}, {"amount_cents": 0}, {"recurrence": {"kind": "monthly", "day": 32}},
+        {"recurrence": {"kind": "every_n_months", "day": 5, "n": 10**9}},
         {"recurrence": {"kind": "yearly", "day": 5}}, {"recurrence": {"kind": "weekly", "day": 5}},
     ):  # fmt: skip
         r = await client.post(f"/spaces/{sp}/bills", json=base | bad, headers=h)
