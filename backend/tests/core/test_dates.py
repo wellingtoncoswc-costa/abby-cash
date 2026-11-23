@@ -29,3 +29,13 @@ def test_local_today_uses_timezone(monkeypatch):
     monkeypatch.setattr("app.core.dates.datetime", FakeDT)
     assert local_today("America/Sao_Paulo") == date(2026, 11, 23)
     assert local_today("UTC") == date(2026, 11, 24)
+
+
+def test_to_local_date_uses_local_calendar_day():
+    from datetime import UTC, date, datetime
+
+    from app.core.dates import to_local_date
+
+    late = datetime(2026, 3, 11, 2, 30, tzinfo=UTC)  # 23:30 de 10/03 em São Paulo
+    assert to_local_date(late, "America/Sao_Paulo") == date(2026, 3, 10)
+    assert to_local_date(late, "UTC") == date(2026, 3, 11)

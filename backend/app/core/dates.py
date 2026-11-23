@@ -1,10 +1,15 @@
 import calendar
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 
+def to_local_date(moment: datetime, tz: str) -> date:
+    """Dia civil de um instante no fuso do usuário (23:30 em São Paulo ainda é o mesmo dia)."""
+    return moment.astimezone(ZoneInfo(tz)).date()
+
+
 def local_today(tz: str) -> date:
-    return datetime.now(ZoneInfo(tz)).date()
+    return to_local_date(datetime.now(UTC), tz)
 
 
 def clamp_day(year: int, month: int, day: int) -> date:

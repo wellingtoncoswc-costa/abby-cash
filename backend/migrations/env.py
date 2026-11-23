@@ -6,10 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-import app.domain.accounts.models  # noqa: F401
-import app.domain.categories.models  # noqa: F401
-import app.domain.spaces.models  # noqa: F401
-import app.domain.users.models  # noqa: F401
+import app.domain.models  # noqa: F401
 from app.core.config import get_settings
 from app.core.db import Base
 
