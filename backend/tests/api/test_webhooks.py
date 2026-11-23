@@ -93,7 +93,7 @@ async def test_duplicate_webhook_ingested_once(client, session, enqueued):
         ]
     )  # entregas simultâneas
     assert await count(session) == 2
-    assert len(enqueued) == 2
+    assert len(set(enqueued)) == 2  # 'received' reenfileira; o ARQ dedupe pelo _job_id
 
 
 async def test_enqueue_failure_rolls_back_row_so_retry_works(client, session, monkeypatch):

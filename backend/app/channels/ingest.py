@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable, Sequence
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +29,18 @@ async def ingest(
         )  # fmt: skip
         await session.commit()  # o worker precisa enxergar a linha
         if inbound_id is None:
-            continue  # duplicata (reenvio ou entrega simultânea): nada a fazer
+            # duplicata. Se ainda está 'received', um processo anterior pode ter morrido entre
+            # o commit e o enqueue: reenfileira (o _job_id do ARQ dedupe); senão, nada a fazer
+            stuck = await session.scalar(
+                select(InboundMessage.id).where(
+                    InboundMessage.channel == m.channel,
+                    InboundMessage.external_message_id == m.external_message_id,
+                    InboundMessage.status == "received",
+                )
+            )
+            if stuck is not None:
+                await enqueue(stuck)
+            continue
         try:
             await enqueue(inbound_id)
         except Exception:
