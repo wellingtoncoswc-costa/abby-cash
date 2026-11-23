@@ -10,3 +10,6 @@ dist/
 .mypy_cache/
 .ruff_cache/
 storage/
+
+# chaves locais, nunca versionar
+docs/api_keys/
