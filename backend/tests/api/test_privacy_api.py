@@ -227,6 +227,88 @@ async def test_delete_revokes_tokens_and_audits_without_secrets(client, session)
     session.expire_all()
     assert await session.scalar(select(func.count()).select_from(RefreshToken)) == 0
     assert (await client.get("/spaces", headers=ha)).status_code == 401
-    log = (await session.scalars(select(AuditLog).where(AuditLog.actor_id == a_id))).all()
+    log = (await session.scalars(select(AuditLog).where(AuditLog.entity_id == a_id))).all()
     assert [r.action for r in log] == ["privacy.delete_account"]
-    assert log[0].data == {} and PWD not in str(log[0].data)
+    assert log[0].actor_id is None and log[0].data == {} and PWD not in str(log[0].data)
+
+
+async def test_delete_password_limit_is_per_user_not_per_ip(session):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    a = await make_user(session, "a@x.com")
+    codes = []
+    for i in range(6):
+        t = ASGITransport(app=app, client=(f"10.0.0.{i}", 1))
+        async with AsyncClient(transport=t, base_url="https://test") as c:
+            codes.append((await _delete(c, a, "senha errada aqui")).status_code)
+    assert codes == [401] * 5 + [429]
+    t = ASGITransport(app=app, client=("10.0.0.99", 1))
+    async with AsyncClient(transport=t, base_url="https://test") as c:
+        assert (await _delete(c, a)).status_code == 429
+
+
+async def test_export_csv_neutralizes_formulas_and_adds_extra_data(client, session):
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    fam = await make_family(session, a, b)
+    acc = await make_account(session, a.default_space_id)
+    evil = '=HYPERLINK("http://x","c")'
+    await create_transaction(
+        session, actor_id=a.id, space_id=a.default_space_id, type="expense", amount_cents=100,
+        occurred_on=D, description=evil, merchant="@evil", account_id=acc.id,
+    )  # fmt: skip
+    r = await client.get("/privacy/export", headers=auth(a))
+    assert r.headers["cache-control"] == "no-store"
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    (row_,) = csv.DictReader(io.StringIO(z.read("transactions.csv").decode()))
+    assert row_["description"] == "'" + evil and row_["merchant"] == "'@evil"
+    data = json.loads(z.read("data.json"))
+    assert data["transactions"][0]["description"] == evil
+    assert "budget_categories" in data
+    members = {(m["space_id"], m["user_id"]) for m in data["space_members"]}
+    assert (str(fam.id), str(b.id)) in members
+    assert "b@x.com" not in z.read("data.json").decode()
+
+
+async def test_delete_race_with_invite_accept_never_purges_new_member(session):
+    import asyncio
+
+    from app.core.db import SessionLocal
+    from app.domain.privacy import delete_account
+    from app.domain.spaces.service import (
+        accept_space_invite,
+        create_family_space,
+        create_space_invite,
+    )
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    a_id, b_id = a.id, b.id
+    fam = await create_family_space(session, owner_id=a_id, name="F")
+    fam_id = fam.id
+    token = (await create_space_invite(session, space_id=fam_id, created_by=a_id)).token
+
+    async def do_delete():
+        async with SessionLocal() as s:
+            u = await s.get(User, a_id)
+            await delete_account(s, u)
+
+    async def do_accept():
+        async with SessionLocal() as s:
+            await accept_space_invite(s, token=token, user_id=b_id)
+
+    res = await asyncio.gather(do_delete(), do_accept(), return_exceptions=True)
+    session.expire_all()
+    in_fam = await session.scalar(
+        select(func.count())
+        .select_from(SpaceMember)
+        .where(SpaceMember.user_id == b_id, SpaceMember.space_id == fam_id)
+    )
+    fam_count = await session.scalar(
+        select(func.count()).select_from(Space).where(Space.id == fam_id)
+    )
+    if res[0] is None:  # excluiu: o accept tem que ter falhado, sem membro órfão
+        assert isinstance(res[1], ValueError) and in_fam == 0 and fam_count == 0
+    else:  # recusou: o membro entrou e a família continua
+        assert str(res[0]) == "owns_family_with_members" and res[1] is None
+        assert in_fam == 1 and fam_count == 1

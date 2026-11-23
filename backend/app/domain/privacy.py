@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.serialize import row
 from app.domain.accounts.models import Account
-from app.domain.audit import audit
+from app.domain.audit import AuditLog, audit
 from app.domain.bills.models import Bill
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
@@ -28,6 +28,11 @@ CSV_COLUMNS = [
     "id", "space_id", "type", "amount_cents", "occurred_on", "description", "merchant",
     "category_id", "account_id", "counter_account_id", "card_id", "created_by",
 ]  # fmt: skip
+
+
+def _csv_safe(v: Any) -> Any:
+    """Anti CSV-injection: texto que começa com =+-@ (ou tab/CR) ganha ' na frente."""
+    return "'" + v if isinstance(v, str) and v[:1] and v[0] in "=+-@\t\r" else v
 
 
 async def export_user_data(session: AsyncSession, user: User) -> bytes:
@@ -54,6 +59,16 @@ async def export_user_data(session: AsyncSession, user: User) -> bytes:
     card_ids = [c["id"] for c in data["cards"]]
     invoices = await session.scalars(select(Invoice).where(Invoice.card_id.in_(card_ids)))
     data["invoices"] = [row(i) for i in invoices]
+    budget_ids = [b["id"] for b in data["budgets"]]
+    cats = await session.scalars(
+        select(BudgetCategory).where(BudgetCategory.budget_id.in_(budget_ids))
+    )
+    data["budget_categories"] = [row(c) for c in cats]
+    members = await session.scalars(select(SpaceMember).where(SpaceMember.space_id.in_(space_ids)))
+    # só UUIDs dos outros membros: sem e-mail/nome
+    data["space_members"] = [
+        row(m) | ({} if m.user_id == user.id else {"default_account_id": None}) for m in members
+    ]
     known = {
         "account_id": {a["id"] for a in data["accounts"]},
         "counter_account_id": {a["id"] for a in data["accounts"]},
@@ -70,7 +85,7 @@ async def export_user_data(session: AsyncSession, user: User) -> bytes:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, extrasaction="ignore")
     writer.writeheader()
-    writer.writerows(data["transactions"])
+    writer.writerows({k: _csv_safe(v) for k, v in t.items()} for t in data["transactions"])
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("data.json", json.dumps(data, default=str, ensure_ascii=False, indent=2))
@@ -118,7 +133,10 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> None:
 async def delete_account(session: AsyncSession, user: User) -> None:
     """Exclusão LGPD. A senha já foi conferida pela API."""
     uid = user.id
-    owned = list(await session.scalars(select(Space.id).where(Space.owner_id == uid)))
+    # FOR UPDATE: serializa com accept_space_invite (que trava o mesmo espaço)
+    owned = list(
+        await session.scalars(select(Space.id).where(Space.owner_id == uid).with_for_update())
+    )
     for sid in owned:
         others = await session.scalar(
             select(func.count())
@@ -149,5 +167,8 @@ async def delete_account(session: AsyncSession, user: User) -> None:
     await session.execute(delete(SignupInvite).where(SignupInvite.created_by == uid))
     await session.execute(delete(RefreshToken).where(RefreshToken.user_id == uid))
     await session.execute(delete(User).where(User.id == uid))
-    audit(session, uid, "privacy.delete_account", "user", uid)  # só o UUID, sem dados
+    # Decisão: actor_id é nullable, então as linhas de auditoria do usuário são anonimizadas
+    # (actor_id -> NULL); a ação e o entity_id (UUID pseudônimo, sem dados pessoais) ficam.
+    await session.execute(update(AuditLog).where(AuditLog.actor_id == uid).values(actor_id=None))
+    audit(session, None, "privacy.delete_account", "user", uid)  # só o UUID, sem dados
     await session.commit()
