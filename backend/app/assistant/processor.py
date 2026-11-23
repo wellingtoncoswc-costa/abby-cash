@@ -11,7 +11,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.flows import edit, launch
+from app.assistant.flows import edit, launch, query
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
 from app.assistant.intents import Intent, ParsedIntent
@@ -244,6 +244,14 @@ async def fresh(t: Turn, text: str) -> str:
             return await edit.corrigir(t, p, space_id)
         case "apagar":
             return await edit.apagar(t)
+        case "consultar_gastos":
+            return await query.gastos(t, p, space_id)
+        case "consultar_teto":
+            return await query.teto(t, space_id)
+        case "consultar_saldo":
+            return await query.saldo(t)
+        case "consultar_faturas":
+            return await query.faturas(t)
         case "ajuda":
             return HELP
         case _:
