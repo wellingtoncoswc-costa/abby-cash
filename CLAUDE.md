@@ -27,6 +27,6 @@ Prod: `docker compose --env-file .env -f infra/docker-compose.prod.yml up -d` (o
 - Lembretes de conta: **1 dia antes e no dia**, às **09:00** no fuso do usuário (configurável), aviso de atraso no dia seguinte.
 - Cadastro **somente por convite**.
 - Pagamentos (conta a pagar e fatura) **sempre têm conta de origem** (`checking`/`savings`/`wallet`) e geram lançamento.
-- Modelo de IA via env `AI_MODEL` (padrão `claude-opus-5-5`); STT via env `STT_MODEL` (padrão `small`).
+- Modelo de IA via env `AI_MODEL` (padrão `gpt-4.1`, provedor OpenAI); STT via env `STT_MODEL` (padrão `small`).
 - Não alterar nem derrubar o `abby-chat` no servidor compartilhado.
 - Commits pequenos, mensagens em inglês no formato Conventional Commits.
