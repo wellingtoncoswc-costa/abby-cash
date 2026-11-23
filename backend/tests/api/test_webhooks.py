@@ -126,3 +126,19 @@ async def test_token_never_leaks_in_logs_or_responses(client, enqueued, caplog):
     r = await post(client)
     r2 = await client.post("/webhooks/telegram", json=update(), headers={})
     assert "T0KEN" not in r.text + r2.text + caplog.text
+
+
+async def test_malformed_updates_return_400_without_echo(client, enqueued):
+    for body in ([1, 2], "str", {"message": {"chat": {"type": "private"}, "text": "x"}}):
+        r = await client.post("/webhooks/telegram", json=body, headers=HEADERS)
+        assert r.status_code == 400 and "T0KEN" not in r.text and "s3cret" not in r.text
+    assert enqueued == []
+
+
+async def test_oversized_body_returns_413(client, enqueued):
+    r = await client.post("/webhooks/telegram", content=b"x" * 1_000_001, headers=HEADERS)
+    assert r.status_code == 413
+    r = await client.post(
+        "/webhooks/telegram", content=b"{}", headers={**HEADERS, "Content-Length": "2000000"}
+    )  # header declarado grande (o httpx pode sobrescrever; o corpo real é checado também)
+    assert r.status_code == 413
