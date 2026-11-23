@@ -31,6 +31,13 @@ async def _invite() -> None:
         print((await create_signup_invite(s, created_by=admin.id)).code)
 
 
+async def _purge_inbound(days: int) -> None:
+    from app.channels.ingest import purge_old_inbound
+
+    async with SessionLocal() as s:
+        print(f"deleted {await purge_old_inbound(s, days)} inbound messages")
+
+
 async def _poll() -> None:
     from app.channels.poll import poll_forever
     from app.channels.registry import telegram_adapter
@@ -65,6 +72,8 @@ def main() -> None:
     a.add_argument("--name", required=True)
     sub.add_parser("create-signup-invite")
     sub.add_parser("telegram-poll")
+    pg = sub.add_parser("purge-inbound")
+    pg.add_argument("--days", type=int, default=30)
     w = sub.add_parser("telegram-set-webhook")
     w.add_argument("--url", help="default: PUBLIC_BASE_URL/webhooks/telegram")
     args = p.parse_args()
@@ -75,6 +84,8 @@ def main() -> None:
             asyncio.run(_poll())
         except KeyboardInterrupt:
             pass
+    elif args.cmd == "purge-inbound":
+        asyncio.run(_purge_inbound(args.days))
     elif args.cmd == "telegram-set-webhook":
         asyncio.run(_set_webhook(args.url))
     else:

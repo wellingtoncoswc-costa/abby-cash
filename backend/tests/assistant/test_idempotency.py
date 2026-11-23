@@ -22,7 +22,9 @@ async def crash_and_retry(session, chat, text: str, *, msg_id: int = 1) -> str:
     await session.execute(
         update(InboundMessage)
         .where(InboundMessage.id == iid)
-        .values(status="processing", updated_at=func.now() - timedelta(minutes=10))
+        .values(
+            status="processing", text=text, updated_at=func.now() - timedelta(minutes=10)
+        )  # o crash real não chegou a descartar o texto
     )
     await session.commit()
     before = len(chat.adapter.sent)

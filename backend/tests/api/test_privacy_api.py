@@ -477,3 +477,19 @@ async def test_delete_account_removes_conversation_state(client, session):
     await session.commit()
     assert (await _delete(client, ana)).status_code == 204
     assert await session.scalar(select(func.count()).select_from(ConversationState)) == 0
+
+
+async def test_delete_account_removes_inbound_by_external_id_even_without_user_id(session):
+    from app.domain.channels.models import InboundMessage
+    from app.domain.privacy import delete_account
+    from tests.factories import make_inbound, make_link
+
+    a = await make_user(session, "a@x.com")
+    b = await make_user(session, "b@x.com")
+    await make_link(session, a, "111")
+    await make_link(session, b, "222")
+    mine = await make_inbound(session, "segredo", ext="111", msg_id=1)  # user_id NULL
+    theirs = await make_inbound(session, "outro", ext="222", msg_id=2)
+    await delete_account(session, a)
+    ids = list(await session.scalars(select(InboundMessage.id)))
+    assert ids == [theirs] and mine not in ids

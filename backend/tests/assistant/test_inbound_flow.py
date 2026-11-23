@@ -25,6 +25,7 @@ async def test_unlinked_sender_gets_instructions_only(session, adapter):
     assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
     row = await session.get(InboundMessage, iid)
     assert row.status == "processed" and row.user_id is None
+    assert row.text is None  # LGPD: terminal descarta o texto
 
 
 async def test_start_with_code_links_and_welcomes(session, adapter):
@@ -86,3 +87,40 @@ async def test_start_payload_uppercase_and_extra_spaces(session, adapter):
     code = await create_link_code(ana.id, "telegram")
     await run(session, f"  /START   {code}  ")
     assert "vinculado" in adapter.sent[0][1]
+
+
+async def test_stale_retry_still_has_the_text_until_terminal(session, adapter):
+    from sqlalchemy import text as sql
+
+    iid = await make_inbound(session, "oi")
+    await session.execute(
+        sql(
+            "update inbound_messages set status='processing', updated_at = now() - interval '6 min'"
+        )
+    )
+    await session.commit()
+    row = await session.get(InboundMessage, iid)
+    assert row.text == "oi"
+    await process_inbound({}, str(iid))
+    session.expire_all()
+    row = await session.get(InboundMessage, iid)
+    assert row.status == "processed" and row.text is None and len(adapter.sent) == 1
+
+
+async def test_purge_old_inbound_deletes_only_rows_past_retention(session):
+    from sqlalchemy import text as sql
+
+    from app.channels.ingest import purge_old_inbound
+
+    old, new = (
+        await make_inbound(session, "a", msg_id=1),
+        await make_inbound(session, "b", msg_id=2),
+    )
+    await session.execute(
+        sql("update inbound_messages set created_at = now() - interval '31 days' where id=:i"),
+        {"i": old},
+    )
+    await session.commit()
+    assert await purge_old_inbound(session, days=30) == 1
+    ids = list(await session.scalars(select(InboundMessage.id)))
+    assert ids == [new]

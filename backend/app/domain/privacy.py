@@ -4,7 +4,7 @@ import json
 import zipfile
 from typing import Any
 
-from sqlalchemy import Text, cast, delete, func, or_, select, update
+from sqlalchemy import Text, cast, delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.models import AiUsage
@@ -198,8 +198,24 @@ async def delete_account(session: AsyncSession, user: User) -> None:
     await session.execute(delete(SignupInvite).where(SignupInvite.created_by == uid))
     await session.execute(delete(RefreshToken).where(RefreshToken.user_id == uid))
     await session.execute(delete(ConversationState).where(ConversationState.user_id == uid))
+    ids = (
+        await session.execute(
+            select(ChannelLink.channel, ChannelLink.external_user_id).where(
+                ChannelLink.user_id == uid
+            )
+        )
+    ).all()  # antes de apagar os vínculos: é por eles que se acham as mensagens sem user_id
     await session.execute(delete(ChannelLink).where(ChannelLink.user_id == uid))
-    await session.execute(delete(InboundMessage).where(InboundMessage.user_id == uid))
+    await session.execute(
+        delete(InboundMessage).where(
+            or_(
+                InboundMessage.user_id == uid,
+                tuple_(InboundMessage.channel, InboundMessage.external_user_id).in_(
+                    [tuple(r) for r in ids]
+                ),
+            )
+        )
+    )
     await session.execute(delete(User).where(User.id == uid))
     # LGPD: o UUID do titular some de TODA a trilha (actor_id, entity_id e valores em `data`);
     # as linhas ficam como registro de que a ação ocorreu, sem identificar ninguém.
