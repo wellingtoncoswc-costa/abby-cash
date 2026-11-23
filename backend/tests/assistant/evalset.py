@@ -15,12 +15,13 @@ from app.assistant.context import (
     SpaceContext,
 )
 from app.assistant.intents import ParsedIntent
-from app.assistant.resolve import pick_category
+from app.assistant.resolve import pick_category, resolve_hint
 from app.core.text import fold
 from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 
 EVAL_PATH = Path(__file__).with_name("eval_cases.yaml")
-_FUZZY = {"description", "account_hint", "card_hint", "goal_hint"}
+_FUZZY = {"description"}
+_HINTS = {"account_hint": "accounts", "card_hint": "cards", "goal_hint": "goals"}
 
 
 def load_cases() -> tuple[date, list[dict[str, Any]]]:
@@ -68,6 +69,10 @@ def mismatches(expect: dict[str, Any], got: ParsedIntent, ctx: SpaceContext) -> 
             want = date.fromisoformat(str(want))
         if key == "category_name":
             ok = fold(str(have or "")) == fold(str(want))
+        elif key in _HINTS:  # o nome resolvido a partir do texto do usuário
+            names = [i.name for i in getattr(ctx, _HINTS[key])]
+            seen = f"{have or ''} {resolve_hint(have, names) or ''}"  # texto ou nome resolvido
+            ok = fold(str(want)) in fold(seen)
         elif key in _FUZZY:
             ok = fold(str(want)) in fold(str(have or ""))
         else:
