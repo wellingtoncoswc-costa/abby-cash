@@ -1,6 +1,4 @@
-from uuid import UUID
-
-from sqlalchemy import update
+from sqlalchemy import exists, select
 
 from app.assistant.state import set_state
 from app.assistant.turn import Draft, Turn
@@ -18,15 +16,17 @@ async def ask(t: Turn, d: Draft, kind: str, text: str) -> str:
     return text
 
 
-async def tag_origin(t: Turn, tx_id: UUID) -> None:
-    """Pagamentos e aportes nascem com origem "web" no domínio; pelo chat passam a ser do canal
-    (e guardam a mensagem), para o "apagar último" achá-los."""
-    await t.session.execute(
-        update(Transaction)
-        .where(Transaction.id == tx_id)
-        .values(origin=t.channel, source_message_id=t.message_id)
+async def already_done(t: Turn) -> bool:
+    """Esta mensagem já gravou um lançamento (worker caiu depois do commit e ela foi retomada)."""
+    return bool(
+        await t.session.scalar(
+            select(
+                exists().where(
+                    Transaction.origin == t.channel, Transaction.source_message_id == t.message_id
+                )
+            )
+        )
     )
-    await t.session.commit()
 
 
 async def remaining_of(t: Turn, bill: Bill) -> int:

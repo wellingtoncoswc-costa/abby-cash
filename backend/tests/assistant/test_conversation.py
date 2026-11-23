@@ -140,7 +140,9 @@ async def test_zero_amount_never_reaches_the_domain_even_if_the_parser_lets_it_t
 ):
     bad = expense(1000).model_copy(update={"amount_cents": 0})  # sem validação: força o 0
     parser.add(bad)
-    assert (await ana.say("gastei 10")).startswith("O valor precisa ser maior que zero.")
+    assert (await ana.say("gastei zero no mercado")).startswith(
+        "O valor precisa ser maior que zero."
+    )
     assert await txs(session) == []
 
 
@@ -191,7 +193,6 @@ async def test_the_model_cannot_pick_a_foreign_account_card_or_category(session,
     assert (await ana.say("gastei 10 no visa da bia")).startswith("Não achei nenhum cartão")
     assert await txs(session) == []
     parser.add(expense(1000).model_copy(update={"category_index": 999}))  # fora da lista
-    await ana.say("cancelar")
     reply = await ana.say("gastei 10")
     assert "· Outros ·" in reply
 
@@ -309,7 +310,11 @@ async def test_future_date_is_refused(ana, parser, session):
 
 async def test_llm_failure_fallback(ana, parser, session):
     parser.add(RuntimeError("openai down"))
-    reply = await ana.say("gastei 45 no mercado")
+    assert (await ana.say("gastei 45 no mercado")).startswith(
+        'Entendi R$ 45,00 em "no mercado". Posso lançar?'
+    )  # sem IA a confiança é 0.5: pergunta antes de gravar
+    assert await txs(session) == []
+    reply = await ana.say("sim")
     assert reply.startswith("⚠️ A IA está indisponível agora; lancei do jeito simples")
     assert "✅ R$ 45,00 · Outros · no mercado · hoje · Carteira" in reply
     [tx] = await txs(session)
@@ -319,13 +324,15 @@ async def test_llm_failure_fallback(ana, parser, session):
     parser.add(RuntimeError("openai down"))
     assert (await ana.say("bom dia")) == NOT_UNDERSTOOD  # sem valor não dá para adivinhar
     parser.add(TimeoutError())
-    reply = await ana.say("recebi 3000 de salário")
+    await ana.say("recebi 3000 de salário")
+    reply = await ana.say("sim")
     assert "✅ R$ 3.000,00 · Outros" in reply and (await txs(session))[-1].type == "income"
 
 
 async def test_without_a_configured_parser_the_fallback_is_used(ana, session):
     ana.parser = None
-    reply = await ana.say("gastei 45 no mercado")
+    await ana.say("gastei 45 no mercado")
+    reply = await ana.say("sim")
     assert reply.startswith("⚠️ A IA está indisponível")
 
 
@@ -564,7 +571,8 @@ async def test_pay_one_pending_bill_from_default_account(ana, session, parser):
         session, actor_id=ana.user.id, space_id=sp, description="Luz", amount_cents=15_000,
         due_on=date(2026, 11, 30),
     )  # fmt: skip
-    assert (await ana.say("paguei")).startswith("✅ Paguei R$ 150,00 · Luz · hoje · Carteira")
+    assert await ana.say("paguei") == "Pagar Luz R$ 150,00? Responda sim ou não"
+    assert (await ana.say("sim")).startswith("✅ Paguei R$ 150,00 · Luz · hoje · Carteira")
     await session.refresh(bill)
     assert bill.status == "paid" and parser.calls == []
     assert await ana.say("paguei") == "Não encontrei contas em aberto."
@@ -614,7 +622,8 @@ async def test_pay_invoice_from_wallet(ana, session):
         session, actor_id=ana.user.id, space_id=sp, card_id=card.id, amount_cents=10_000,
         occurred_on=date(2026, 11, 5),
     )  # fmt: skip
-    assert (await ana.say("paguei")).startswith("✅ Paguei R$ 100,00")
+    assert (await ana.say("paguei")).startswith("Pagar Fatura Visa")
+    assert (await ana.say("sim")).startswith("✅ Paguei R$ 100,00")
     assert await ana.say("faturas") == "Nenhuma fatura em aberto."
 
 

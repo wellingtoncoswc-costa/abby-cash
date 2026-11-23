@@ -1,11 +1,15 @@
+import difflib
+import re
+
 from sqlalchemy import select
 
-from app.assistant.flows.common import ask, remaining_of, tag_origin
+from app.assistant.flows.common import ask, remaining_of
 from app.assistant.flows.payment import choose_account
 from app.assistant.intents import ParsedIntent
 from app.assistant.replies import NO_ACCOUNT, ZERO, options_text
 from app.assistant.turn import Draft, Pay, Turn
 from app.core.money import format_brl
+from app.core.text import fold
 from app.domain.bills.models import Bill
 from app.domain.payments import pay_bill, pay_invoice
 from app.domain.spaces.models import SpaceMember
@@ -24,16 +28,31 @@ async def pending(t: Turn) -> list[tuple[Bill, int]]:
     return [(b, rem) for b, rem in out if rem > 0]
 
 
-async def start(t: Turn, p: ParsedIntent) -> str:
-    """ponytail: sem contexto de lembrete (M5); 0 -> aviso, 1 -> quita, várias -> lista."""
+_GENERIC = {"paguei", "pago", "quitei", "pagar", "conta", "contas"}
+
+
+def mentions(text: str, p: ParsedIntent, description: str) -> bool:
+    """O texto (ou a dica do modelo) cita a conta? Aproximado, sem acento/caixa."""
+    said = set(re.findall(r"\w{3,}", fold(f"{text} {p.description or ''} {p.merchant or ''}")))
+    words = set(re.findall(r"\w{3,}", fold(description))) - _GENERIC
+    return any(difflib.get_close_matches(w, words, n=1, cutoff=0.8) for w in said - _GENERIC)
+
+
+async def start(t: Turn, p: ParsedIntent, text: str = "") -> str:
+    """ponytail: sem contexto de lembrete (M5, que pagará direto); 0 -> aviso, 1 -> quita se o
+    texto cita a conta, senão pergunta; várias -> lista."""
     if p.amount_cents is not None and p.amount_cents <= 0:
         return ZERO
     items = await pending(t)
     if not items:
         return "Não encontrei contas em aberto."
     if len(items) == 1:
-        bill = items[0][0]
-        return await run(t, Draft(action="pay", p=p, space_id=bill.space_id, bill_id=bill.id))
+        bill, rem = items[0]
+        d = Draft(action="pay", p=p, space_id=bill.space_id, bill_id=bill.id)
+        if mentions(text, p, bill.description):
+            return await run(t, d)
+        question = f"Pagar {bill.description} {format_brl(rem)}? Responda sim ou não"
+        return await ask(t, d, "confirm", question)
     options = [
         Pay(
             type="bill", id=b.id,
@@ -50,7 +69,8 @@ async def start(t: Turn, p: ParsedIntent) -> str:
 async def run(t: Turn, d: Draft) -> str:
     """Quita a conta escolhida: origem = dica -> padrão -> pergunta; valor = o que falta."""
     bill = await t.session.get(Bill, d.bill_id)
-    assert bill is not None
+    if bill is None:
+        return "Não encontrei essa conta."
     description, due_invoice, space_id = bill.description, bill.invoice_id, bill.space_id
     ctx = await t.context(space_id)  # exige ser membro do espaço da conta
     if d.payment is None:
@@ -68,14 +88,15 @@ async def run(t: Turn, d: Draft) -> str:
         amount = d.p.amount_cents or await remaining_of(t, bill)
         tx = await pay_invoice(
             t.session, actor_id=t.user_id, invoice_id=due_invoice, account_id=d.payment.id,
-            paid_on=t.today, amount_cents=amount,
+            paid_on=t.today, amount_cents=amount, origin=t.channel,
+            source_message_id=t.message_id,
         )  # fmt: skip
     else:
         tx = await pay_bill(
             t.session, actor_id=t.user_id, bill_id=bill.id, account_id=d.payment.id,
             paid_on=t.today, amount_cents=d.p.amount_cents,
+            origin=t.channel, source_message_id=t.message_id,
         )  # fmt: skip
-    await tag_origin(t, tx.id)
     left = await remaining_of(t, bill)
     tail = f"\nFalta {format_brl(left)}." if left > 0 else ""
     return (

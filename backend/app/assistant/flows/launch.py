@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from uuid import UUID
 
@@ -29,6 +30,7 @@ from app.domain.transactions.models import Transaction
 from app.domain.transactions.service import create_transaction, normalize_merchant
 
 CONFIDENCE_MIN = 0.6
+log = logging.getLogger(__name__)
 
 
 async def start(t: Turn, p: ParsedIntent, space_id: UUID, h: Hints, warn: str | None) -> str:
@@ -138,8 +140,12 @@ async def run(t: Turn, d: Draft) -> str:
     )  # fmt: skip
     lines = [d.warn, line] if d.warn else [line]
     if not income:
-        notes, alerts = await budget_notes(t, d.space_id, txs, txs[-1].amount_cents)
-        lines += notes + alerts
-        for text in alerts:  # o teto é do espaço: os outros membros também precisam saber
-            await notify_members(t.session, d.space_id, t.user_id, text)
+        try:  # o lançamento já foi gravado: falha em alerta nunca vira "falhou"
+            notes, alerts = await budget_notes(t, d.space_id, txs, txs[-1].amount_cents)
+            lines += notes + alerts
+            for text in alerts:  # o teto é do espaço: os outros membros também precisam saber
+                await notify_members(t.session, d.space_id, t.user_id, text)
+        except Exception as e:
+            log.warning("budget alerts failed (%s)", type(e).__name__)
+            await t.session.rollback()
     return "\n".join(lines)

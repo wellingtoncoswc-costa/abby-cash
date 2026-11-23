@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.hints import resolve_date
+from app.assistant.hints import BadDate, resolve_date
 from app.assistant.intents import ParsedIntent
 from app.assistant.replies import CORRECT_PROMPT, tx_line
 from app.assistant.resolve import resolve_hint
@@ -51,7 +51,10 @@ def parse_correction(text: str, today: date) -> dict[str, Any] | None:
     if key == "categoria":
         return {"category_name": rest}
     if key == "data":
-        day = resolve_date(rest, today)
+        try:
+            day = resolve_date(rest, today)
+        except BadDate:
+            return None
         return {"occurred_on": day} if day else None
     return {"description": rest[:500]}
 
@@ -71,8 +74,12 @@ async def learn_rule(t: Turn, space_id: UUID, label: str, category_id: UUID) -> 
     await t.session.commit()
 
 
-async def apply_correction(t: Turn, fields: dict[str, Any]) -> str:
-    tx = await last_tx(t)
+async def apply_correction(t: Turn, fields: dict[str, Any], tx_id: str | None = None) -> str:
+    """Corrige o lançamento que estava em jogo quando a pergunta foi feita (`tx_id`); sem ele, o
+    último do usuário."""
+    tx = await last_tx(t) if tx_id is None else await t.session.get(Transaction, UUID(tx_id))
+    if tx is not None and tx.created_by != t.user_id:
+        tx = None
     if tx is None:
         return NOT_FOUND.format("corrigir")
     category_id: UUID | None = None
@@ -109,7 +116,10 @@ async def corrigir(t: Turn, p: ParsedIntent, space_id: UUID) -> str:
     }  # fmt: skip
     fields = {k: v for k, v in fields.items() if v is not None}
     if not fields:
-        await set_state(t.session, t.user_id, t.channel, "correct", {}, t.now)
+        tx = await last_tx(t)
+        if tx is None:
+            return NOT_FOUND.format("corrigir")
+        await set_state(t.session, t.user_id, t.channel, "correct", {"tx_id": str(tx.id)}, t.now)
         return CORRECT_PROMPT
     return await apply_correction(t, fields)
 

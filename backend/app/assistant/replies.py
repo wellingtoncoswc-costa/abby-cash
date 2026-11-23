@@ -40,6 +40,9 @@ NO_FAMILY = "Você não tem um espaço familiar. Crie ou entre em um no painel w
 NO_CARD = "Não achei nenhum cartão cadastrado. Cadastre um no painel web (Cartões)."
 NO_ACCOUNT = "Não achei nenhuma conta cadastrada. Cadastre uma no painel web (Contas)."
 FUTURE_DATE = "Essa data é no futuro. Mande uma data de hoje ou passada."
+BAD_DATE = "Essa data não existe. Mande de novo com uma data válida (ex.: 23/11)."
+ALREADY = "Já registrei isso."
+ALREADY_HANDLED = "Já tratei isso."
 ZERO = "O valor precisa ser maior que zero."
 
 _DOMAIN_ERRORS = {
