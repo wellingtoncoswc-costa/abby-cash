@@ -48,6 +48,7 @@ async def create_signup_invite(
 async def register_user(
     session: AsyncSession, *, email: str, name: str, password: str, invite_code: str
 ) -> User:
+    pw_hash = hash_password(password)  # antes de tudo: todos os caminhos custam o mesmo
     # FOR UPDATE serializa o consumo: duas requisições com o mesmo código não passam juntas
     inv = (
         await session.execute(
@@ -59,7 +60,7 @@ async def register_user(
     if inv is None or inv.used_by is not None or inv.expires_at <= datetime.now(UTC) or taken:
         await session.rollback()
         raise ValueError("invalid_invite")  # mesmo erro p/ e-mail já usado: não vaza existência
-    user = User(email=email, name=name, password_hash=hash_password(password))
+    user = User(email=email, name=name, password_hash=pw_hash)
     session.add(user)
     try:
         await session.flush()

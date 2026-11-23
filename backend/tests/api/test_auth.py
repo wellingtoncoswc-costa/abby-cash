@@ -216,3 +216,13 @@ async def test_refresh_failure_and_logout_clear_cookie(client):
     assert "refresh_token=" in sc and ("max-age=0" in sc or "expires=" in sc)
     r = await client.post("/auth/logout", cookies={"refresh_token": "bogus"})
     assert r.status_code == 204 and "refresh_token=" in r.headers["set-cookie"]
+
+
+async def test_register_hashes_even_on_invalid_invite(client, monkeypatch):
+    import app.domain.users.service as svc
+
+    calls = []
+    real = svc.hash_password
+    monkeypatch.setattr(svc, "hash_password", lambda p: calls.append(1) or real(p))
+    assert (await _register(client, "nope")).status_code == 400
+    assert calls == [1]
