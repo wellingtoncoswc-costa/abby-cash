@@ -1,7 +1,17 @@
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -24,6 +34,12 @@ class Transaction(Base):
     category_id: Mapped[UUID | None] = mapped_column(ForeignKey("categories.id"))
     account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"), index=True)
     counter_account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"), index=True)
+    card_id: Mapped[UUID | None] = mapped_column(ForeignKey("credit_cards.id"), index=True)
+    invoice_id: Mapped[UUID | None] = mapped_column(ForeignKey("invoices.id"), index=True)
+    bill_id: Mapped[UUID | None] = mapped_column(ForeignKey("bills.id"), index=True)
+    installment_group_id: Mapped[UUID | None] = mapped_column(index=True)
+    installment_number: Mapped[int | None] = mapped_column(Integer)
+    installment_total: Mapped[int | None] = mapped_column(Integer)
     # NULL = "Usuário removido"
     created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     origin: Mapped[str] = mapped_column(String(16), default="web")  # web | telegram | whatsapp_*

@@ -29,11 +29,23 @@ async def create_transaction(
     session: AsyncSession, *, actor_id: UUID, space_id: UUID, type: str, amount_cents: int,
     occurred_on: date, description: str = "", merchant: str | None = None,
     category_id: UUID | None = None, account_id: UUID | None = None,
-    counter_account_id: UUID | None = None, origin: str = "web",
+    counter_account_id: UUID | None = None, card_id: UUID | None = None, origin: str = "web",
     source_message_id: str | None = None, attachment_id: UUID | None = None,
 ) -> Transaction:  # fmt: skip
     if type not in TYPES:
         raise DomainError("invalid_type")
+    if card_id is not None:  # compra no cartão: fatura e parcelas ficam no serviço de cartões
+        if type != "expense" or account_id is not None or counter_account_id is not None:
+            raise DomainError("invalid_card_purchase")
+        from app.domain.cards.service import register_card_purchase  # evita import circular
+
+        purchase = await register_card_purchase(
+            session, actor_id=actor_id, space_id=space_id, card_id=card_id,
+            amount_cents=amount_cents, occurred_on=occurred_on, description=description,
+            merchant=merchant, category_id=category_id, origin=origin,
+            source_message_id=source_message_id, attachment_id=attachment_id,
+        )  # fmt: skip
+        return purchase[0]
     await check_common(
         session, actor_id=actor_id, space_id=space_id, type=type, amount_cents=amount_cents,
         category_id=category_id, occurred_on=occurred_on,

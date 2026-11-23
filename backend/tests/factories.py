@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from app.core.security import create_access_token
 from app.domain.accounts.models import Account
+from app.domain.cards.service import create_card
 from app.domain.categories.models import Category
 from app.domain.spaces.models import Space
 from app.domain.spaces.service import (
@@ -54,3 +55,13 @@ async def category_id(
 
 def auth(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+
+async def make_card(
+    session, actor: User, space_id: UUID, *, name: str = "Visa", closing_day: int = 10,
+    due_day: int = 20, limit_cents: int | None = None, payment_account_id: UUID | None = None,
+):  # fmt: skip
+    return await create_card(
+        session, actor_id=actor.id, space_id=space_id, name=name, closing_day=closing_day,
+        due_day=due_day, limit_cents=limit_cents, payment_account_id=payment_account_id,
+    )  # fmt: skip
