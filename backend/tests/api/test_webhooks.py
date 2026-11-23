@@ -142,3 +142,10 @@ async def test_oversized_body_returns_413(client, enqueued):
         "/webhooks/telegram", content=b"{}", headers={**HEADERS, "Content-Length": "2000000"}
     )  # header declarado grande (o httpx pode sobrescrever; o corpo real é checado também)
     assert r.status_code == 413
+
+
+async def test_non_numeric_content_length_is_400_not_500(client, enqueued):
+    r = await client.post(
+        "/webhooks/telegram", content=b"{}", headers={**HEADERS, "Content-Length": "abc"}
+    )
+    assert r.status_code == 400

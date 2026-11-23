@@ -18,7 +18,10 @@ async def webhook(channel: str, request: Request, session: Session) -> dict[str,
         raise HTTPException(404, "unknown_channel") from None
     if not adapter.verify(request):
         raise HTTPException(401, "invalid_secret")
-    if int(request.headers.get("content-length") or 0) > MAX_BODY:
+    declared = request.headers.get("content-length") or "0"
+    if not declared.isascii() or not declared.isdigit():
+        raise HTTPException(400, "bad_content_length")
+    if int(declared) > MAX_BODY:
         raise HTTPException(413, "payload_too_large")
     if len(await request.body()) > MAX_BODY:  # sem Content-Length (chunked) ou mentiroso
         raise HTTPException(413, "payload_too_large")
