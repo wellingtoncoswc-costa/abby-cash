@@ -15,8 +15,11 @@ from app.domain.channels.models import ChannelLink
 router = APIRouter(prefix="/channels", tags=["channels"])
 
 
+Channel = Literal["telegram"]  # M4 acrescenta whatsapp_evolution
+
+
 class LinkCodeIn(BaseModel):
-    channel: Literal["telegram"]  # M4 acrescenta whatsapp_evolution
+    channel: Channel
 
 
 async def _deep_link(code: str) -> str | None:
@@ -46,5 +49,5 @@ async def list_links(user: CurrentUser, session: Session) -> list[dict[str, obje
 
 
 @router.delete("/{channel}", status_code=204)
-async def delete_link(channel: str, user: CurrentUser, session: Session) -> None:
+async def delete_link(channel: Channel, user: CurrentUser, session: Session) -> None:
     await unlink(session, user.id, channel)

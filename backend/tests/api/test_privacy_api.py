@@ -429,3 +429,18 @@ async def test_delete_account_removes_channel_links_and_inbound_messages(client,
     assert (await _delete(client, ana)).status_code == 204
     assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
     assert await session.scalar(select(func.count()).select_from(InboundMessage)) == 0
+
+
+async def test_delete_account_cleans_channel_data(session):
+    from app.domain.channels.models import ChannelLink, InboundMessage
+    from app.domain.privacy import delete_account
+    from tests.factories import make_inbound
+
+    a = await make_user(session, "a@x.com")
+    session.add(ChannelLink(user_id=a.id, channel="telegram", external_user_id="1"))
+    iid = await make_inbound(session, "oi")
+    (await session.get(InboundMessage, iid)).user_id = a.id
+    await session.commit()
+    await delete_account(session, a)
+    assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
+    assert await session.scalar(select(func.count()).select_from(InboundMessage)) == 0

@@ -75,3 +75,9 @@ async def test_list_and_delete_links_are_scoped_to_user(client, session, bot):
     assert (await client.delete("/channels/telegram", headers=auth(ana))).status_code == 204
     left = list(await session.scalars(select(ChannelLink)))
     assert [k.user_id for k in left] == [bia.id]  # o vínculo da outra pessoa continua
+
+
+async def test_delete_unknown_channel_is_rejected(client, session):
+    ana = await make_user(session, "ana@x.com")
+    r = await client.delete("/channels/evil%20x", headers=auth(ana))
+    assert r.status_code == 422
