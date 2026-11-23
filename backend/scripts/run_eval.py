@@ -33,7 +33,7 @@ async def main(minimum: float) -> int:
     ok = 0
     for case in cases:
         try:
-            diff = mismatches(case["expect"], await parser.parse(case["text"], ctx))
+            diff = mismatches(case["expect"], await parser.parse(case["text"], ctx), ctx)
         except Exception as e:  # noqa: BLE001 - qualquer falha da API conta como erro do caso
             diff = [f"erro: {type(e).__name__}"]
         ok += not diff

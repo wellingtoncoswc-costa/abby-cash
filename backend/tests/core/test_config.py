@@ -18,4 +18,4 @@ def test_settings_reads_given_env_file(tmp_path: Path):
 def test_m3_settings_defaults(tmp_path: Path):
     s = Settings(_env_file=tmp_path / "missing")  # type: ignore[call-arg]
     assert s.TELEGRAM_BOT_USERNAME == ""
-    assert s.AI_TIMEOUT_S == 20.0
+    assert s.AI_TIMEOUT_S == 10.0

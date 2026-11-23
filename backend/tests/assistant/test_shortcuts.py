@@ -29,6 +29,7 @@ def test_shortcut_number_is_a_list_choice():
     assert got is not None and got.intent == "desconhecido" and got.choice == 2
     assert try_shortcut("45").choice == 45  # type: ignore[union-attr]
     assert try_shortcut("123") is None  # 3 dígitos: pode ser um valor
+    assert try_shortcut("0") is None and try_shortcut("05") is None
 
 
 @pytest.mark.parametrize(

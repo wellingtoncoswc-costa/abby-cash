@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-only-change-me"
     AI_MODEL: str = "gpt-4.1"
     OPENAI_API_KEY: str = ""
-    AI_TIMEOUT_S: float = 20.0
+    AI_TIMEOUT_S: float = 10.0
     STT_URL: str = "http://stt:8000"
     STT_MODEL: str = "small"
     TELEGRAM_BOT_TOKEN: str = ""

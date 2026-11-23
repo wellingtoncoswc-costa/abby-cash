@@ -15,11 +15,12 @@ from app.assistant.context import (
     SpaceContext,
 )
 from app.assistant.intents import ParsedIntent
+from app.assistant.resolve import pick_category
 from app.core.text import fold
 from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 
 EVAL_PATH = Path(__file__).with_name("eval_cases.yaml")
-_FUZZY = {"category_name", "account_hint", "card_hint", "goal_hint"}
+_FUZZY = {"description", "account_hint", "card_hint", "goal_hint"}
 
 
 def load_cases() -> tuple[date, list[dict[str, Any]]]:
@@ -48,11 +49,21 @@ def eval_context(today: date) -> SpaceContext:
     )
 
 
-def mismatches(expect: dict[str, Any], got: ParsedIntent) -> list[str]:
-    """Campos esperados que o resultado não cumpre. Texto livre compara sem acento/caixa."""
+def resolved_category(ctx: SpaceContext, got: ParsedIntent) -> str | None:
+    """Nome da categoria que o fluxo usaria: o nº do modelo, ou 'Outros' se inválido."""
+    if got.category_index is None:
+        return None
+    kind = "income" if got.intent == "lancar_receita" else "expense"
+    cat = pick_category(ctx, kind, got.category_index)
+    return cat.name if cat else "Outros"
+
+
+def mismatches(expect: dict[str, Any], got: ParsedIntent, ctx: SpaceContext) -> list[str]:
+    """Campos esperados que o resultado não cumpre. Texto livre compara sem acento/caixa; a
+    categoria é comparada pelo NOME resolvido a partir do número."""
     out = []
     for key, want in expect.items():
-        have = getattr(got, key)
+        have = resolved_category(ctx, got) if key == "category_name" else getattr(got, key)
         if key == "occurred_on":
             want = date.fromisoformat(str(want))
         if key == "category_name":

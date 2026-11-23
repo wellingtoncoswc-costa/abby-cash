@@ -35,9 +35,11 @@ def _clean(text: str) -> str:
 
 
 def try_shortcut(text: str) -> ParsedIntent | None:
-    """Comandos simples resolvidos sem LLM; None = precisa interpretar."""
+    """Comandos simples resolvidos sem LLM; None = precisa interpretar. Um número `[1-9]\\d?` vem
+    como `choice`: quem chama só o trata como escolha se houver seleção pendente (senão, é um
+    texto qualquer e segue para o LLM)."""
     s = _clean(text)
-    if re.fullmatch(r"\d{1,2}", s):
+    if re.fullmatch(r"[1-9]\d?", s):
         return ParsedIntent.of("desconhecido", choice=int(s))
     return _COMMANDS[s].model_copy() if s in _COMMANDS else None
 
