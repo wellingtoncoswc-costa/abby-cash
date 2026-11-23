@@ -169,3 +169,45 @@ async def test_logout_revokes_refresh_family(client, session):
     assert (await client.post("/auth/logout", cookies={"refresh_token": old})).status_code == 204
     assert (await client.post("/auth/refresh", cookies={"refresh_token": old})).status_code == 401
     assert (await client.post("/auth/logout")).status_code == 204  # idempotente
+
+
+async def test_login_lockout_is_per_email_and_ip(client, session):
+    from app.core.redis import redis
+
+    await _register(client, await _invite(session))
+    for _ in range(5):
+        await client.post("/auth/login", json={"email": "a@x.com", "password": "bad"})
+    # outro IP não herda o bloqueio da vítima
+    assert not await redis.exists("login_fail:a@x.com:9.9.9.9")
+    assert await redis.keys("login_fail:a@x.com:*")
+
+
+async def test_login_success_does_not_refund_ip_counter(client, session):
+    from app.core.redis import redis
+
+    await _register(client, await _invite(session))
+    await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    assert int(await redis.get("login_fail_ip:127.0.0.1") or 0) == 1
+    assert 0 < await redis.ttl("login_fail_ip:127.0.0.1") <= 900
+
+
+async def test_totp_fail_cleared_on_success(client, session):
+    from app.core.redis import redis
+
+    await _register(client, await _invite(session))
+    login = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    h = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    secret = (await client.post("/auth/2fa/setup", headers=h)).json()["secret"]
+    await client.post("/auth/2fa/verify", headers=h, json={"code": "000000"})
+    assert await redis.keys("totp_fail:*")
+    await client.post("/auth/2fa/verify", headers=h, json={"code": pyotp.TOTP(secret).now()})
+    assert not await redis.keys("totp_fail:*")
+
+
+async def test_refresh_failure_and_logout_clear_cookie(client):
+    r = await client.post("/auth/refresh", cookies={"refresh_token": "bogus"})
+    assert r.status_code == 401
+    sc = r.headers["set-cookie"].lower()
+    assert "refresh_token=" in sc and ("max-age=0" in sc or "expires=" in sc)
+    r = await client.post("/auth/logout", cookies={"refresh_token": "bogus"})
+    assert r.status_code == 204 and "refresh_token=" in r.headers["set-cookie"]

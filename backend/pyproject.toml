@@ -18,6 +18,7 @@ markers = ["slow: testes lentos (áudio real etc.)"]
 line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+per-file-ignores = {"tests/conftest.py" = ["E402"]}
 [tool.mypy]
 python_version = "3.12"
 strict = true

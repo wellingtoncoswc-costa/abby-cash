@@ -2,6 +2,7 @@ from typing import Annotated
 
 import pyotp
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from app.api.deps import CurrentUser, Session
@@ -48,10 +49,8 @@ def _set_cookie(resp: Response, raw: str) -> None:
 
 async def _hit(key: str, limit: int) -> None:
     """Conta a tentativa (INCR atômico); acima do limite -> 429."""
-    n = await redis.incr(key)
-    if n == 1:
-        await redis.expire(key, FAIL_TTL)
-    if n > limit:
+    await redis.set(key, 0, ex=FAIL_TTL, nx=True)  # TTL garantido antes do INCR
+    if await redis.incr(key) > limit:
         raise HTTPException(429, "too_many_attempts")
 
 
@@ -71,9 +70,10 @@ async def register(body: RegisterIn, session: Session) -> dict[str, str]:
 async def login(
     body: LoginIn, session: Session, resp: Response, request: Request
 ) -> dict[str, str]:
-    key = f"login_fail:{body.email.strip().lower()}"
     # ponytail: usar IP real (proxy confiável) atrás do Nginx no M8; X-Forwarded-For não é confiável
-    ip_key = f"login_fail_ip:{request.client.host if request.client else 'unknown'}"
+    ip = request.client.host if request.client else "unknown"
+    key = f"login_fail:{body.email.strip().lower()}:{ip}"  # por (email, ip): evita DoS de lockout
+    ip_key = f"login_fail_ip:{ip}"
     await _hit(key, MAX_FAILS)  # antes de verificar a senha
     await _hit(ip_key, MAX_IP_FAILS)
     try:
@@ -81,20 +81,21 @@ async def login(
     except AuthError as e:
         raise HTTPException(401, str(e)) from None
     await redis.delete(key)
-    await redis.decr(ip_key)
     _set_cookie(resp, await issue_refresh(session, user.id))
     return {"access_token": create_access_token(user.id)}
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=dict[str, str])
 async def refresh(
     session: Session, resp: Response, refresh_token: Annotated[str | None, Cookie()] = None
-) -> dict[str, str]:
+) -> dict[str, str] | JSONResponse:
     try:
         user, raw = await rotate_refresh(session, refresh_token or "")
     except AuthError:
-        resp.delete_cookie("refresh_token", path="/auth")
-        raise HTTPException(401, "invalid_refresh") from None
+        # HTTPException descartaria os headers do resp injetado: devolve a resposta direto
+        bad = JSONResponse(status_code=401, content={"detail": "invalid_refresh"})
+        bad.delete_cookie("refresh_token", path="/auth")
+        return bad
     _set_cookie(resp, raw)
     return {"access_token": create_access_token(user.id)}
 
@@ -124,9 +125,10 @@ async def verify_2fa(body: CodeIn, user: CurrentUser, session: Session) -> dict[
     if int(await redis.get(key) or 0) >= MAX_FAILS:
         raise HTTPException(429, "too_many_attempts")
     if not user.totp_secret or not await check_totp(user, body.code):
-        if await redis.incr(key) == 1:
-            await redis.expire(key, FAIL_TTL)
+        await redis.set(key, 0, ex=FAIL_TTL, nx=True)
+        await redis.incr(key)
         raise HTTPException(400, "invalid_code")
+    await redis.delete(key)
     user.totp_enabled = True
     await session.commit()
     return {"totp_enabled": True}
