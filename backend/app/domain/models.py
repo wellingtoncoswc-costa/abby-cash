@@ -1,6 +1,7 @@
 """Importa todos os models para registrar as tabelas em Base.metadata (Alembic e testes)."""
 
 import app.ai.models  # noqa: F401
+import app.assistant.models  # noqa: F401
 import app.domain.accounts.models  # noqa: F401
 import app.domain.audit  # noqa: F401
 import app.domain.bills.models  # noqa: F401

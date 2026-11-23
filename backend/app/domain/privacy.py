@@ -8,6 +8,7 @@ from sqlalchemy import Text, cast, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.models import AiUsage
+from app.assistant.models import ConversationState
 from app.core.serialize import row
 from app.domain.accounts.models import Account
 from app.domain.audit import AuditLog, audit
@@ -196,6 +197,7 @@ async def delete_account(session: AsyncSession, user: User) -> None:
     )
     await session.execute(delete(SignupInvite).where(SignupInvite.created_by == uid))
     await session.execute(delete(RefreshToken).where(RefreshToken.user_id == uid))
+    await session.execute(delete(ConversationState).where(ConversationState.user_id == uid))
     await session.execute(delete(ChannelLink).where(ChannelLink.user_id == uid))
     await session.execute(delete(InboundMessage).where(InboundMessage.user_id == uid))
     await session.execute(delete(User).where(User.id == uid))

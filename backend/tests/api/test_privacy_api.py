@@ -460,3 +460,20 @@ async def test_delete_account_removes_category_rules_and_ai_usage(client, sessio
     assert (await _delete(client, ana)).status_code == 204
     assert await session.scalar(select(func.count()).select_from(CategoryRule)) == 0
     assert await session.scalar(select(func.count()).select_from(AiUsage)) == 0
+
+
+async def test_delete_account_removes_conversation_state(client, session):
+    from datetime import UTC, datetime, timedelta
+
+    from app.assistant.models import ConversationState
+
+    ana = await make_user(session, "ana@x.com")
+    session.add(
+        ConversationState(
+            user_id=ana.id, channel="telegram", kind="amount", data={},
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )  # fmt: skip
+    await session.commit()
+    assert (await _delete(client, ana)).status_code == 204
+    assert await session.scalar(select(func.count()).select_from(ConversationState)) == 0
