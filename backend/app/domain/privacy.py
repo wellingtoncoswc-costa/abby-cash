@@ -4,7 +4,7 @@ import json
 import zipfile
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import Text, cast, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.serialize import row
@@ -92,6 +92,15 @@ async def export_user_data(session: AsyncSession, user: User) -> bytes:
         z.writestr("data.json", json.dumps(data, default=str, ensure_ascii=False, indent=2))
         z.writestr("transactions.csv", buf.getvalue())
     return out.getvalue()
+
+
+def _without(v: Any, needle: str) -> Any:
+    """Remove (recursivamente) chaves cujo valor é `needle`; listas perdem o elemento."""
+    if isinstance(v, dict):
+        return {k: _without(x, needle) for k, x in v.items() if x != needle}
+    if isinstance(v, list):
+        return [_without(x, needle) for x in v if x != needle]
+    return v
 
 
 async def _purge_space(session: AsyncSession, space_id: Any) -> None:
@@ -184,8 +193,15 @@ async def delete_account(session: AsyncSession, user: User) -> None:
     await session.execute(delete(SignupInvite).where(SignupInvite.created_by == uid))
     await session.execute(delete(RefreshToken).where(RefreshToken.user_id == uid))
     await session.execute(delete(User).where(User.id == uid))
-    # Decisão: actor_id é nullable, então as linhas de auditoria do usuário são anonimizadas
-    # (actor_id -> NULL); a ação e o entity_id (UUID pseudônimo, sem dados pessoais) ficam.
+    # LGPD: o UUID do titular some de TODA a trilha (actor_id, entity_id e valores em `data`);
+    # as linhas ficam como registro de que a ação ocorreu, sem identificar ninguém.
     await session.execute(update(AuditLog).where(AuditLog.actor_id == uid).values(actor_id=None))
-    audit(session, None, "privacy.delete_account", "user", uid)  # só o UUID, sem dados
+    await session.execute(update(AuditLog).where(AuditLog.entity_id == uid).values(entity_id=None))
+    needle = str(uid)
+    leaky = await session.scalars(
+        select(AuditLog).where(cast(AuditLog.data, Text).contains(needle))
+    )
+    for r in leaky:
+        r.data = _without(r.data, needle)
+    audit(session, None, "privacy.delete_account", "user", None)  # nem o UUID: só o fato
     await session.commit()

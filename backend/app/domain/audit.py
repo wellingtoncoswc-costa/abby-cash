@@ -17,13 +17,13 @@ class AuditLog(Base):
     actor_id: Mapped[UUID | None] = mapped_column(index=True)  # sem FK: sobrevive à exclusão
     action: Mapped[str] = mapped_column(String(64))
     entity: Mapped[str] = mapped_column(String(64))
-    entity_id: Mapped[UUID] = mapped_column(index=True)
+    entity_id: Mapped[UUID | None] = mapped_column(index=True)  # NULL: titular anonimizado
     data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)  # sem dados sensíveis
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 def audit(
-    session: AsyncSession, actor_id: UUID | None, action: str, entity: str, entity_id: UUID,
+    session: AsyncSession, actor_id: UUID | None, action: str, entity: str, entity_id: UUID | None,
     data: dict[str, Any] | None = None,
 ) -> None:  # fmt: skip
     """Só adiciona à sessão: grava junto com o commit do serviço que chamou."""

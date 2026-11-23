@@ -227,9 +227,49 @@ async def test_delete_revokes_tokens_and_audits_without_secrets(client, session)
     session.expire_all()
     assert await session.scalar(select(func.count()).select_from(RefreshToken)) == 0
     assert (await client.get("/spaces", headers=ha)).status_code == 401
-    log = (await session.scalars(select(AuditLog).where(AuditLog.entity_id == a_id))).all()
-    assert [r.action for r in log] == ["privacy.delete_account"]
-    assert log[0].actor_id is None and log[0].data == {} and PWD not in str(log[0].data)
+    log = (
+        await session.scalars(select(AuditLog).where(AuditLog.action == "privacy.delete_account"))
+    ).all()
+    assert len(log) == 1
+    assert log[0].actor_id is None and log[0].entity_id is None and log[0].data == {}
+    assert PWD not in str(log[0].data)
+    assert (
+        await session.scalar(
+            select(func.count()).select_from(AuditLog).where(AuditLog.entity_id == a_id)
+        )
+        == 0
+    )
+
+
+async def test_delete_scrubs_user_uuid_from_all_audit_columns(client, session):
+    from sqlalchemy import Text, cast
+
+    from app.domain.audit import AuditLog, audit
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    a_id, b_id = a.id, b.id
+    audit(
+        session, b_id, "x.by_other", "space", b.default_space_id, {"user_id": str(a_id), "keep": 1}
+    )
+    audit(session, a_id, "x.on_user", "user", a_id, {"nested": {"u": str(a_id)}, "n": 2})
+    await session.commit()
+    assert (await client.get("/privacy/export", headers=auth(a))).status_code == 200
+    assert (await _delete(client, a)).status_code == 204
+    session.expire_all()
+    rows = (await session.scalars(select(AuditLog))).all()
+    assert rows
+    for r in rows:
+        assert str(a_id) not in f"{r.actor_id}{r.entity_id}{r.data}"
+    other = (await session.scalars(select(AuditLog).where(AuditLog.action == "x.by_other"))).one()
+    assert other.data == {"keep": 1}
+    assert (
+        await session.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(cast(AuditLog.data, Text).contains(str(a_id)))
+        )
+        == 0
+    )
 
 
 async def test_delete_password_limit_is_per_user_not_per_ip(session):
