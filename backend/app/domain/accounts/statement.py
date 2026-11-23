@@ -36,6 +36,7 @@ async def build_statement(
     session: AsyncSession, viewer_id: UUID, rows: Sequence[tuple[Transaction, int]]
 ) -> Statement:
     """Itens de espaços do visualizador viram itens; o resto é só somado."""
+    # intencional: TODOS os espaços do visualizador (spec 14.1), não só o do lançamento
     mine = set(
         await session.scalars(select(SpaceMember.space_id).where(SpaceMember.user_id == viewer_id))
     )

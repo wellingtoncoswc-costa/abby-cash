@@ -180,3 +180,14 @@ async def test_statement_over_http_aggregates_private(client, session):
     assert len(full["items"]) == 2 and full["private_total_cents"] == 0
     stranger = await make_user(session, "z@x.com")
     assert (await client.get(url, headers=auth(stranger))).status_code == 404
+
+
+async def test_statement_range_validation(client, session):
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id)
+    base = f"/accounts/{acc.id}/statement"
+    ok = await client.get(f"{base}?start=2026-01-01&end=2027-01-02", headers=auth(a))  # 366 dias
+    assert ok.status_code == 200
+    for q in ("start=2026-11-30&end=2026-11-01", "start=2026-01-01&end=2027-01-03"):
+        r = await client.get(f"{base}?{q}", headers=auth(a))
+        assert r.status_code == 422, q

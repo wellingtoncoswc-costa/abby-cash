@@ -14,6 +14,7 @@ from app.domain.accounts.access import visible_account
 from app.domain.accounts.models import Account
 from app.domain.accounts.service import create_account, set_default_account
 from app.domain.accounts.statement import account_statement
+from app.domain.errors import DomainError
 from app.domain.spaces.models import SpaceMember
 from app.domain.transactions.service import account_balance
 
@@ -72,4 +73,6 @@ async def default_account(
 async def statement(
     account_id: UUID, start: date, end: date, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
+    if not 0 <= (end - start).days <= 366:
+        raise DomainError("invalid_date_range")
     return asdict(await account_statement(session, user.id, account_id, start, end))
