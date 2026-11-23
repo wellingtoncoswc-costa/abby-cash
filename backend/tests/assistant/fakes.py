@@ -1,8 +1,13 @@
+from typing import Any
+
+from pydantic import PrivateAttr
 from starlette.requests import Request
 
 from app.assistant.context import SpaceContext
 from app.assistant.intents import ParsedIntent
 from app.channels.base import InboundMessage
+from app.channels.telegram import TelegramAdapter
+from app.core.text import fold
 
 
 class FakeAdapter:
@@ -17,13 +22,31 @@ class FakeAdapter:
         return True
 
     async def parse_webhook(self, request: Request) -> list[InboundMessage]:
-        return []
+        parsed = TelegramAdapter("T", "s").parse_update(await request.json())
+        return [parsed] if parsed else []
 
     async def send_text(self, external_user_id: str, text: str) -> None:
         self.sent.append((external_user_id, text))
 
     async def download_media(self, media_ref: str) -> tuple[bytes, str]:
         return b"", "application/octet-stream"
+
+
+class FakeIntent(ParsedIntent):
+    """ParsedIntent que aceita o NOME da categoria nos testes; o parser falso o converte no nº
+    da lista do prompt (como o modelo real faz)."""
+
+    _cat: str | None = PrivateAttr(default=None)
+
+
+def intent(kind: Any, category_name: str | None = None, **fields: Any) -> FakeIntent:
+    out = FakeIntent.of(kind, **fields)
+    out._cat = category_name
+    return out
+
+
+def expense(amount: int | None, category_name: str | None = None, **fields: Any) -> FakeIntent:
+    return intent("lancar_despesa", category_name, amount_cents=amount, **fields)
 
 
 class FakeParser:
@@ -33,9 +56,21 @@ class FakeParser:
         self._results = list(results)
         self.calls: list[tuple[str, SpaceContext]] = []
 
+    def add(self, *results: "ParsedIntent | Exception") -> None:
+        self._results.extend(results)
+
     async def parse(self, text: str, ctx: SpaceContext) -> ParsedIntent:
         self.calls.append((text, ctx))
         result = self._results.pop(0)
         if isinstance(result, Exception):
             raise result
+        name = getattr(result, "_cat", None)
+        if name is not None:
+            kind = "income" if result.intent == "lancar_receita" else "expense"
+            idx = next(
+                i
+                for i, c in enumerate(ctx.categories, 1)
+                if c.kind == kind and fold(c.name) == fold(name)
+            )
+            result = result.model_copy(update={"category_index": idx})
         return result
