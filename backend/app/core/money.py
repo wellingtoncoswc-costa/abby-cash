@@ -12,7 +12,10 @@ def parse_brl(text: str) -> int | None:
     if not _CHARS.match(s):  # só dígitos, '.' e ','; rejeita 1e30, 1_000, nan, sinal
         return None
     if "," in s:
-        s = s.replace(".", "").replace(",", ".")
+        whole, _, frac = s.partition(",")
+        if not (_THOUSANDS.match(whole) or whole.isdigit()) or not re.fullmatch(r"\d{0,2}", frac):
+            return None
+        s = f"{whole.replace('.', '')}.{frac}"
     elif _THOUSANDS.match(s):
         s = s.replace(".", "")
     try:
@@ -21,7 +24,10 @@ def parse_brl(text: str) -> int | None:
         return None
     if not value.is_finite():  # "nan"/"inf" parse as Decimal
         return None
-    cents = int((value * 100).to_integral_value())
+    scaled = value * 100
+    if scaled != scaled.to_integral_value():  # sem arredondamento silencioso
+        return None
+    cents = int(scaled)
     return cents if 0 < cents <= MAX_CENTS else None
 
 

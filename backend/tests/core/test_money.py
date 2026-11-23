@@ -39,6 +39,12 @@ def test_parse_brl_valid(text, cents):
         "1_000",
         "2000000000",
         "1.000.000.000,01",
+        "1,000.50",
+        "1.2,5",
+        "12.5,00",
+        "1.000,5.0",
+        "0,025",
+        "1234.567",
     ],
 )
 def test_parse_brl_rejects_non_positive_or_garbage(text):
