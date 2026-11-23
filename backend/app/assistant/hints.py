@@ -43,7 +43,7 @@ def resolve_date(text: str, today: date) -> date | None:
             return None
         if m.group(3):
             year = int(m.group(3)) + (2000 if len(m.group(3)) == 2 else 0)
-            return clamp_day(year, month, day)
+            return clamp_day(year, month, day) if 2000 <= year <= 2100 else None
         found = clamp_day(today.year, month, day)
         return found if found <= today else clamp_day(today.year - 1, month, day)
     if m := _DAY_OF_MONTH.search(s):  # "5 de outubro", "dia 25 de dezembro"

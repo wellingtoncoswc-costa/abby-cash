@@ -118,3 +118,14 @@ def test_adversarial_input_is_bounded_and_fast():
         assert h.amount_cents is None or 0 < h.amount_cents <= MAX_CENTS
         assert h.occurred_on is None or h.occurred_on.year > 1
     assert time.monotonic() - start < 2
+
+
+@pytest.mark.parametrize("text", ["gastei 50 em 1/1/0000", "gastei 50 em 1/1/1999", "5/5/9999"])
+def test_out_of_range_year_is_not_a_date_and_never_raises(text):
+    assert resolve_date(text, TODAY) is None
+    assert extract_hints(text, TODAY).occurred_on is None
+
+
+def test_impossible_day_does_not_raise():
+    assert resolve_date("gastei 50 em 31/02", TODAY) == date(2026, 2, 28)
+    assert resolve_date("gastei 50 em 32/01", TODAY) is None
