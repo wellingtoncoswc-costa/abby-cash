@@ -23,10 +23,11 @@ async def pay_bill(
     """Quita (ou paga parte de) uma conta a pagar: despesa na conta de origem, que é obrigatória."""
     if account_id is None:
         raise DomainError("source_account_required")
-    bill = await session.get(Bill, bill_id, with_for_update=True, populate_existing=True)
+    bill = await session.get(Bill, bill_id)
     if bill is None:
         raise HTTPException(status_code=404, detail="not_found")
-    await require_member(session, actor_id, bill.space_id)
+    await require_member(session, actor_id, bill.space_id)  # antes do lock: não-membro não trava
+    await session.refresh(bill, with_for_update=True)
     if bill.kind != "manual":
         raise DomainError("use_pay_invoice")
     await use_account(session, actor_id, account_id)

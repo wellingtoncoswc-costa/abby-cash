@@ -336,3 +336,26 @@ async def test_family_bill_paid_from_personal_account_stays_in_family_space(sess
     with pytest.raises(HTTPException) as e:
         await visible_account(session, h.id, mine.id)
     assert e.value.status_code == 404
+
+
+async def test_non_member_pay_bill_404_does_not_hold_bill_lock(session):
+    import asyncio
+
+    from app.core.db import SessionLocal
+
+    a, x = await make_user(session, "a@x.com"), await make_user(session, "x@x.com")
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    acc_x = await make_account(session, x.default_space_id)
+    bill = await _bill(session, a)
+    async with SessionLocal() as outsider:  # mantém a transação aberta após o 404
+        with pytest.raises(HTTPException) as e:
+            await pay_bill(
+                outsider, actor_id=x.id, bill_id=bill.id, account_id=acc_x.id, paid_on=DUE
+            )
+        assert e.value.status_code == 404
+        async with SessionLocal() as legit:
+            tx = await asyncio.wait_for(
+                pay_bill(legit, actor_id=a.id, bill_id=bill.id, account_id=acc.id, paid_on=DUE),
+                5,
+            )
+        assert tx.amount_cents == 12_000
