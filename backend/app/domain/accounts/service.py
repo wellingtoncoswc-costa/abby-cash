@@ -44,4 +44,6 @@ async def set_default_account(
     member = await require_member(session, actor_id, space_id)
     await use_account(session, actor_id, account_id)  # pode ser conta de outro espaço seu
     member.default_account_id = account_id
+    audit(session, actor_id, "account.set_default", "account", account_id,
+          {"space_id": str(space_id)})  # fmt: skip
     await session.commit()

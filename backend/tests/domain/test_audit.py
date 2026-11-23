@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy import select
 
-from app.domain.accounts.service import create_account
+from app.domain.accounts.service import create_account, set_default_account
 from app.domain.audit import AuditLog, audit
 from app.domain.bills.service import create_bill
 from app.domain.budgets.service import set_budget
@@ -19,7 +19,7 @@ async def test_audit_helper_adds_a_row(session):
     a = await make_user(session, "a@x.com")
     audit(session, a.id, "x.did", "thing", a.id, {"k": 1})
     await session.commit()
-    row = await session.scalar(select(AuditLog))
+    row = await session.scalar(select(AuditLog).where(AuditLog.action == "x.did"))
     assert (row.actor_id, row.action, row.entity, row.entity_id) == (a.id, "x.did", "thing", a.id)
     assert row.data == {"k": 1} and row.created_at is not None
 
@@ -57,12 +57,47 @@ async def test_services_write_audit_rows(session):
     await withdraw(
         session, actor_id=a.id, goal_id=goal.id, to_account_id=acc.id, amount_cents=100, on=D
     )  # fmt: skip
-    rows = (await session.scalars(select(AuditLog))).all()
+    rows = (await session.scalars(select(AuditLog).where(AuditLog.actor_id == a.id))).all()
     assert {r.action for r in rows} >= {
         "account.create", "transaction.create", "card.create", "card.purchase", "bill.create",
         "bill.pay", "invoice.pay", "budget.set", "goal.create", "goal.contribute",
         "goal.withdraw",
     }  # fmt: skip
-    assert all(r.actor_id == a.id for r in rows)
     created = next(r for r in rows if r.action == "transaction.create")
     assert created.entity_id == tx.id and created.data["amount_cents"] == 1_000
+
+
+async def test_space_and_account_changes_are_audited_without_secrets(session):
+    from app.domain.spaces.service import (
+        accept_space_invite,
+        create_family_space,
+        create_space_invite,
+        remove_member,
+    )
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    rows = (
+        await session.scalars(select(AuditLog).where(AuditLog.action == "account.create"))
+    ).all()
+    assert len(rows) == 4  # Carteira de cada usuário e do admin de cada um (provision_user)
+    fam = await create_family_space(session, owner_id=a.id, name="Casa")
+    inv = await create_space_invite(session, space_id=fam.id, created_by=a.id)
+    token = inv.token
+    await accept_space_invite(session, token=token, user_id=b.id)
+    acc = await create_account(
+        session, actor_id=a.id, space_id=fam.id, type="checking", name="Conj"
+    )
+    await set_default_account(session, actor_id=a.id, space_id=fam.id, account_id=acc.id)
+    await remove_member(session, actor_id=a.id, space_id=fam.id, user_id=b.id)
+    log = (await session.scalars(select(AuditLog))).all()
+    by = {}
+    for r in log:
+        by.setdefault(r.action, []).append(r)
+    for action in (
+        "space.create_family", "space.invite", "space.accept_invite", "account.set_default",
+        "space.remove_member",
+    ):  # fmt: skip
+        assert len(by[action]) == 1, action
+    assert by["space.accept_invite"][0].actor_id == b.id
+    assert by["space.remove_member"][0].data == {"user_id": str(b.id)}
+    assert token not in str([r.data for r in log]) + str([r.entity_id for r in log])
