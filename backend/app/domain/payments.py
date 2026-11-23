@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.access import use_account
+from app.domain.audit import audit
 from app.domain.bills.models import Bill
 from app.domain.bills.status import bill_paid_cents, refresh_status
 from app.domain.cards.service import invoice_remaining, visible_invoice
@@ -45,6 +46,14 @@ async def pay_bill(
     session.add(tx)
     await session.flush()
     await refresh_status(session, bill)
+    audit(
+        session,
+        actor_id,
+        "bill.pay",
+        "bill",
+        bill.id,
+        {"transaction_id": str(tx.id), "account_id": str(account_id), "amount_cents": amount},
+    )
     await session.commit()
     return tx
 
@@ -79,5 +88,13 @@ async def pay_invoice(
     session.add(tx)
     await session.flush()
     await refresh_status(session, bill)
+    audit(
+        session,
+        actor_id,
+        "invoice.pay",
+        "invoice",
+        inv.id,
+        {"transaction_id": str(tx.id), "account_id": str(acc.id), "amount_cents": amount_cents},
+    )
     await session.commit()
     return tx

@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.audit import audit
 from app.domain.bills.models import Bill
 from app.domain.bills.recurrence import Recurrence
 from app.domain.errors import DomainError
@@ -30,6 +31,15 @@ async def create_bill(
         recurrence_rule=recurrence.to_json() if recurrence else None,
     )  # fmt: skip
     session.add(bill)
+    await session.flush()
+    audit(
+        session,
+        actor_id,
+        "bill.create",
+        "bill",
+        bill.id,
+        {"space_id": str(space_id), "amount_cents": amount_cents},
+    )
     await session.commit()
     return bill
 

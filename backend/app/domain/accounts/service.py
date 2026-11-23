@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.money import MAX_CENTS
 from app.domain.accounts.access import use_account
 from app.domain.accounts.models import Account
+from app.domain.audit import audit
 from app.domain.errors import DomainError
 from app.domain.spaces.access import require_member
 
@@ -24,6 +25,15 @@ async def create_account(
         space_id=space_id, type=type, name=name, initial_balance_cents=initial_balance_cents
     )
     session.add(acc)
+    await session.flush()
+    audit(
+        session,
+        actor_id,
+        "account.create",
+        "account",
+        acc.id,
+        {"space_id": str(space_id), "type": type},
+    )
     await session.commit()
     return acc
 

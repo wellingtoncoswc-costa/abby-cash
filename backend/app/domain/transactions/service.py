@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.access import use_account
 from app.domain.accounts.models import Account
+from app.domain.audit import audit
 from app.domain.errors import DomainError
 from app.domain.spaces.access import require_member
 from app.domain.transactions.models import Transaction
@@ -66,6 +67,15 @@ async def create_transaction(
         origin=origin, source_message_id=source_message_id, attachment_id=attachment_id,
     )  # fmt: skip
     session.add(tx)
+    await session.flush()
+    audit(
+        session,
+        actor_id,
+        "transaction.create",
+        "transaction",
+        tx.id,
+        {"space_id": str(space_id), "type": type, "amount_cents": amount_cents},
+    )
     await session.commit()
     return tx
 

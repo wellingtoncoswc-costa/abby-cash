@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dates import add_months
+from app.domain.audit import audit
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import Invoice
 from app.domain.spaces.access import require_member
@@ -96,6 +97,14 @@ async def set_budget(
     await session.execute(delete(BudgetCategory).where(BudgetCategory.budget_id == budget.id))
     for cid, limit in (categories or {}).items():
         session.add(BudgetCategory(budget_id=budget.id, category_id=cid, limit_cents=limit))
+    audit(
+        session,
+        actor_id,
+        "budget.set",
+        "budget",
+        budget.id,
+        {"space_id": str(space_id), "month": start.isoformat(), "limit_cents": limit_cents},
+    )
     await session.commit()
     return budget
 

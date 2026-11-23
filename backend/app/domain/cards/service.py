@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dates import add_months
 from app.domain.accounts.access import use_account
 from app.domain.accounts.statement import Statement, build_statement
+from app.domain.audit import audit
 from app.domain.bills.models import Bill
 from app.domain.bills.status import invoice_paid, refresh_status
 from app.domain.cards.billing import (
@@ -43,6 +44,8 @@ async def create_card(
         limit_cents=limit_cents, payment_account_id=payment_account_id,
     )  # fmt: skip
     session.add(card)
+    await session.flush()
+    audit(session, actor_id, "card.create", "card", card.id, {"space_id": str(space_id)})
     await session.commit()
     return card
 
@@ -178,6 +181,14 @@ async def register_card_purchase(
     await session.flush()
     for inv in invoices.values():
         await sync_invoice_bill(session, inv)
+    audit(
+        session,
+        actor_id,
+        "card.purchase",
+        "card",
+        card.id,
+        {"space_id": str(space_id), "amount_cents": amount_cents, "installments": installments},
+    )
     await session.commit()
     return txs
 

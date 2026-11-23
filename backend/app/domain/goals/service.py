@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.dates import local_today
 from app.domain.accounts.access import use_account
+from app.domain.audit import audit
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
 from app.domain.spaces.access import require_member
@@ -37,6 +38,15 @@ async def create_goal(
         account_id=account_id, created_on=created_on,
     )  # fmt: skip
     session.add(goal)
+    await session.flush()
+    audit(
+        session,
+        actor_id,
+        "goal.create",
+        "goal",
+        goal.id,
+        {"space_id": str(space_id), "target_cents": target_cents},
+    )
     await session.commit()
     return goal
 
@@ -75,6 +85,15 @@ async def contribute(
         created_by=actor_id, origin="web",
     )  # fmt: skip
     session.add(tx)
+    await session.flush()
+    audit(
+        session,
+        actor_id,
+        "goal.contribute",
+        "goal",
+        goal.id,
+        {"transaction_id": str(tx.id), "amount_cents": amount_cents},
+    )
     await session.commit()
     return tx
 
@@ -97,6 +116,15 @@ async def withdraw(
         goal_id=goal.id, created_by=actor_id, origin="web",
     )  # fmt: skip
     session.add(tx)
+    await session.flush()
+    audit(
+        session,
+        actor_id,
+        "goal.withdraw",
+        "goal",
+        goal.id,
+        {"transaction_id": str(tx.id), "amount_cents": amount_cents},
+    )
     await session.commit()
     return tx
 
