@@ -28,7 +28,7 @@ class SpaceMember(Base):
     __tablename__ = "space_members"
 
     space_id: Mapped[UUID] = mapped_column(ForeignKey("spaces.id"), primary_key=True)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
     role: Mapped[str] = mapped_column(String(16))  # owner | member
     default_account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"))
 
