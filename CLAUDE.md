@@ -30,3 +30,17 @@ Prod: `docker compose --env-file .env -f infra/docker-compose.prod.yml up -d` (o
 - Modelo de IA via env `AI_MODEL` (padrão `gpt-4.1`, provedor OpenAI); STT via env `STT_MODEL` (padrão `small`).
 - Não alterar nem derrubar o `abby-chat` no servidor compartilhado.
 - Commits pequenos, mensagens em inglês no formato Conventional Commits.
+
+## Domínio financeiro (M2)
+- Funções de domínio recebem `session` primeiro e sempre passam por `require_member`/`use_account`/`use_card`; erros viram `DomainError` (422) ou 404/403.
+- Teto: compra no cartão conta pelo mês de **vencimento** da fatura; pagamento de fatura e aporte de meta são transferências e não contam.
+- Pagamento (conta ou fatura) exige conta de origem e gera lançamento; extrato compartilhado agrega itens de outros espaços em `private_total_cents`.
+- Migrações: `bash backend/scripts/migrate_check.sh` (upgrade head + alembic check em banco descartável).
+
+## Assistente no chat (M3)
+- Telegram: webhook `POST /webhooks/telegram` (segredo no header) ou `python -m app.cli telegram-poll` em dev; `telegram-set-webhook` em produção.
+- Fluxo: `ingest` (idempotente) → job `process_inbound` (lock por remetente) → atalhos ou `OpenAIIntentParser` (`AI_MODEL`, saída estruturada; a categoria vem por **índice**) → domínio → resposta.
+- O modelo só dá dicas: espaço, conta e categoria são resolvidos a partir das entidades do próprio remetente; texto digitado vence o valor do modelo (com aviso).
+- Vínculo: código de 6 dígitos (10 min, 1 vivo por usuário, limites por remetente e global). `docs/api_keys/` e `.env` nunca vão para o git.
+- Avaliação real do modelo (manual, gasta API): `cd backend && uv run python scripts/run_eval.py`.
+- `purge-inbound` apaga mensagens antigas; o texto é zerado quando a mensagem termina.
