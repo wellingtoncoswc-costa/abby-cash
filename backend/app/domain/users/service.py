@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -27,8 +28,11 @@ def _norm(email: str) -> str:
 
 
 async def create_admin(session: AsyncSession, *, email: str, name: str, password: str) -> User:
-    user = User(email=_norm(email), name=name, password_hash=hash_password(password), is_admin=True)
+    pw_hash = await asyncio.to_thread(hash_password, password)
+    user = User(email=_norm(email), name=name, password_hash=pw_hash, is_admin=True)
     session.add(user)
+    await session.flush()
+    await provision_user(session, user)
     await session.commit()
     return user
 
@@ -49,7 +53,7 @@ async def create_signup_invite(
 async def register_user(
     session: AsyncSession, *, email: str, name: str, password: str, invite_code: str
 ) -> User:
-    pw_hash = hash_password(password)  # antes de tudo: todos os caminhos custam o mesmo
+    pw_hash = await asyncio.to_thread(hash_password, password)  # antes de tudo (mesmo custo)
     # FOR UPDATE serializa o consumo: duas requisições com o mesmo código não passam juntas
     inv = (
         await session.execute(
@@ -88,7 +92,9 @@ async def authenticate(session: AsyncSession, email: str, password: str, totp: s
     user = (
         await session.execute(select(User).where(User.email == _norm(email)))
     ).scalar_one_or_none()
-    ok = verify_password(password, user.password_hash if user else _DUMMY_HASH)
+    ok = await asyncio.to_thread(
+        verify_password, password, user.password_hash if user else _DUMMY_HASH
+    )
     if user is None or not ok:
         raise AuthError("invalid_credentials")
     if user.totp_enabled:

@@ -115,3 +115,10 @@ async def test_remove_member_resets_default_space_to_personal(session):
     await remove_member(session, actor_id=a.id, space_id=fam.id, user_id=b.id)
     await session.refresh(b)
     assert b.default_space_id == personal
+
+
+async def test_create_admin_is_provisioned(session):
+    adm = await create_admin(session, email="adm@x.com", name="Adm", password=PWD)
+    assert adm.default_space_id is not None
+    wallet = await session.scalar(select(Account).where(Account.space_id == adm.default_space_id))
+    assert wallet is not None and wallet.type == "wallet"
