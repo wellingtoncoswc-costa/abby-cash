@@ -233,17 +233,27 @@ async def test_concurrent_first_set_budget_is_race_safe(session):
     from sqlalchemy import func, select
 
     from app.core.db import SessionLocal
-    from app.domain.budgets.models import Budget
+    from app.domain.budgets.models import Budget, BudgetCategory
 
     a = await make_user(session, "a@x.com")
     sp = a.default_space_id
 
+    mercado, lazer = await category_id(session, sp), await category_id(session, sp, "Lazer")
+    sets = [None, {mercado: 100}, {lazer: 200}, {mercado: 300, lazer: 400}, None]
+
     async def run(i):
         async with SessionLocal() as s:
-            return await set_budget(s, actor_id=a.id, space_id=sp, month=NOV, limit_cents=1_000 + i)
+            return await set_budget(
+                s, actor_id=a.id, space_id=sp, month=NOV, limit_cents=1_000 + i, categories=sets[i]
+            )
 
     await asyncio.gather(*[run(i) for i in range(5)])
     assert await session.scalar(select(func.count()).select_from(Budget)) == 1
+    rows = (
+        await session.execute(select(BudgetCategory.category_id, BudgetCategory.limit_cents))
+    ).all()
+    assert len(rows) == len({r[0] for r in rows})
+    assert {r[0]: r[1] for r in rows} in [s or {} for s in sets]  # um conjunto consistente
 
 
 async def test_goal_contribution_not_counted(session):
