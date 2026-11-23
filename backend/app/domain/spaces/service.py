@@ -1,0 +1,114 @@
+import secrets
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import delete, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.domain.accounts.models import Account
+from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
+from app.domain.categories.models import Category
+from app.domain.spaces.access import require_member
+from app.domain.spaces.models import Space, SpaceInvite, SpaceMember
+from app.domain.users.models import User
+
+INVITE_DAYS = 7
+
+
+async def provision_user(session: AsyncSession, user: User) -> None:
+    """Espaço pessoal + categorias + Carteira + membership. Só flush: quem chama commita."""
+    space = Space(type="personal", name="Pessoal", owner_id=user.id)
+    session.add(space)
+    await session.flush()
+    wallet = Account(space_id=space.id, type="wallet", name="Carteira")
+    session.add(wallet)
+    session.add_all(
+        [Category(space_id=space.id, kind="expense", name=n) for n in DEFAULT_EXPENSE]
+        + [Category(space_id=space.id, kind="income", name=n) for n in DEFAULT_INCOME]
+    )
+    await session.flush()
+    session.add(
+        SpaceMember(space_id=space.id, user_id=user.id, role="owner", default_account_id=wallet.id)
+    )
+    user.default_space_id = space.id
+    await session.flush()
+
+
+async def create_family_space(session: AsyncSession, *, owner_id: UUID, name: str) -> Space:
+    space = Space(type="family", name=name, owner_id=owner_id)
+    session.add(space)
+    try:
+        # o índice único parcial é a garantia real (cobre corrida); sem checagem prévia
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        raise ValueError("family_space_exists") from None
+    session.add(SpaceMember(space_id=space.id, user_id=owner_id, role="owner"))
+    await session.commit()
+    return space
+
+
+async def _require_owner(session: AsyncSession, user_id: UUID, space_id: UUID) -> None:
+    if (await require_member(session, user_id, space_id)).role != "owner":
+        raise HTTPException(status_code=403, detail="owner_only")
+
+
+async def create_space_invite(
+    session: AsyncSession, *, space_id: UUID, created_by: UUID
+) -> SpaceInvite:
+    await _require_owner(session, created_by, space_id)
+    space = await session.get(Space, space_id)
+    if space is None or space.type != "family":
+        raise HTTPException(status_code=404, detail="not_found")
+    inv = SpaceInvite(
+        space_id=space_id,
+        token=secrets.token_urlsafe(24),
+        created_by=created_by,
+        expires_at=datetime.now(UTC) + timedelta(days=INVITE_DAYS),
+    )
+    session.add(inv)
+    await session.commit()
+    return inv
+
+
+async def accept_space_invite(session: AsyncSession, *, token: str, user_id: UUID) -> UUID:
+    # UPDATE condicional é atômico: só uma requisição consome o token
+    space_id = (
+        await session.execute(
+            update(SpaceInvite)
+            .where(
+                SpaceInvite.token == token,
+                SpaceInvite.used_at.is_(None),
+                SpaceInvite.expires_at > datetime.now(UTC),
+            )
+            .values(used_at=datetime.now(UTC))
+            .returning(SpaceInvite.space_id)
+        )
+    ).scalar_one_or_none()
+    if space_id is None:
+        await session.rollback()
+        raise ValueError("invalid_invite")
+    try:
+        session.add(SpaceMember(space_id=space_id, user_id=user_id, role="member"))
+        await session.commit()
+    except IntegrityError:  # já é membro: não consome o convite
+        await session.rollback()
+        raise ValueError("invalid_invite") from None
+    return space_id
+
+
+async def remove_member(
+    session: AsyncSession, *, actor_id: UUID, space_id: UUID, user_id: UUID
+) -> None:
+    await _require_owner(session, actor_id, space_id)
+    space = await session.get(Space, space_id)
+    if space is None or user_id == space.owner_id:
+        raise ValueError("cannot_remove_owner")
+    res = await session.execute(
+        delete(SpaceMember).where(SpaceMember.space_id == space_id, SpaceMember.user_id == user_id)
+    )
+    await session.commit()
+    if res.rowcount == 0:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=404, detail="not_found")

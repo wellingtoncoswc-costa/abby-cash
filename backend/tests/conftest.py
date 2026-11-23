@@ -2,7 +2,9 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
-# import app.domain.spaces.models  # noqa: F401  (habilitar na Task 4)
+import app.domain.accounts.models  # noqa: F401
+import app.domain.categories.models  # noqa: F401
+import app.domain.spaces.models  # noqa: F401
 import app.domain.users.models  # noqa: F401
 from app.core.db import Base, SessionLocal, engine
 from app.core.redis import redis
@@ -12,7 +14,9 @@ from app.main import app
 @pytest.fixture(scope="session", autouse=True)
 async def _schema():
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # schema inteiro: drop_all falha se o banco tem FK use_alter de um estado antigo
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
     yield
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import redis
 from app.core.security import hash_password, hash_token, new_opaque_token, verify_password
+from app.domain.spaces.service import provision_user
 from app.domain.users.models import RefreshToken, SignupInvite, User
 
 REFRESH_DAYS = 30
@@ -63,6 +64,7 @@ async def register_user(
     try:
         await session.flush()
         inv.used_by, inv.used_at = user.id, datetime.now(UTC)
+        await provision_user(session, user)  # mesma transação: tudo ou nada
         await session.commit()
     except IntegrityError:  # corrida no mesmo e-mail (unique)
         await session.rollback()

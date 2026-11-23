@@ -19,7 +19,9 @@ class User(Base):
     totp_secret: Mapped[str | None] = mapped_column(String(64))
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     preferred_channel: Mapped[str | None] = mapped_column(String(32))
-    default_space_id: Mapped[UUID | None] = mapped_column()
+    default_space_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("spaces.id", use_alter=True, name="fk_users_default_space_id")
+    )
     reminder_time: Mapped[time] = mapped_column(Time, default=time(9, 0))
     weekly_digest: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
