@@ -11,7 +11,7 @@ services:
     ports: ["6379:6379"]
   api:
     build: ../backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://abby:abby@postgres:5432/abby
