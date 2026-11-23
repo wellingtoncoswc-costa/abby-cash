@@ -1,0 +1,31 @@
+name: abby-cash
+# Esqueleto: o M8 completa (proxy, volumes, backups). Sem portas públicas.
+services:
+  api:
+    build: ../backend
+    env_file: ../.env
+    networks: [abby-cash-net]
+    depends_on: [postgres, redis]
+    deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
+  worker:
+    build: ../backend
+    command: arq app.worker.WorkerSettings
+    env_file: ../.env
+    networks: [abby-cash-net]
+    depends_on: [postgres, redis]
+    deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
+  postgres:
+    image: postgres:16
+    env_file: ../.env
+    environment: {POSTGRES_USER: abby, POSTGRES_DB: abby}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [abby-cash-net]
+    deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
+  redis:
+    image: redis:7
+    networks: [abby-cash-net]
+    deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
+networks:
+  abby-cash-net:
+volumes:
+  pgdata:
