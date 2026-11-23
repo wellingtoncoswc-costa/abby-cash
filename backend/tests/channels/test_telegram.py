@@ -154,3 +154,12 @@ async def test_set_and_delete_webhook_payloads():
         ),
         ("deleteWebhook", {}),
     ]
+
+
+async def test_httpx_info_logs_never_contain_token(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    a = adapter(lambda r: httpx.Response(200, json={"ok": True, "result": []}))
+    await a.get_updates(None)
+    assert "T0KEN" not in caplog.text

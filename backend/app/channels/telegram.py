@@ -1,4 +1,5 @@
 import hmac
+import logging
 import os
 from datetime import UTC, datetime
 from typing import Any
@@ -8,6 +9,10 @@ from starlette.requests import Request
 
 from app.channels.base import InboundMessage
 from app.core.config import get_settings
+
+# httpx loga a URL completa em INFO, e a URL da Bot API contém o token
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 API = "https://api.telegram.org"
 _MIME = {
@@ -34,8 +39,26 @@ class TelegramAdapter:
         # sem segredo configurado nada passa; bytes: compare_digest recusa str não ASCII
         return bool(self._secret) and hmac.compare_digest(got.encode(), self._secret.encode())
 
-    def parse_update(self, update: dict[str, Any]) -> InboundMessage | None:
-        """Update da Bot API -> mensagem. Só conversa 1:1, de gente, com texto ou mídia."""
+    def parse_update(self, update: Any) -> InboundMessage | None:
+        """Update da Bot API -> mensagem. Só conversa 1:1, de gente, com texto ou mídia.
+
+        Payload malformado levanta `ValueError` (webhook -> 400; polling pula o update)."""
+        try:
+            return self._parse(update)
+        except (
+            KeyError,
+            TypeError,
+            AttributeError,
+            IndexError,
+            ValueError,
+            OverflowError,
+            OSError,
+        ):
+            raise ValueError("malformed telegram update") from None
+
+    def _parse(self, update: Any) -> InboundMessage | None:
+        if not isinstance(update, dict):
+            raise ValueError
         msg = update.get("message")
         if not msg or msg.get("chat", {}).get("type") != "private":
             return None
@@ -71,7 +94,10 @@ class TelegramAdapter:
             r.raise_for_status()
         except httpx.HTTPError as e:
             raise ChannelError(f"telegram {method} failed ({type(e).__name__})") from None
-        return r.json()["result"]
+        try:
+            return r.json()["result"]
+        except (KeyError, ValueError, TypeError):
+            raise ChannelError(f"telegram {method} bad response") from None
 
     async def send_text(self, external_user_id: str, text: str) -> None:
         await self._call("sendMessage", chat_id=int(external_user_id), text=text[:4096])
