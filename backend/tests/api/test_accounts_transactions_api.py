@@ -153,3 +153,30 @@ async def test_amount_upper_bound_is_422_over_http(client, session):
             headers=auth(a),
         )  # fmt: skip
         assert r.status_code == code, bal
+
+
+async def test_statement_over_http_aggregates_private(client, session):
+    from datetime import date
+
+    from app.domain.transactions.service import create_transaction
+
+    w, h = await make_user(session, "w@x.com"), await make_user(session, "h@x.com")
+    fam = await make_family(session, w, h)
+    acc = await make_account(session, fam.id, name="Conjunta")
+    items = ((fam.id, 10_000, "mercado"), (w.default_space_id, 4_000, "segredo"))
+    for space, amount, desc in items:
+        await create_transaction(
+            session, actor_id=w.id, space_id=space, type="expense", amount_cents=amount,
+            occurred_on=date(2026, 11, 10), description=desc, account_id=acc.id,
+        )  # fmt: skip
+    url = f"/accounts/{acc.id}/statement?start=2026-11-01&end=2026-11-30"
+    r = await client.get(url, headers=auth(h))
+    assert r.status_code == 200
+    body = r.json()
+    assert [i["description"] for i in body["items"]] == ["mercado"]
+    assert body["private_total_cents"] == -4_000 and body["total_cents"] == -14_000
+    assert "segredo" not in r.text
+    full = (await client.get(url, headers=auth(w))).json()
+    assert len(full["items"]) == 2 and full["private_total_cents"] == 0
+    stranger = await make_user(session, "z@x.com")
+    assert (await client.get(url, headers=auth(stranger))).status_code == 404
