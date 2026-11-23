@@ -406,3 +406,11 @@ async def test_delete_member_resyncs_family_invoice_mirror_bill(client, session)
     bill = await session.get(Bill, bill_id)
     assert bill.status == "open"
     assert bill.amount_cents == await invoice_total(session, inv_id) == 6_000
+
+
+async def test_correct_password_refused_by_domain_is_never_rate_limited(client, session):
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    await make_family(session, a, b)
+    for _ in range(32):  # > MAX_IP_FAILS: senha certa não conta nem por usuário nem por IP
+        assert (await _delete(client, a)).status_code == 422
+    assert (await _delete(client, a, "senha errada aqui")).status_code == 401  # falha ainda conta
