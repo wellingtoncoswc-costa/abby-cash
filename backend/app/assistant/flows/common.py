@@ -1,4 +1,3 @@
-
 from sqlalchemy import exists, select
 
 from app.assistant.state import set_state

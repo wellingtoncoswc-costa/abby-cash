@@ -21,6 +21,7 @@ from app.assistant.replies import (
     AI_DOWN,
     ALREADY,
     ALREADY_HANDLED,
+    BAD_DATE,
     HELP,
     MEDIA,
     NO_FAMILY,
@@ -36,6 +37,7 @@ from app.channels.registry import get_adapter
 from app.core.config import get_settings
 from app.core.dates import to_local_date
 from app.core.db import SessionLocal
+from app.core.money import format_brl
 from app.core.text import fold
 from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
@@ -62,6 +64,7 @@ FAILED = "Tive um problema ao processar sua mensagem. Tente de novo em instantes
 _CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?([0-9]{6})", re.ASCII | re.IGNORECASE)
 _LAUNCH = {"lancar_despesa", "lancar_receita", "lancar_parcelado"}
 _NEEDS_AMOUNT = _LAUNCH | {"corrigir", "pagar_conta", "nova_conta_a_pagar", "aporte_meta"}
+_WRITES = {"corrigir", "apagar", "pagar_conta", "nova_conta_a_pagar", "aporte_meta"}
 _INCOME_VERBS = re.compile(r"\s*(recebi|ganhei|entrou|caiu)\b")
 _LEADING_VERB = re.compile(r"^\s*(gastei|paguei|comprei|recebi|ganhei|foi|deu)\b\s*", re.I)
 
@@ -110,12 +113,13 @@ def merge_hints(p: ParsedIntent, h: Hints) -> ParsedIntent:
     exceto com parcelas (aí o total da mensagem manda: "3x de 500") ou se ele não achou nenhum.
     `private` do modelo é só dica: quem decide o espaço é a etiqueta do texto."""
     p.private = h.private
-    if p.intent in _NEEDS_AMOUNT and (
-        p.amount_cents is None or (h.installments and h.amount_cents is not None)
-    ):
-        p.amount_cents = h.amount_cents
+    if p.intent in _NEEDS_AMOUNT and h.amount_cents is not None:
+        # os dígitos digitados valem mais que o modelo, salvo se o valor dele aparece no texto
+        # ("uber 2 pessoas 23"); `interpret` avisa quando troca um valor do modelo
+        if p.amount_cents is None or h.installments or p.amount_cents not in h.amounts:
+            p.amount_cents = h.amount_cents
     if p.intent in _LAUNCH:
-        p.occurred_on = h.occurred_on or p.occurred_on
+        p.occurred_on = h.occurred_on or p.occurred_on or h.weekday_on
         p.installments = h.installments or p.installments
         many = (p.installments or 1) > 1
         if p.intent != "lancar_receita":
@@ -135,9 +139,9 @@ def fallback_launch(text: str, h: Hints) -> ParsedIntent | None:
         intent = "lancar_receita"
     elif h.installments:
         intent = "lancar_parcelado"
-    return ParsedIntent.of(
-        intent, amount_cents=h.amount_cents, description=description, occurred_on=h.occurred_on,
-        installments=h.installments,
+    return ParsedIntent.of(  # confiança 0.5: sem IA, pergunta "Posso lançar?" antes de gravar
+        intent, amount_cents=h.amount_cents, description=description, confidence=0.5,
+        occurred_on=h.occurred_on or h.weekday_on, installments=h.installments,
     )  # fmt: skip
 
 
@@ -150,6 +154,8 @@ async def target_space(t: Turn, h: Hints) -> tuple[UUID | None, str | None]:
             select(Space.id)
             .join(SpaceMember, SpaceMember.space_id == Space.id)
             .where(SpaceMember.user_id == t.user_id, Space.type == "family")
+            .order_by(Space.created_at, Space.id)  # v1: um espaço familiar por pessoa
+            .limit(1)
         )
         return (sid, None) if sid else (None, NO_FAMILY)
     if not h.private and t.default_space_id is not None:
@@ -241,7 +247,14 @@ async def interpret(
             raise RuntimeError("no parser configured")
         ctx = await t.context(space_id)
         timeout = get_settings().AI_TIMEOUT_S + 5
-        return merge_hints(await asyncio.wait_for(t.parser.parse(text, ctx), timeout), h), None
+        parsed = await asyncio.wait_for(t.parser.parse(text, ctx), timeout)
+        model_amount = parsed.amount_cents
+        p = merge_hints(parsed, h)
+        warn = None
+        if p.intent in _LAUNCH and model_amount and p.amount_cents != model_amount:
+            if not h.installments:
+                warn = f"⚠️ Usei {format_brl(p.amount_cents or 0)}, o valor que você digitou."
+        return p, warn
     except HTTPException:
         raise  # isolamento: não é falha da IA
     except Exception as e:
@@ -251,6 +264,8 @@ async def interpret(
 
 async def fresh(t: Turn, text: str) -> str:
     h = extract_hints(text, t.today)
+    if h.bad_date:
+        return BAD_DATE
     space_id, error = await target_space(t, h)
     if space_id is None:
         return error or NOT_UNDERSTOOD
@@ -258,6 +273,8 @@ async def fresh(t: Turn, text: str) -> str:
     if p is None:
         return NOT_UNDERSTOOD
     t.intent = p.intent
+    if p.confidence < launch.CONFIDENCE_MIN and p.intent in _WRITES:
+        return NOT_UNDERSTOOD  # (lancar_* pergunta "Posso lançar?" em launch.run)
     if p.intent in _NEEDS_AMOUNT and p.amount_cents is None and ZERO_OR_NEG.search(text):
         p.amount_cents = 0  # sem validação: os fluxos recusam e perguntam de novo
     match p.intent:
@@ -268,7 +285,7 @@ async def fresh(t: Turn, text: str) -> str:
         case "apagar":
             return await edit.apagar(t)
         case "pagar_conta":
-            return await pay.start(t, p)
+            return await pay.start(t, p, text)
         case "nova_conta_a_pagar":
             return await extras.nova_conta(t, p, space_id)
         case "aporte_meta":

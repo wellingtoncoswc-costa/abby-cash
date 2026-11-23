@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.hints import resolve_date
+from app.assistant.hints import BadDate, resolve_date
 from app.assistant.intents import ParsedIntent
 from app.assistant.replies import CORRECT_PROMPT, tx_line
 from app.assistant.resolve import resolve_hint
@@ -51,7 +51,10 @@ def parse_correction(text: str, today: date) -> dict[str, Any] | None:
     if key == "categoria":
         return {"category_name": rest}
     if key == "data":
-        day = resolve_date(rest, today)
+        try:
+            day = resolve_date(rest, today)
+        except BadDate:
+            return None
         return {"occurred_on": day} if day else None
     return {"description": rest[:500]}
 
