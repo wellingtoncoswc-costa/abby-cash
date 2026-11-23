@@ -34,7 +34,7 @@ async def test_budget_errors(client, session):
     a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
     ha, hb, sp = auth(a), auth(b), str(a.default_space_id)
     assert (await client.get(f"/spaces/{sp}/budgets/2026-12", headers=ha)).status_code == 404
-    for month in ("2026-13", "nov", "2026-11-01", "2026-1"):
+    for month in ("2026-13", "nov", "2026-11-01", "2026-1", "２０２６-０１"):
         r = await client.get(f"/spaces/{sp}/budgets/{month}", headers=ha)
         assert r.status_code == 422, month
     for bad in (10.5, 0, "100"):
