@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +29,15 @@ class Transaction(Base):
             "(goal_id IS NULL) = (goal_direction IS NULL)", name="ck_transactions_goal_direction"
         ),
         Index("ix_transactions_space_date", "space_id", "occurred_on"),
+        # uma mensagem do chat grava no máximo uma vez (parcelas: uma linha por número)
+        Index(
+            "uq_transactions_origin_source_message",
+            "origin",
+            "source_message_id",
+            func.coalesce(text("installment_number"), 0),
+            unique=True,
+            postgresql_where=text("source_message_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

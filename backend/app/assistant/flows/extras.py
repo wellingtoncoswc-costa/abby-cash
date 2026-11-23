@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.assistant.flows.common import ask, tag_origin
+from app.assistant.flows.common import ask
 from app.assistant.flows.launch import resolve_category
 from app.assistant.flows.payment import choose_account
 from app.assistant.intents import ParsedIntent
@@ -63,9 +63,9 @@ async def run_aporte(t: Turn, d: Draft) -> str:
         d.payment = chosen
     tx = await contribute(
         t.session, actor_id=t.user_id, goal_id=goal.id, from_account_id=d.payment.id,
-        amount_cents=p.amount_cents, on=t.today,
+        amount_cents=p.amount_cents, on=t.today, origin=t.channel,
+        source_message_id=t.message_id,
     )  # fmt: skip
-    await tag_origin(t, tx.id)
     progress = await goal_progress(t.session, goal.id, today=t.today)
     return (
         f"✅ {format_brl(tx.amount_cents)} · Aporte na meta {goal.name} · hoje · "

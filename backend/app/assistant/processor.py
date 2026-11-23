@@ -8,15 +8,19 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
 from app.assistant.flows import edit, extras, launch, pay, query
+from app.assistant.flows.common import already_done
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
 from app.assistant.intents import Intent, ParsedIntent
 from app.assistant.replies import (
     AI_DOWN,
+    ALREADY,
+    ALREADY_HANDLED,
     HELP,
     MEDIA,
     NO_FAMILY,
@@ -166,35 +170,46 @@ async def run_draft(t: Turn, d: Draft) -> str:
 
 async def resume(t: Turn, text: str) -> str | None:
     """Responde a uma pergunta pendente. None = a mensagem não era a resposta (o estado foi
-    descartado e ela segue como mensagem nova)."""
+    descartado e ela segue como mensagem nova). Quem vai gravar consome o estado antes
+    (`take`): se outra resposta já o consumiu, esta recebe ALREADY_HANDLED."""
     state = await get_state(t.session, t.user_id, t.channel, t.now)
     if state is None:
         return None
     kind, data, reply = state.kind, dict(state.data), answer(text)
+
+    async def take() -> bool:
+        return await clear_state(t.session, t.user_id, t.channel)
+
     if reply == "cancelar":
-        await clear_state(t.session, t.user_id, t.channel)
+        await take()
         return "Ok, cancelei."
     if kind == "correct":
-        await clear_state(t.session, t.user_id, t.channel)
         fields = edit.parse_correction(text, t.today)
-        return await edit.apply_correction(t, fields) if fields else None
+        if not await take():
+            return ALREADY_HANDLED
+        return await edit.apply_correction(t, fields, data.get("tx_id")) if fields else None
     if kind == "delete":  # só um "sim" explícito apaga; "não" cancela; outra coisa é mensagem nova
-        await clear_state(t.session, t.user_id, t.channel)
+        if not await take():
+            return ALREADY_HANDLED
         if reply == "sim":
             return await edit.confirm_delete(t, UUID(data["tx_id"]))
         return "Ok, não apaguei." if reply == "nao" else None
-    d = Draft.model_validate(data["draft"])
+    try:
+        d = Draft.model_validate(data["draft"])
+    except (KeyError, ValueError):  # estado velho/malformado não pode travar a conversa
+        await take()
+        return None
     if kind == "amount":
         amount = parse_bare_amount(text)
         if amount is None:
             if ZERO_OR_NEG.fullmatch(text.strip()):  # parece valor, mas é zero/negativo
                 return ZERO + " Quanto foi?"
-            await clear_state(t.session, t.user_id, t.channel)
+            await take()
             return None
         d.p.amount_cents = amount
     elif kind == "confirm":
         if reply != "sim":
-            await clear_state(t.session, t.user_id, t.channel)
+            await take()
             return "Ok, não lancei." if reply == "nao" else None
         d.confirmed = True
     else:  # payment | pick_bill
@@ -202,14 +217,15 @@ async def resume(t: Turn, text: str) -> str | None:
         if picked is None:
             if re.fullmatch(r"\d{1,2}", text.strip()):
                 return "Responda com um dos números da lista."
-            await clear_state(t.session, t.user_id, t.channel)
+            await take()
             return None
         d.options = []
         if kind == "pick_bill":
             d.bill_id = picked.id
         else:
             d.payment = picked
-    await clear_state(t.session, t.user_id, t.channel)
+    if not await take():
+        return ALREADY_HANDLED
     return await run_draft(t, d)
 
 
@@ -272,6 +288,8 @@ async def fresh(t: Turn, text: str) -> str:
 
 
 async def converse(t: Turn, text: str) -> str:
+    if await already_done(t):  # reentrega depois de gravar: nunca grava duas vezes
+        return ALREADY
     return await resume(t, text) or await fresh(t, text)
 
 
@@ -311,6 +329,13 @@ async def handle_inbound(ctx: dict[str, Any], inbound_id: UUID) -> None:
         try:
             reply = await handle(session, ctx, row)
             await session.commit()
+        except IntegrityError as e:
+            await session.rollback()
+            if "uq_transactions_origin_source_message" not in str(e):
+                log.error("process_inbound failed: %s", _where(e))
+                reply, status = FAILED, "failed"
+            else:  # corrida: outro worker gravou esta mesma mensagem
+                reply = ALREADY
         except DomainError as e:
             await session.rollback()
             reply = domain_error_text(str(e))

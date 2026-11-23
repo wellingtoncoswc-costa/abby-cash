@@ -71,8 +71,12 @@ async def learn_rule(t: Turn, space_id: UUID, label: str, category_id: UUID) -> 
     await t.session.commit()
 
 
-async def apply_correction(t: Turn, fields: dict[str, Any]) -> str:
-    tx = await last_tx(t)
+async def apply_correction(t: Turn, fields: dict[str, Any], tx_id: str | None = None) -> str:
+    """Corrige o lançamento que estava em jogo quando a pergunta foi feita (`tx_id`); sem ele, o
+    último do usuário."""
+    tx = await last_tx(t) if tx_id is None else await t.session.get(Transaction, UUID(tx_id))
+    if tx is not None and tx.created_by != t.user_id:
+        tx = None
     if tx is None:
         return NOT_FOUND.format("corrigir")
     category_id: UUID | None = None
@@ -109,7 +113,10 @@ async def corrigir(t: Turn, p: ParsedIntent, space_id: UUID) -> str:
     }  # fmt: skip
     fields = {k: v for k, v in fields.items() if v is not None}
     if not fields:
-        await set_state(t.session, t.user_id, t.channel, "correct", {}, t.now)
+        tx = await last_tx(t)
+        if tx is None:
+            return NOT_FOUND.format("corrigir")
+        await set_state(t.session, t.user_id, t.channel, "correct", {"tx_id": str(tx.id)}, t.now)
         return CORRECT_PROMPT
     return await apply_correction(t, fields)
 

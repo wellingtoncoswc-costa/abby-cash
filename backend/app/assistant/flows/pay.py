@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.assistant.flows.common import ask, remaining_of, tag_origin
+from app.assistant.flows.common import ask, remaining_of
 from app.assistant.flows.payment import choose_account
 from app.assistant.intents import ParsedIntent
 from app.assistant.replies import NO_ACCOUNT, ZERO, options_text
@@ -68,14 +68,15 @@ async def run(t: Turn, d: Draft) -> str:
         amount = d.p.amount_cents or await remaining_of(t, bill)
         tx = await pay_invoice(
             t.session, actor_id=t.user_id, invoice_id=due_invoice, account_id=d.payment.id,
-            paid_on=t.today, amount_cents=amount,
+            paid_on=t.today, amount_cents=amount, origin=t.channel,
+            source_message_id=t.message_id,
         )  # fmt: skip
     else:
         tx = await pay_bill(
             t.session, actor_id=t.user_id, bill_id=bill.id, account_id=d.payment.id,
             paid_on=t.today, amount_cents=d.p.amount_cents,
+            origin=t.channel, source_message_id=t.message_id,
         )  # fmt: skip
-    await tag_origin(t, tx.id)
     left = await remaining_of(t, bill)
     tail = f"\nFalta {format_brl(left)}." if left > 0 else ""
     return (

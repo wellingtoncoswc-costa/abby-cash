@@ -34,10 +34,13 @@ async def set_state(
     await session.commit()
 
 
-async def clear_state(session: AsyncSession, user_id: UUID, channel: str) -> None:
-    await session.execute(
-        delete(ConversationState).where(
-            ConversationState.user_id == user_id, ConversationState.channel == channel
-        )
+async def clear_state(session: AsyncSession, user_id: UUID, channel: str) -> bool:
+    """Apaga a pergunta pendente; True só para quem de fato a apagou (consumo atômico: de duas
+    respostas simultâneas, só uma segue adiante)."""
+    gone = await session.scalar(
+        delete(ConversationState)
+        .where(ConversationState.user_id == user_id, ConversationState.channel == channel)
+        .returning(ConversationState.user_id)
     )
     await session.commit()
+    return gone is not None
