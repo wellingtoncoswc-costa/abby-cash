@@ -312,3 +312,26 @@ async def test_delete_race_with_invite_accept_never_purges_new_member(session):
     else:  # recusou: o membro entrou e a família continua
         assert str(res[0]) == "owns_family_with_members" and res[1] is None
         assert in_fam == 1 and fam_count == 1
+
+
+async def test_goal_saved_survives_contributor_deleting_account(client, session):
+    from app.domain.goals.service import goal_saved
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    a_id, pa = a.id, a.default_space_id
+    fam = await make_family(session, b, a)
+    fam_id = fam.id
+    acc_a = await make_account(session, pa, initial=100_000)
+    goal = await create_goal(
+        session, actor_id=a_id, space_id=fam_id, name="Viagem", target_cents=9_000, created_on=D
+    )  # fmt: skip
+    gid = goal.id
+    await contribute(
+        session, actor_id=a_id, goal_id=gid, from_account_id=acc_a.id, amount_cents=4_000, on=D
+    )  # fmt: skip
+    assert await goal_saved(session, gid) == 4_000
+    ha = auth(a)
+    r = await client.request("DELETE", "/privacy/account", json={"password": PWD}, headers=ha)
+    assert r.status_code == 204
+    session.expire_all()
+    assert await goal_saved(session, gid) == 4_000

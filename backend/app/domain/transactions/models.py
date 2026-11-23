@@ -21,6 +21,12 @@ class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint("amount_cents > 0", name="ck_transactions_amount_positive"),
+        CheckConstraint(
+            "goal_direction IN ('in', 'out')", name="ck_transactions_goal_direction_valid"
+        ),
+        CheckConstraint(
+            "(goal_id IS NULL) = (goal_direction IS NULL)", name="ck_transactions_goal_direction"
+        ),
         Index("ix_transactions_space_date", "space_id", "occurred_on"),
     )
 
@@ -38,6 +44,8 @@ class Transaction(Base):
     invoice_id: Mapped[UUID | None] = mapped_column(ForeignKey("invoices.id"), index=True)
     bill_id: Mapped[UUID | None] = mapped_column(ForeignKey("bills.id"), index=True)
     goal_id: Mapped[UUID | None] = mapped_column(ForeignKey("goals.id"), index=True)
+    # in = aporte, out = retirada; explícito porque account_id vira NULL na exclusão de conta
+    goal_direction: Mapped[str | None] = mapped_column(String(3))
     installment_group_id: Mapped[UUID | None] = mapped_column(index=True)
     installment_number: Mapped[int | None] = mapped_column(Integer)
     installment_total: Mapped[int | None] = mapped_column(Integer)
