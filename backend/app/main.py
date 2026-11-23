@@ -12,6 +12,7 @@ from app.api import (
     privacy,
     spaces,
     transactions,
+    webhooks,
 )
 from app.core.db import engine
 from app.core.redis import redis
@@ -27,6 +28,7 @@ app.include_router(bills.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
 app.include_router(privacy.router)
+app.include_router(webhooks.router)
 
 
 @app.exception_handler(DomainError)

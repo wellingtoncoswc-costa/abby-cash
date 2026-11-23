@@ -1,0 +1,8 @@
+{
+  "update_id": 900001,
+  "message": {
+    "message_id": 10,
+    "from": {"id": 111, "is_bot": false, "first_name": "Ana"}, "chat": {"id": 111, "first_name": "Ana", "type": "private"}, "date": 1795618800,
+    "text": "gastei 45 no mercado"
+  }
+}

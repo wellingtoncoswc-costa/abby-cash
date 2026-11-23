@@ -1,0 +1,9 @@
+{
+  "update_id": 900006,
+  "edited_message": {
+    "message_id": 10,
+    "from": {"id": 111, "is_bot": false, "first_name": "Ana"}, "chat": {"id": 111, "first_name": "Ana", "type": "private"}, "date": 1795618800,
+    "edit_date": 1795618900,
+    "text": "gastei 450 no mercado"
+  }
+}

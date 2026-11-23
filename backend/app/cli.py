@@ -30,6 +30,27 @@ async def _invite() -> None:
         print((await create_signup_invite(s, created_by=admin.id)).code)
 
 
+async def _poll() -> None:
+    from app.channels.poll import poll_forever
+    from app.channels.registry import telegram_adapter
+
+    adapter = telegram_adapter()
+    await adapter.delete_webhook()  # getUpdates não funciona com webhook ativo
+    print(f"polling como @{await adapter.bot_username()} (Ctrl+C para sair)")
+    await poll_forever(adapter)
+
+
+async def _set_webhook(url: str | None) -> None:
+    from app.channels.registry import telegram_adapter
+    from app.core.config import get_settings
+
+    target = url or f"{get_settings().PUBLIC_BASE_URL.rstrip('/')}/webhooks/telegram"
+    if not target.startswith("https://"):
+        raise SystemExit("the Telegram webhook needs a public https URL (use telegram-poll in dev)")
+    await telegram_adapter().set_webhook(target)
+    print(f"webhook set: {target}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -37,8 +58,21 @@ def main() -> None:
     a.add_argument("--email", required=True)
     a.add_argument("--name", required=True)
     sub.add_parser("create-signup-invite")
+    sub.add_parser("telegram-poll")
+    w = sub.add_parser("telegram-set-webhook")
+    w.add_argument("--url", help="default: PUBLIC_BASE_URL/webhooks/telegram")
     args = p.parse_args()
-    asyncio.run(_admin(args.email, args.name) if args.cmd == "create-admin" else _invite())
+    if args.cmd == "create-admin":
+        asyncio.run(_admin(args.email, args.name))
+    elif args.cmd == "telegram-poll":
+        try:
+            asyncio.run(_poll())
+        except KeyboardInterrupt:
+            pass
+    elif args.cmd == "telegram-set-webhook":
+        asyncio.run(_set_webhook(args.url))
+    else:
+        asyncio.run(_invite())
 
 
 if __name__ == "__main__":

@@ -16,10 +16,12 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-only-change-me"
     AI_MODEL: str = "gpt-4.1"
     OPENAI_API_KEY: str = ""
+    AI_TIMEOUT_S: float = 20.0
     STT_URL: str = "http://stt:8000"
     STT_MODEL: str = "small"
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_BOT_USERNAME: str = ""  # opcional: vazio = descobre com getMe
     EVOLUTION_URL: str = ""
     EVOLUTION_API_KEY: str = ""
     EVOLUTION_INSTANCE: str = ""
