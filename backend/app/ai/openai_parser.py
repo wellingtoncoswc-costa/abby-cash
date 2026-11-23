@@ -24,7 +24,8 @@ consultar_saldo, consultar_faturas, ajuda ou desconhecido.
 "sexta", "dia 15"); null se a mensagem não citar data. Em nova_conta_a_pagar é o vencimento.
 - installments: número de parcelas (2 ou mais), só se a mensagem disser.
 - category_name: EXATAMENTE um nome da lista de categorias abaixo (despesa ou receita, \
-conforme o caso); null se nenhuma servir.
+conforme o caso), copiado caractere por caractere, com os acentos como estão na lista \
+(ex.: "Alimentação", nunca "Alimentacao" nem com escapes \\u); null se nenhuma servir.
 - merchant: nome do estabelecimento; description: descrição curta do gasto.
 - account_hint e card_hint: o texto que o usuário usou para a forma de pagamento ("nubank", \
 "pix", "dinheiro", "cartão"); null se não disse.
