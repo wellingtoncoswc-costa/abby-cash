@@ -15,13 +15,32 @@ from app.core.money import format_brl, parse_brl
         ("45", 4500),
         ("1.234", 123400),
         ("0,99", 99),
+        ("0.500", 50),
     ],
 )
 def test_parse_brl_valid(text, cents):
     assert parse_brl(text) == cents
 
 
-@pytest.mark.parametrize("text", ["0", "0,00", "-10", "R$ -5", "abc", "", "nan", "inf", "1,2,3"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0",
+        "0,00",
+        "-10",
+        "R$ -5",
+        "abc",
+        "",
+        "nan",
+        "inf",
+        "1,2,3",
+        "1e30",
+        "1E5",
+        "1_000",
+        "2000000000",
+        "1.000.000.000,01",
+    ],
+)
 def test_parse_brl_rejects_non_positive_or_garbage(text):
     assert parse_brl(text) is None
 

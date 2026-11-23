@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,13 @@ from app.domain.users.models import User
 INVITE_DAYS = 7
 
 
+def _seed_categories(session: AsyncSession, space_id: UUID) -> None:
+    session.add_all(
+        [Category(space_id=space_id, kind="expense", name=n) for n in DEFAULT_EXPENSE]
+        + [Category(space_id=space_id, kind="income", name=n) for n in DEFAULT_INCOME]
+    )
+
+
 async def provision_user(session: AsyncSession, user: User) -> None:
     """Espaço pessoal + categorias + Carteira + membership. Só flush: quem chama commita."""
     space = Space(type="personal", name="Pessoal", owner_id=user.id)
@@ -24,10 +31,7 @@ async def provision_user(session: AsyncSession, user: User) -> None:
     await session.flush()
     wallet = Account(space_id=space.id, type="wallet", name="Carteira")
     session.add(wallet)
-    session.add_all(
-        [Category(space_id=space.id, kind="expense", name=n) for n in DEFAULT_EXPENSE]
-        + [Category(space_id=space.id, kind="income", name=n) for n in DEFAULT_INCOME]
-    )
+    _seed_categories(session, space.id)
     await session.flush()
     session.add(
         SpaceMember(space_id=space.id, user_id=user.id, role="owner", default_account_id=wallet.id)
@@ -45,6 +49,7 @@ async def create_family_space(session: AsyncSession, *, owner_id: UUID, name: st
     except IntegrityError:
         await session.rollback()
         raise ValueError("family_space_exists") from None
+    _seed_categories(session, space.id)
     session.add(SpaceMember(space_id=space.id, user_id=owner_id, role="owner"))
     await session.commit()
     return space
@@ -109,6 +114,11 @@ async def remove_member(
     res = await session.execute(
         delete(SpaceMember).where(SpaceMember.space_id == space_id, SpaceMember.user_id == user_id)
     )
+    user = await session.get(User, user_id)
+    if user is not None and user.default_space_id == space_id:
+        user.default_space_id = await session.scalar(
+            select(Space.id).where(Space.owner_id == user_id, Space.type == "personal")
+        )
     await session.commit()
     if res.rowcount == 0:  # type: ignore[attr-defined]
         raise HTTPException(status_code=404, detail="not_found")

@@ -91,3 +91,27 @@ async def test_invite_rules(session):
         await remove_member(session, actor_id=b, space_id=fam_id, user_id=a)
     with pytest.raises(ValueError, match="cannot_remove_owner"):
         await remove_member(session, actor_id=a, space_id=fam_id, user_id=a)
+
+
+async def test_family_space_has_default_categories_and_no_wallet(session):
+    a = await _user(session, "a@x.com")
+    fam = await create_family_space(session, owner_id=a.id, name="Casa")
+    cats = (await session.scalars(select(Category).where(Category.space_id == fam.id))).all()
+    assert {"Alimentação", "Mercado"} <= {c.name for c in cats if c.kind == "expense"}
+    assert {c.name for c in cats if c.kind == "income"} == {
+        "Salário", "Renda extra", "Reembolso", "Outros"
+    }  # fmt: skip
+    assert await session.scalar(select(Account).where(Account.space_id == fam.id)) is None
+
+
+async def test_remove_member_resets_default_space_to_personal(session):
+    a, b = await _user(session, "a@x.com"), await _user(session, "b@x.com")
+    personal = b.default_space_id
+    fam = await create_family_space(session, owner_id=a.id, name="Casa")
+    inv = await create_space_invite(session, space_id=fam.id, created_by=a.id)
+    await accept_space_invite(session, token=inv.token, user_id=b.id)
+    b.default_space_id = fam.id
+    await session.commit()
+    await remove_member(session, actor_id=a.id, space_id=fam.id, user_id=b.id)
+    await session.refresh(b)
+    assert b.default_space_id == personal
