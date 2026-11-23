@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api import auth
 from app.core.db import engine
 from app.core.redis import redis
 
 app = FastAPI(title="Abby Cash")
+app.include_router(auth.router)
 
 
 @app.get("/health")
