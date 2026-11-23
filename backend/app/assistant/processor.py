@@ -1,9 +1,10 @@
 import logging
 import re
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import update
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.registry import get_adapter
@@ -12,6 +13,7 @@ from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
 from app.domain.errors import DomainError
 
+STALE = timedelta(minutes=5)
 log = logging.getLogger(__name__)
 
 UNLINKED = (
@@ -20,7 +22,7 @@ UNLINKED = (
     "(ou toque no link que o painel mostra)."
 )
 INVALID_CODE = "Código inválido ou expirado. Gere um novo no painel web (Canais)."
-TOO_MANY = "Muitas tentativas. Aguarde 10 minutos e gere um novo código no painel web."
+TOO_MANY = "Muitas tentativas. Tente de novo em 1 hora."
 ALREADY_LINKED = "Este Telegram já está vinculado a outra conta."
 LINKED_OK = (
     "✅ Telegram vinculado, {name}! Agora é só me mandar seus gastos, "
@@ -28,15 +30,25 @@ LINKED_OK = (
 )
 FAILED = "Tive um problema ao processar sua mensagem. Tente de novo em instantes."
 
-_CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?(\d{6})")
+_CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?([0-9]{6})", re.ASCII | re.IGNORECASE)
 
 
 async def claim(session: AsyncSession, inbound_id: UUID) -> bool:
-    """received -> processing de forma atômica: só um worker processa cada mensagem."""
+    """received -> processing de forma atômica: só um worker processa cada mensagem.
+    Também retoma 'processing' parado há mais de 5 min (worker que caiu)."""
     got = await session.scalar(
         update(InboundMessage)
-        .where(InboundMessage.id == inbound_id, InboundMessage.status == "received")
-        .values(status="processing")
+        .where(
+            InboundMessage.id == inbound_id,
+            or_(
+                InboundMessage.status == "received",
+                and_(
+                    InboundMessage.status == "processing",
+                    InboundMessage.updated_at < func.now() - STALE,
+                ),
+            ),
+        )
+        .values(status="processing", updated_at=func.now())
         .returning(InboundMessage.id)
     )
     await session.commit()

@@ -51,3 +51,38 @@ async def test_same_inbound_is_processed_only_once(session, adapter):
     iid = await make_inbound(session, "oi")
     await asyncio.gather(*[process_inbound({}, str(iid)) for _ in range(4)])
     assert len(adapter.sent) == 1
+
+
+async def test_stale_processing_is_retaken_fresh_is_not(session, adapter):
+    from sqlalchemy import text as sql
+
+    stale = await make_inbound(session, "oi", msg_id=1)
+    fresh = await make_inbound(session, "oi", msg_id=2)
+    await session.execute(sql("update inbound_messages set status='processing'"))
+    await session.execute(
+        sql("update inbound_messages set updated_at = now() - interval '6 minutes' where id=:i"),
+        {"i": stale},
+    )
+    await session.commit()
+    await process_inbound({}, str(stale))
+    await process_inbound({}, str(fresh))
+    assert len(adapter.sent) == 1
+    session.expire_all()
+    assert (await session.get(InboundMessage, stale)).status == "processed"
+    assert (await session.get(InboundMessage, fresh)).status == "processing"
+
+
+async def test_non_ascii_digits_are_not_a_code(session, adapter):
+    from app.core.redis import redis
+
+    await run(session, "٠١٢٣٤٥")  # Arabic-Indic digits
+    assert adapter.sent == [("111", UNLINKED)]
+    assert await redis.get("link_fails:global") is None
+    assert await redis.get("link_fails:telegram:111") is None
+
+
+async def test_start_payload_uppercase_and_extra_spaces(session, adapter):
+    ana = await make_user(session, "ana@x.com")
+    code = await create_link_code(ana.id, "telegram")
+    await run(session, f"  /START   {code}  ")
+    assert "vinculado" in adapter.sent[0][1]
