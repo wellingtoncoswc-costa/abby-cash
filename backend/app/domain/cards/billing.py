@@ -14,10 +14,9 @@ class InvoiceDates:
 def invoice_dates_for_month(closing_day: int, due_day: int, year: int, month: int) -> InvoiceDates:
     """Fatura que FECHA em (year, month). Vencimento = primeiro `due_day` depois do fechamento."""
     closing = clamp_day(year, month, closing_day)
-    due = clamp_day(year, month, due_day)
-    if due <= closing:
-        nxt = add_months(date(year, month, 1), 1)
-        due = clamp_day(nxt.year, nxt.month, due_day)
+    first = date(year, month, 1)
+    due_month = first if due_day > closing_day else add_months(first, 1)
+    due = clamp_day(due_month.year, due_month.month, due_day)  # compara dias nominais, não clamped
     return InvoiceDates(closing, due)
 
 

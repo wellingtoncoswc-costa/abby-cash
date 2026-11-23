@@ -6,7 +6,12 @@ from sqlalchemy import select
 
 from app.core.dates import to_local_date
 from app.domain.bills.models import Bill
-from app.domain.cards.billing import InvoiceDates, invoice_dates_for_purchase, split_installments
+from app.domain.cards.billing import (
+    InvoiceDates,
+    invoice_dates_for_month,
+    invoice_dates_for_purchase,
+    split_installments,
+)
 from app.domain.cards.models import Invoice
 from app.domain.cards.service import (
     invoice_statement,
@@ -70,6 +75,13 @@ def test_due_day_31_is_clamped_to_month_end():
     assert invoice_dates_for_purchase(10, 31, date(2026, 2, 5)) == _inv(
         date(2026, 2, 10), date(2026, 2, 28)
     )
+
+
+def test_due_month_uses_nominal_days_not_clamped_dates():
+    assert invoice_dates_for_month(30, 31, 2026, 4) == _inv(date(2026, 4, 30), date(2026, 4, 30))
+    assert invoice_dates_for_month(28, 31, 2026, 2) == _inv(date(2026, 2, 28), date(2026, 2, 28))
+    assert invoice_dates_for_month(31, 10, 2026, 4) == _inv(date(2026, 4, 30), date(2026, 5, 10))
+    assert invoice_dates_for_month(5, 5, 2026, 3) == _inv(date(2026, 3, 5), date(2026, 4, 5))
 
 
 def test_purchase_2330_local_uses_local_date():
