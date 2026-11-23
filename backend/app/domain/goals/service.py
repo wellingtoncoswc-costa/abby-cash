@@ -14,6 +14,7 @@ from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
 from app.domain.spaces.access import require_member
 from app.domain.transactions.models import Transaction
+from app.domain.transactions.rules import check_common
 
 
 @dataclass(frozen=True)
@@ -28,9 +29,10 @@ async def create_goal(
     session: AsyncSession, *, actor_id: UUID, space_id: UUID, name: str, target_cents: int,
     created_on: date, deadline: date | None = None, account_id: UUID | None = None,
 ) -> Goal:  # fmt: skip
-    await require_member(session, actor_id, space_id)
-    if target_cents <= 0:
-        raise DomainError("amount_must_be_positive")
+    await check_common(
+        session, actor_id=actor_id, space_id=space_id, type="transfer", amount_cents=target_cents,
+        category_id=None, occurred_on=created_on,
+    )  # fmt: skip
     if account_id is not None:
         await use_account(session, actor_id, account_id)
     goal = Goal(
@@ -76,8 +78,10 @@ async def contribute(
     amount_cents: int, on: date,
 ) -> Transaction:  # fmt: skip
     goal = await visible_goal(session, actor_id, goal_id)
-    if amount_cents <= 0:
-        raise DomainError("amount_must_be_positive")
+    await check_common(
+        session, actor_id=actor_id, space_id=goal.space_id, type="transfer",
+        amount_cents=amount_cents, category_id=None, occurred_on=on,
+    )  # fmt: skip
     await use_account(session, actor_id, from_account_id)
     tx = Transaction(
         space_id=goal.space_id, type="transfer", amount_cents=amount_cents, occurred_on=on,
@@ -104,11 +108,14 @@ async def withdraw(
 ) -> Transaction:  # fmt: skip
     """Transferência inversa: da meta para a conta de destino."""
     goal = await visible_goal(session, actor_id, goal_id)
-    if amount_cents <= 0:
-        raise DomainError("amount_must_be_positive")
+    await check_common(
+        session, actor_id=actor_id, space_id=goal.space_id, type="transfer",
+        amount_cents=amount_cents, category_id=None, occurred_on=on,
+    )  # fmt: skip
     await use_account(session, actor_id, to_account_id)
     await session.refresh(goal, with_for_update=True)  # serializa retiradas da mesma meta
     if amount_cents > await goal_saved(session, goal.id):
+        await session.rollback()  # solta o lock da meta
         raise DomainError("insufficient_saved")
     tx = Transaction(
         space_id=goal.space_id, type="transfer", amount_cents=amount_cents, occurred_on=on,

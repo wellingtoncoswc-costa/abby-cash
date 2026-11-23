@@ -21,6 +21,8 @@ from app.domain.goals.service import (
 )
 from app.domain.spaces.access import require_member
 
+MIN_DATE, MAX_DATE = date(2000, 1, 1), date(2100, 12, 31)  # igual a check_common
+
 router = APIRouter(tags=["goals"])
 
 
@@ -34,13 +36,13 @@ class GoalIn(BaseModel):
 class ContributionIn(BaseModel):
     from_account_id: UUID
     amount_cents: Cents
-    occurred_on: date | None = None
+    occurred_on: date | None = Field(default=None, ge=MIN_DATE, le=MAX_DATE)
 
 
 class WithdrawalIn(BaseModel):
     to_account_id: UUID
     amount_cents: Cents
-    occurred_on: date | None = None
+    occurred_on: date | None = Field(default=None, ge=MIN_DATE, le=MAX_DATE)
 
 
 def _progress(p: GoalProgress) -> dict[str, Any]:
@@ -68,6 +70,7 @@ async def list_goals(space_id: UUID, user: CurrentUser, session: Session) -> lis
     goals = await session.scalars(
         select(Goal).where(Goal.space_id == space_id).order_by(Goal.created_at)
     )
+    # ponytail: progresso por meta = 1 query cada (N+1); ok p/ poucas metas, agregar se crescer
     return [row(g) | _progress(await goal_progress(session, g.id, today=local_today(user.tz)))
             for g in goals]  # fmt: skip
 

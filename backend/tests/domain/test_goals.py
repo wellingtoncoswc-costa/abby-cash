@@ -151,3 +151,59 @@ async def test_concurrent_contributions_and_withdrawals(session):
     )
     assert sum(isinstance(r, DomainError) for r in res) == 3  # nunca saca mais do que guardou
     assert (await goal_progress(session, g.id, today=D)).saved == 0
+
+
+async def test_monthly_needed_edges(session):
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    g = await _goal(session, a, target=1_000, deadline=date(2026, 7, 15))
+    await contribute(
+        session, actor_id=a.id, goal_id=g.id, from_account_id=acc.id, amount_cents=1_000, on=D
+    )  # fmt: skip
+    assert (await goal_progress(session, g.id, today=D)).monthly_needed == 0  # meta atingida
+    g2 = await _goal(session, a, target=5_000, deadline=D)
+    p2 = await goal_progress(session, g2.id, today=D)  # prazo hoje: falta tudo
+    assert p2.monthly_needed == 5_000 and p2.behind is True  # criada no próprio prazo
+    g3 = await _goal(session, a, target=5_000, deadline=D, created_on=D)
+    assert (await goal_progress(session, g3.id, today=date(2026, 1, 14))).behind is False
+
+
+async def test_goal_limits_at_service_level(session):
+    import asyncio
+
+    from app.core.db import SessionLocal
+    from app.core.money import MAX_CENTS
+
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    g = await _goal(session, a)
+    aid, gid, accid = a.id, g.id, acc.id  # rollback expira os objetos
+    with pytest.raises(DomainError, match="amount_too_large"):
+        await _goal(session, a, target=MAX_CENTS + 1)
+    for kw in ({"created_on": date(1999, 12, 31)}, {"created_on": date(2101, 1, 1)}):
+        with pytest.raises(DomainError, match="invalid_date"):
+            await _goal(session, a, **kw)
+    for fn, key in ((contribute, "from_account_id"), (withdraw, "to_account_id")):
+        base = {"actor_id": a.id, "goal_id": g.id, key: acc.id}
+        with pytest.raises(DomainError, match="amount_too_large"):
+            await fn(session, amount_cents=MAX_CENTS + 1, on=D, **base)
+        for bad in (date(1999, 12, 31), date(2101, 1, 1)):
+            with pytest.raises(DomainError, match="invalid_date"):
+                await fn(session, amount_cents=100, on=bad, **base)
+
+    # retirada rejeitada solta o lock da meta
+    with pytest.raises(DomainError, match="insufficient_saved"):
+        await withdraw(
+            session, actor_id=aid, goal_id=gid, to_account_id=accid, amount_cents=100, on=D
+        )  # fmt: skip
+
+    async def other():
+        async with SessionLocal() as s:
+            await contribute(
+                s, actor_id=aid, goal_id=gid, from_account_id=accid, amount_cents=500, on=D
+            )  # fmt: skip
+            return await withdraw(
+                s, actor_id=aid, goal_id=gid, to_account_id=accid, amount_cents=500, on=D
+            )  # fmt: skip
+
+    await asyncio.wait_for(other(), 5)
