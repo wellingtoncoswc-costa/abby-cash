@@ -30,7 +30,12 @@ def create_access_token(user_id: UUID) -> str:
 
 def decode_access_token(token: str) -> UUID | None:
     try:
-        data = jwt.decode(token, get_settings().JWT_SECRET, algorithms=["HS256"])
+        data = jwt.decode(
+            token,
+            get_settings().JWT_SECRET,
+            algorithms=["HS256"],
+            options={"require": ["exp", "sub"]},
+        )
         return UUID(data["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         return None

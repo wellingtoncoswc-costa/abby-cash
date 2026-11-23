@@ -3,6 +3,7 @@ import asyncio
 from getpass import getpass
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal
 from app.domain.users.models import User
@@ -11,8 +12,13 @@ from app.domain.users.service import create_admin, create_signup_invite
 
 async def _admin(email: str, name: str) -> None:
     pwd = getpass("Password: ")
+    if pwd != getpass("Confirm password: "):
+        raise SystemExit("passwords do not match")
     async with SessionLocal() as s:
-        await create_admin(s, email=email, name=name, password=pwd)
+        try:
+            await create_admin(s, email=email, name=name, password=pwd)
+        except IntegrityError:
+            raise SystemExit(f"email already registered: {email}") from None
     print("admin created")
 
 

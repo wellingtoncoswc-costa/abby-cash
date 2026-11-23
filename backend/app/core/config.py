@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     def _reject_default_secret_in_prod(self) -> "Settings":
         if self.ENV == "prod" and self.JWT_SECRET in {"dev-only-change-me", "change-me", ""}:
             raise ValueError("JWT_SECRET must be set in prod")
+        if self.ENV == "prod" and len(self.JWT_SECRET) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 chars in prod")
         return self
 
 
