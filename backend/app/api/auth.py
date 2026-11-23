@@ -75,10 +75,13 @@ async def login(
     key = f"login_fail:{body.email.strip().lower()}:{ip}"  # por (email, ip): evita DoS de lockout
     ip_key = f"login_fail_ip:{ip}"
     await _hit(key, MAX_FAILS)  # antes de verificar a senha
-    await _hit(ip_key, MAX_IP_FAILS)
+    if int(await redis.get(ip_key) or 0) >= MAX_IP_FAILS:  # só falhas contam
+        raise HTTPException(429, "too_many_attempts")
     try:
         user = await authenticate(session, body.email, body.password, body.totp)
     except AuthError as e:
+        await redis.set(ip_key, 0, ex=FAIL_TTL, nx=True)
+        await redis.incr(ip_key)
         raise HTTPException(401, str(e)) from None
     await redis.delete(key)
     _set_cookie(resp, await issue_refresh(session, user.id))
@@ -124,7 +127,7 @@ async def verify_2fa(body: CodeIn, user: CurrentUser, session: Session) -> dict[
     key = f"totp_fail:{user.id}"
     if int(await redis.get(key) or 0) >= MAX_FAILS:
         raise HTTPException(429, "too_many_attempts")
-    if not user.totp_secret or not await check_totp(user, body.code):
+    if not user.totp_secret or not await check_totp(user, body.code, consume=False):
         await redis.set(key, 0, ex=FAIL_TTL, nx=True)
         await redis.incr(key)
         raise HTTPException(400, "invalid_code")

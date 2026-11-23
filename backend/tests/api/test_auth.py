@@ -102,11 +102,12 @@ async def _enable_2fa(client):
     return h, secret, code
 
 
-async def test_totp_code_cannot_be_replayed(client, session):
+async def test_verify_does_not_consume_totp_but_login_does(client, session):
     await _register(client, await _invite(session))
-    _, _, used = await _enable_2fa(client)
-    r = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD, "totp": used})
-    assert r.status_code == 401
+    _, _, code = await _enable_2fa(client)
+    body = {"email": "a@x.com", "password": PWD, "totp": code}
+    assert (await client.post("/auth/login", json=body)).status_code == 200
+    assert (await client.post("/auth/login", json=body)).status_code == 401
 
 
 async def test_2fa_verify_brute_force_limited(client, session):
@@ -182,11 +183,15 @@ async def test_login_lockout_is_per_email_and_ip(client, session):
     assert await redis.keys("login_fail:a@x.com:*")
 
 
-async def test_login_success_does_not_refund_ip_counter(client, session):
+async def test_successful_logins_do_not_consume_ip_counter(client, session):
     from app.core.redis import redis
 
     await _register(client, await _invite(session))
-    await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+    for _ in range(35):
+        r = await client.post("/auth/login", json={"email": "a@x.com", "password": PWD})
+        assert r.status_code == 200
+    assert not await redis.exists("login_fail_ip:127.0.0.1")
+    await client.post("/auth/login", json={"email": "a@x.com", "password": "bad"})
     assert int(await redis.get("login_fail_ip:127.0.0.1") or 0) == 1
     assert 0 < await redis.ttl("login_fail_ip:127.0.0.1") <= 900
 

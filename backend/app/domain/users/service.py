@@ -72,11 +72,13 @@ async def register_user(
     return user
 
 
-async def check_totp(user: User, code: str) -> bool:
-    """Valida o código e o consome (anti-replay: cada código vale uma vez)."""
+async def check_totp(user: User, code: str, *, consume: bool = True) -> bool:
+    """Valida o código; o login o consome (anti-replay), a ativação do 2FA não."""
     assert user.totp_secret
     if not pyotp.TOTP(user.totp_secret).verify(code, valid_window=1):
         return False
+    if not consume:
+        return True
     return bool(await redis.set(f"totp:{user.id}:{code}", 1, nx=True, ex=90))
 
 
