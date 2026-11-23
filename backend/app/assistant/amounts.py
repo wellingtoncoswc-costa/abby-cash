@@ -86,6 +86,15 @@ def extract_amount(text: str) -> int | None:
     return parse_amount_words(s)
 
 
+def extract_amounts(text: str) -> tuple[int, ...]:
+    """Todos os valores em dígitos da mensagem (centavos), na mesma limpeza de `extract_amount`."""
+    s = _INSTALL_V.sub(" ", _INSTALL_X.sub(" ", _NOISE.sub(" ", fold(text[:MAX_TEXT]))))
+    found: list[int | None] = []
+    s = _THOUSAND.sub(lambda m: found.append((parse_brl(m.group(1)) or 0) * 1000) or " ", s)
+    found += [parse_brl(m.group(1)) for m in _MONEY.finditer(s)]
+    return tuple(v for v in found if v)
+
+
 def parse_bare_amount(text: str) -> int | None:
     """Resposta que é SÓ um valor ("45", "R$ 45,50", "quarenta e cinco reais"); qualquer outra
     palavra -> None (a pessoa mudou de assunto)."""

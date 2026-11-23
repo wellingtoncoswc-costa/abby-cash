@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.assistant.amounts import MAX_TEXT, MONTH_WORDS, extract_amount
+from app.assistant.amounts import MAX_TEXT, MONTH_WORDS, extract_amount, extract_amounts
 from app.core.dates import clamp_day
 from app.core.money import parse_brl
 from app.core.text import fold
@@ -25,6 +25,8 @@ class Hints:
     (valem mais que o LLM); o valor só preenche o que o LLM deixou vazio."""
 
     amount_cents: int | None
+    amounts: tuple[int, ...]  # todos os valores em dígitos da mensagem
+    total_exact: bool  # "3x de 500": o total foi calculado, não adivinhado
     occurred_on: date | None
     installments: int | None
     private: bool  # #pessoal
@@ -71,16 +73,19 @@ def extract_hints(text: str, today: date) -> Hints:
     s = fold(text[:MAX_TEXT])
     amount = extract_amount(text)
     installments: int | None = None
+    exact = False
     plain = _DAY_OF_MONTH.sub(" ", _DAY_MONTH.sub(" ", _DAY.sub(" ", s)))  # datas não são parcelas
     if m := _X_DE.search(plain):  # "3x de 500": o valor informado é por parcela
         n, each = int(m.group(1)), parse_brl(m.group(2))
         if each and 2 <= n <= 48:
-            installments, amount = n, n * each
+            installments, amount, exact = n, n * each, True
     elif m := _X.search(plain):
         n = int(m.group(1) or m.group(2))
         installments = n if 2 <= n <= 48 else None
     return Hints(
         amount_cents=amount,
+        amounts=extract_amounts(text),
+        total_exact=exact,
         occurred_on=resolve_date(text, today),
         installments=installments,
         private="#pessoal" in s,

@@ -31,6 +31,7 @@ from app.assistant.turn import Draft, Turn
 from app.channels.registry import get_adapter
 from app.core.config import get_settings
 from app.core.dates import to_local_date
+from app.core.money import format_brl
 from app.core.db import SessionLocal
 from app.core.text import fold
 from app.domain.channels.linking import find_user_by_link, link_with_code
@@ -101,22 +102,29 @@ async def unlinked(session: AsyncSession, channel: str, external_user_id: str, t
     return LINKED_OK.format(name=user.name.split()[0])
 
 
-def merge_hints(p: ParsedIntent, h: Hints) -> ParsedIntent:
-    """O determinístico vale mais que o LLM em etiquetas, datas e parcelas; o valor do LLM vale,
-    exceto com parcelas (aí o total da mensagem manda: "3x de 500") ou se ele não achou nenhum.
-    `private` do modelo é só dica: quem decide o espaço é a etiqueta do texto."""
+def merge_hints(p: ParsedIntent, h: Hints) -> tuple[ParsedIntent, str | None]:
+    """O determinístico vale mais que o LLM em etiquetas, datas e parcelas; o valor do LLM vale
+    se o modelo não o inventou: sem ele, o do texto; com parcelas, "3x de 500" dá o total exato e,
+    se o valor do modelo não aparece entre os números do texto mas só há um, o do texto vale (com
+    aviso). `private` do modelo é só dica: quem decide o espaço é a etiqueta do texto."""
+    warn = None
     p.private = h.private
-    if p.intent in _NEEDS_AMOUNT and (
-        p.amount_cents is None or (h.installments and h.amount_cents is not None)
-    ):
-        p.amount_cents = h.amount_cents
+    if p.intent in _NEEDS_AMOUNT:
+        if p.amount_cents is None:
+            p.amount_cents = h.amount_cents
+        elif h.installments and h.amount_cents is not None:
+            if h.total_exact:
+                p.amount_cents = h.amount_cents
+            elif p.amount_cents not in h.amounts and len(h.amounts) == 1:
+                p.amount_cents = h.amounts[0]
+                warn = f"Usei o valor {format_brl(h.amounts[0])} da sua mensagem."
     if p.intent in _LAUNCH:
         p.occurred_on = h.occurred_on or p.occurred_on
         p.installments = h.installments or p.installments
         many = (p.installments or 1) > 1
         if p.intent != "lancar_receita":
             p.intent = "lancar_parcelado" if many else "lancar_despesa"
-    return p
+    return p, warn
 
 
 def fallback_launch(text: str, h: Hints) -> ParsedIntent | None:
@@ -225,7 +233,7 @@ async def interpret(
             raise RuntimeError("no parser configured")
         ctx = await t.context(space_id)
         timeout = get_settings().AI_TIMEOUT_S + 5
-        return merge_hints(await asyncio.wait_for(t.parser.parse(text, ctx), timeout), h), None
+        return merge_hints(await asyncio.wait_for(t.parser.parse(text, ctx), timeout), h)
     except HTTPException:
         raise  # isolamento: não é falha da IA
     except Exception as e:

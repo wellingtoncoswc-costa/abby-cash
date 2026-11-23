@@ -129,3 +129,37 @@ def test_out_of_range_year_is_not_a_date_and_never_raises(text):
 def test_impossible_day_does_not_raise():
     assert resolve_date("gastei 50 em 31/02", TODAY) == date(2026, 2, 28)
     assert resolve_date("gastei 50 em 32/01", TODAY) is None
+
+
+def merged(text, model_cents, intent="lancar_parcelado", installments=None):
+    from app.assistant.intents import ParsedIntent
+    from app.assistant.processor import merge_hints
+
+    p = ParsedIntent.of(intent, amount_cents=model_cents, installments=installments)
+    return merge_hints(p, extract_hints(text, TODAY))
+
+
+def test_installments_keep_the_models_total_when_it_is_in_the_text():
+    p, warn = merged("iphone 15 por 5000 em 12x", 500_000)
+    assert (p.amount_cents, p.installments, p.intent, warn) == (
+        500_000, 12, "lancar_parcelado", None,
+    )  # fmt: skip
+    p, warn = merged("comprei 2 pneus 800 em 4x", 80_000)
+    assert (p.amount_cents, p.installments, warn) == (80_000, 4, None)
+
+
+def test_installments_x_de_total_comes_from_the_text():
+    p, warn = merged("tv em 3x de 500", 50_000)
+    assert (p.amount_cents, p.installments, warn) == (150_000, 3, None)
+
+
+def test_installments_model_amount_absent_from_text_single_amount_wins_with_warning():
+    p, warn = merged("tv 600 em 3x", 123_400)
+    assert p.amount_cents == 60_000 and warn is not None and "R$ 600,00" in warn
+    p, warn = merged("iphone 15 por 5000 em 12x", 123_400)  # ambíguo: dois números, fica o modelo
+    assert p.amount_cents == 123_400 and warn is None
+
+
+def test_missing_model_amount_is_filled_from_text():
+    p, _ = merged("tv 600 em 3x", None)
+    assert p.amount_cents == 60_000
