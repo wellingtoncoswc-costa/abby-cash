@@ -1,11 +1,14 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"  # raiz do repo; ausente é tolerado
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
     ENV: str = "dev"
     DATABASE_URL: str = "postgresql+asyncpg://abby:abby@localhost:5432/abby"
