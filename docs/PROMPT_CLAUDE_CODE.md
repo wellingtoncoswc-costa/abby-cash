@@ -17,7 +17,7 @@ Leia os dois inteiros antes de qualquer código. As "Restrições globais" e o "
   - para cada marco, primeiro detalhe as tarefas em passos TDD com superpowers:writing-plans, salvando em docs/superpowers/plans/2026-11-23-abby-cash-mN-<nome>.md;
   - depois execute com superpowers:subagent-driven-development (um subagente implementa e outro revisa cada tarefa);
   - antes de declarar algo pronto, use superpowers:verification-before-completion.
-- Ponytail: use o ponytail (já instalado no meu Claude Code) durante todo o trabalho, seguindo as instruções dele. Se ele não estiver disponível nesta sessão, pare e me avise antes de começar.
+- Economia de tokens com o ponytail: use o ponytail (já instalado no meu Claude Code) em TUDO, ou seja, na leitura da spec e do plano, no planejamento de cada marco, na implementação, nos subagentes, nos testes, nos code reviews e nos relatórios. Passe a mesma instrução para todo subagente que você criar. A economia nunca pode pular etapas obrigatórias: TDD, testes, code review e verificação continuam integrais. Se o ponytail não estiver disponível nesta sessão, pare e me avise antes de começar.
 - Code review obrigatório, em três momentos:
   1. ao fim de cada tarefa, o revisor do subagent-driven-development precisa aprovar antes da próxima tarefa;
   2. ao fim de cada marco, antes de abrir o PR, rode `/code-review high` no diff do branch do marco contra `main`, corrija os achados confirmados, rode os testes de novo e repita até não sobrar nada importante;
