@@ -1,6 +1,8 @@
 from datetime import date
+from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,3 +61,42 @@ async def list_bills(
     if end is not None:
         q = q.where(Bill.due_on <= end)
     return list(await session.scalars(q.order_by(Bill.due_on, Bill.created_at)))
+
+
+async def _open_bill(session: AsyncSession, actor_id: UUID, bill_id: UUID) -> Bill:
+    bill = await session.get(Bill, bill_id, with_for_update=True)
+    if bill is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    await require_member(session, actor_id, bill.space_id)
+    if bill.kind != "manual" or bill.status != "open":
+        raise DomainError("bill_not_editable")
+    return bill
+
+
+async def update_bill(
+    session: AsyncSession, *, actor_id: UUID, bill_id: UUID, fields: dict[str, Any]
+) -> Bill:
+    """Conta manual ainda em aberto: descrição, valor, vencimento, categoria, responsável."""
+    bill = await _open_bill(session, actor_id, bill_id)
+    await check_common(
+        session, actor_id=actor_id, space_id=bill.space_id, type="expense",
+        amount_cents=fields.get("amount_cents", bill.amount_cents),
+        category_id=fields.get("category_id", bill.category_id),
+        occurred_on=fields.get("due_on", bill.due_on),
+    )  # fmt: skip
+    resp = fields.get("responsible_user_id")
+    if resp is not None and not await is_member(session, resp, bill.space_id):
+        raise DomainError("invalid_responsible")
+    for k, v in fields.items():
+        setattr(bill, k, v)
+    audit(session, actor_id, "bill.update", "bill", bill.id,
+          {"space_id": str(bill.space_id), "fields": sorted(fields)})  # fmt: skip
+    await session.commit()
+    return bill
+
+
+async def delete_bill(session: AsyncSession, *, actor_id: UUID, bill_id: UUID) -> None:
+    bill = await _open_bill(session, actor_id, bill_id)
+    audit(session, actor_id, "bill.delete", "bill", bill.id, {"space_id": str(bill.space_id)})
+    await session.delete(bill)
+    await session.commit()
