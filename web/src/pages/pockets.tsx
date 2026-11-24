@@ -7,6 +7,9 @@ import { useSpace } from '../space'
 import { Btn, Card, EditBox, Err, Field, centsText, today, useAccounts, useGet, useSend } from '../ui'
 
 /** "120" | "112,5" -> cdi_bp inteiro (12000 | 11250), sem float; null se inválido (faixa 1..100000). */
+/** "14.9000000000" -> "14,90" (só exibição, sem float). */
+const pct2 = (v: string | number) => { const [i, d = ''] = String(v).split('.'); return `${i},${d.padEnd(2, '0').slice(0, 2)}` }
+
 export function parsePct(text: string): number | null {
   const m = /^\s*(\d{1,4})(?:[,.](\d{1,2}))?\s*$/.exec(text)
   if (!m) return null
@@ -60,21 +63,7 @@ export function Pockets() {
   return (
     <>
       <h1 className="mb-1 text-xl font-bold">Caixinhas</h1>
-      {cdi.data && <p className="mb-3 text-sm text-muted-foreground">CDI hoje: {String(cdi.data.annual_pct).replace('.', ',')}% a.a.</p>}
-      <Card title="Nova caixinha">
-        <form onSubmit={(e) => { e.preventDefault(); if (bp && f.account) create.mutate() }}>
-          <Field label="Nome"><input required maxLength={200} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-          <Field label="Conta">
-            <select required value={f.account} onChange={(e) => setF({ ...f, account: e.target.value })}>
-              <option value="">Selecione…</option>
-              {accounts.data.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </Field>
-          <CdiPicker value={f.pct} onChange={(pct) => setF({ ...f, pct })} />
-          <Err e={create.error} />
-          <Btn type="submit" disabled={create.isPending || !bp || !f.account}>Criar caixinha</Btn>
-        </form>
-      </Card>
+      {cdi.data && <p className="mb-3 text-sm text-muted-foreground">CDI hoje: {pct2(cdi.data.annual_pct)}% a.a.</p>}
       {!pockets.isLoading && !list.length && <p className="mb-4">Você ainda não tem caixinhas. Crie a primeira para separar um dinheiro que rende pelo CDI.</p>}
       {accounts.data.filter((a) => list.some((p) => p.account_id === a.id)).map((a) => (
         <Card key={a.id} title="">
@@ -97,6 +86,20 @@ export function Pockets() {
           ))}
         </Card>
       ))}
+      <Card title="Nova caixinha">
+        <form onSubmit={(e) => { e.preventDefault(); if (bp && f.account) create.mutate() }}>
+          <Field label="Nome"><input required maxLength={200} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label="Conta">
+            <select required value={f.account} onChange={(e) => setF({ ...f, account: e.target.value })}>
+              <option value="">Selecione…</option>
+              {accounts.data.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+          <CdiPicker value={f.pct} onChange={(pct) => setF({ ...f, pct })} />
+          <Err e={create.error} />
+          <Btn type="submit" disabled={create.isPending || !bp || !f.account}>Criar caixinha</Btn>
+        </form>
+      </Card>
       <Err e={pockets.error} />
     </>
   )

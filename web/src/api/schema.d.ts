@@ -622,6 +622,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{space_id}/pockets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List */
+        get: operations["list__spaces__space_id__pockets_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_spaces__space_id__pockets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pockets/{pocket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_pockets__pocket_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch */
+        patch: operations["patch_pockets__pocket_id__patch"];
+        trace?: never;
+    };
+    "/pockets/{pocket_id}/deposit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Deposit */
+        post: operations["add_deposit_pockets__pocket_id__deposit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pockets/{pocket_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Withdraw */
+        post: operations["add_withdraw_pockets__pocket_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pockets/{pocket_id}/movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Movements */
+        get: operations["movements_pockets__pocket_id__movements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cdi/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cdi Latest */
+        get: operations["cdi_latest_cdi_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{space_id}/loans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List */
+        get: operations["list__spaces__space_id__loans_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_spaces__space_id__loans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/loans/{loan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get */
+        get: operations["get_loans__loan_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_loans__loan_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch */
+        patch: operations["patch_loans__loan_id__patch"];
+        trace?: never;
+    };
     "/spaces/{space_id}/categories": {
         parameters: {
             query?: never;
@@ -929,8 +1070,14 @@ export interface components {
             name: string;
             /** Initial Balance Cents */
             initial_balance_cents: number;
+            /** Institution */
+            institution: string | null;
             /** Balance Cents */
             balance_cents: number;
+            /** Pockets Cents */
+            pockets_cents: number;
+            /** Available Cents */
+            available_cents: number;
         };
         /** AccountIn */
         AccountIn: {
@@ -946,6 +1093,8 @@ export interface components {
              * @default 0
              */
             initial_balance_cents: number;
+            /** Institution */
+            institution?: string | null;
         };
         /** AccountOut */
         AccountOut: {
@@ -965,6 +1114,14 @@ export interface components {
             name: string;
             /** Initial Balance Cents */
             initial_balance_cents: number;
+            /** Institution */
+            institution: string | null;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Pockets Cents */
+            pockets_cents: number;
+            /** Available Cents */
+            available_cents: number;
         };
         /** AccountPatch */
         AccountPatch: {
@@ -972,6 +1129,8 @@ export interface components {
             name?: string | null;
             /** Initial Balance Cents */
             initial_balance_cents?: number | null;
+            /** Institution */
+            institution?: string | null;
         };
         /** BillIn */
         BillIn: {
@@ -1027,6 +1186,10 @@ export interface components {
             recurrence_id: string | null;
             /** Invoice Id */
             invoice_id: string | null;
+            /** Loan Id */
+            loan_id: string | null;
+            /** Installment Number */
+            installment_number: number | null;
             /**
              * Created At
              * Format: date-time
@@ -1184,6 +1347,18 @@ export interface components {
             icon?: string | null;
             /** Color */
             color?: string | null;
+        };
+        /** CdiLatestOut */
+        CdiLatestOut: {
+            /**
+             * On Date
+             * Format: date
+             */
+            on_date: string;
+            /** Daily Pct */
+            daily_pct: string;
+            /** Annual Pct */
+            annual_pct: string;
         };
         /** CodeIn */
         CodeIn: {
@@ -1389,6 +1564,87 @@ export interface components {
              */
             channel: "telegram" | "whatsapp_evolution";
         };
+        /** LoanIn */
+        LoanIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "financing" | "consortium";
+            /** Name */
+            name: string;
+            /** Installment Cents */
+            installment_cents: number;
+            /** Installments Total */
+            installments_total: number;
+            /**
+             * First Due On
+             * Format: date
+             */
+            first_due_on: string;
+            /** Category Id */
+            category_id?: string | null;
+            /** Account Id */
+            account_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** LoanOut */
+        LoanOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Space Id
+             * Format: uuid
+             */
+            space_id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Installment Cents */
+            installment_cents: number;
+            /** Installments Total */
+            installments_total: number;
+            /**
+             * First Due On
+             * Format: date
+             */
+            first_due_on: string;
+            /** Category Id */
+            category_id: string | null;
+            /** Account Id */
+            account_id: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Canceled At */
+            canceled_at: string | null;
+            /** Paid Count */
+            paid_count: number;
+            /** Remaining Count */
+            remaining_count: number;
+            /** Remaining Cents */
+            remaining_cents: number;
+            /** Next Due On */
+            next_due_on: string | null;
+            /**
+             * Last Due On
+             * Format: date
+             */
+            last_due_on: string;
+            /** Progress Pct */
+            progress_pct: number;
+        };
+        /** LoanPatch */
+        LoanPatch: {
+            /** Name */
+            name?: string | null;
+            /** Installment Cents */
+            installment_cents?: number | null;
+        };
         /** LoginIn */
         LoginIn: {
             /** Email */
@@ -1444,6 +1700,13 @@ export interface components {
              */
             joined_at: string;
         };
+        /** MoveIn */
+        MoveIn: {
+            /** Amount Cents */
+            amount_cents: number;
+            /** Occurred On */
+            occurred_on?: string | null;
+        };
         /** PasswordIn */
         PasswordIn: {
             /** Password */
@@ -1472,6 +1735,77 @@ export interface components {
             amount_cents: number;
             /** Paid On */
             paid_on?: string | null;
+        };
+        /** PocketIn */
+        PocketIn: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Name */
+            name: string;
+            /** Cdi Bp */
+            cdi_bp: number;
+        };
+        /** PocketMovementOut */
+        PocketMovementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Pocket Id
+             * Format: uuid
+             */
+            pocket_id: string;
+            /** Kind */
+            kind: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Ref Date */
+            ref_date: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** PocketOut */
+        PocketOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Name */
+            name: string;
+            /** Cdi Bp */
+            cdi_bp: number;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Pending Yield Cents */
+            pending_yield_cents: number;
+            /** Month Yield Cents */
+            month_yield_cents: number;
+        };
+        /** PocketPatch */
+        PocketPatch: {
+            /** Name */
+            name?: string | null;
+            /** Cdi Bp */
+            cdi_bp?: number | null;
         };
         /** PurchaseIn */
         PurchaseIn: {
@@ -3303,6 +3637,453 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list__spaces__space_id__pockets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_spaces__space_id__pockets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PocketIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pockets__pocket_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_pockets__pocket_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PocketPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_deposit_pockets__pocket_id__deposit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_withdraw_pockets__pocket_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    movements_pockets__pocket_id__movements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketMovementOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cdi_latest_cdi_latest_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CdiLatestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list__spaces__space_id__loans_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_spaces__space_id__loans_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_loans__loan_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_loans__loan_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_loans__loan_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoanPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanOut"];
                 };
             };
             /** @description Validation Error */
