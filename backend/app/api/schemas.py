@@ -108,7 +108,6 @@ class TransactionOut(Out):
     installment_total: int | None
     created_by: UUID | None
     origin: str
-    source_message_id: str | None
     attachment_id: UUID | None
     created_at: datetime
 

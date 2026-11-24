@@ -1594,7 +1594,6 @@ export interface components {
             /** Origin */
             origin: string;
             /** Source Message Id */
-            source_message_id: string | null;
             /** Attachment Id */
             attachment_id: string | null;
             /**
