@@ -56,10 +56,60 @@ class AccountOut(Out):
     type: str
     name: str
     initial_balance_cents: int
+    institution: str | None
+    balance_cents: int
+    pockets_cents: int  # guardado em caixinhas
+    available_cents: int  # balance_cents - pockets_cents
 
 
 class AccountDetailOut(AccountOut):
+    pass
+
+
+class PocketOut(Out):
+    id: UUID
+    account_id: UUID
+    name: str
+    cdi_bp: int
     balance_cents: int
+    pending_yield_cents: int
+    month_yield_cents: int
+
+
+class PocketMovementOut(Out):
+    id: UUID
+    pocket_id: UUID
+    kind: str
+    amount_cents: int
+    occurred_on: date
+    ref_date: date | None
+    created_at: datetime
+
+
+class CdiLatestOut(Out):
+    on_date: date
+    daily_pct: str
+    annual_pct: str
+
+
+class LoanOut(Out):
+    id: UUID
+    space_id: UUID
+    kind: str
+    name: str
+    installment_cents: int
+    installments_total: int
+    first_due_on: date
+    category_id: UUID | None
+    account_id: UUID | None
+    notes: str | None
+    canceled_at: datetime | None
+    paid_count: int
+    remaining_count: int
+    remaining_cents: int
+    next_due_on: date | None
+    last_due_on: date
+    progress_pct: int
 
 
 class CardOut(Out):
@@ -125,6 +175,8 @@ class BillOut(Out):
     recurrence_rule: dict[str, Any] | None
     recurrence_id: UUID | None
     invoice_id: UUID | None
+    loan_id: UUID | None
+    installment_number: int | None
     created_at: datetime
 
 

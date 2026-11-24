@@ -118,6 +118,8 @@ async def delete_bill(
             return
     else:
         bill = await _open_bill(session, actor_id, bill_id)
+    if bill.loan_id is not None:
+        raise DomainError("loan_bill_locked")  # cancele o financiamento/consórcio
     if bill.recurrence_id is not None and bill.recurrence_id != bill.id:
         await session.execute(
             insert(BillRecurrenceSkip)

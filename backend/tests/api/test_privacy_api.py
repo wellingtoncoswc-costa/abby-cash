@@ -2,7 +2,8 @@ import csv
 import io
 import json
 import zipfile
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
 
 from sqlalchemy import func, select
 
@@ -504,3 +505,37 @@ async def test_delete_account_removes_outbound_messages(session):
     await session.commit()
     await delete_account(session, a)
     assert await session.scalar(select(func.count()).select_from(OutboundMessage)) == 0
+
+
+async def test_export_and_delete_include_pockets_and_loans(client, session):
+    from app.domain.loans.models import Loan
+    from app.domain.loans.service import create_loan
+    from app.domain.pockets.models import CdiRate, Pocket, PocketMovement, PocketYieldPosting
+    from app.domain.pockets.service import accrue_all, create_pocket, deposit
+
+    a = await make_user(session, "a@x.com")
+    a_id, pa = a.id, a.default_space_id
+    acc = await make_account(session, pa, initial=100_000)
+    p = await create_pocket(
+        session, actor_id=a_id, space_id=pa, account_id=acc.id, name="Reserva", cdi_bp=12_000
+    )  # fmt: skip
+    p.created_at = datetime(2026, 1, 2, tzinfo=UTC)
+    await session.commit()
+    await deposit(session, actor_id=a_id, pocket_id=p.id, amount_cents=50_000, on=date(2026, 1, 5))
+    session.add(CdiRate(on_date=date(2026, 1, 6), daily_pct=Decimal("0.055131")))
+    await session.commit()
+    await accrue_all(session, p.id, date(2026, 2, 3))  # lança a receita mensal
+    await create_loan(
+        session, actor_id=a_id, space_id=pa, kind="financing", name="Carro",
+        installment_cents=10_000, installments_total=5, first_due_on=D,
+    )  # fmt: skip
+    r = await client.get("/privacy/export", headers=auth(a))
+    data = json.loads(zipfile.ZipFile(io.BytesIO(r.content)).read("data.json"))
+    assert [x["name"] for x in data["pockets"]] == ["Reserva"]
+    assert sorted(m["kind"] for m in data["pocket_movements"]) == ["accrual", "deposit"]
+    assert [x["name"] for x in data["loans"]] == ["Carro"]
+    assert len(data["bills"]) == 3 and data["bills"][0]["loan_id"] == data["loans"][0]["id"]
+    assert (await _delete(client, a)).status_code == 204
+    session.expire_all()
+    for model in (Pocket, PocketMovement, PocketYieldPosting, Loan, Bill, Transaction):
+        assert await session.scalar(select(func.count()).select_from(model)) == 0, model.__name__

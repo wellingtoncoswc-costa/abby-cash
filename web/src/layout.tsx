@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet } from '@tanstack/react-router'
-import { ArrowLeftRight, CreditCard, Gauge, LayoutDashboard, LogOut, type LucideIcon, Menu, MessageCircle, Moon, Receipt, Rocket, Settings, Shield, Sun, Tags, Target, Users, X } from 'lucide-react'
+import { ArrowLeftRight, CreditCard, Gauge, Landmark, LayoutDashboard, LogOut, type LucideIcon, Menu, MessageCircle, Moon, PiggyBank, Receipt, Rocket, Settings, Shield, Sun, Tags, Target, Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { logout } from './api/client'
 import type { Space } from './api/types'
@@ -13,6 +13,7 @@ type Item = readonly [to: string, label: string, Icon: LucideIcon]
 const PRINCIPAL: Item[] = [
   ['/', 'Painel', LayoutDashboard], ['/lancamentos', 'Lançamentos', ArrowLeftRight], ['/contas', 'Contas a pagar', Receipt],
   ['/cartoes', 'Cartões', CreditCard], ['/metas', 'Metas', Target],
+  ['/caixinhas', 'Caixinhas', PiggyBank], ['/financiamentos', 'Financiamentos e consórcios', Landmark],
 ]
 const MAIS: Item[] = [
   ['/categorias', 'Categorias', Tags], ['/teto', 'Teto', Gauge], ['/espacos', 'Espaços', Users], ['/canais', 'Canais', MessageCircle],
