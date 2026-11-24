@@ -85,10 +85,19 @@ services:
     networks: [evolution-net]
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
+  # STT (faster-whisper): só rede interna; limites para não competir com o abby-chat.
+  stt:
+    build: ../stt
+    environment: {STT_MODEL: "${STT_MODEL:-small}"}
+    volumes: [stt_models:/models]
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "2", memory: 2G}}}
 networks:
   abby-cash-net:
   evolution-net:
 volumes:
+  stt_models:
   pgdata:
   evolution_pgdata:
   evolution_instances:

@@ -28,6 +28,13 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes: [../backend:/app, /app/.venv]
     depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
+  # STT opcional: `docker compose --profile stt up stt` (baixa o modelo no 1º uso)
+  stt:
+    profiles: [stt]
+    build: ../stt
+    ports: ["8001:8000"]
+    volumes: [stt_models:/models]
+    deploy: {resources: {limits: {cpus: "2", memory: 2G}}}
   web:
     image: node:22
     working_dir: /web
@@ -48,3 +55,4 @@ services:
   #   depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
 volumes:
   pgdata:
+  stt_models:
