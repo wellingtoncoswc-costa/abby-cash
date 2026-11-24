@@ -132,3 +132,30 @@ cases:
     expect: {intent: desconhecido}
   - text: "qual a capital da França"
     expect: {intent: desconhecido}
+  # --- caixinhas e financiamentos (pocket_hint: caixinha ou financiamento) ---
+  - text: "guardei 200 na reserva"
+    expect: {intent: guardar_caixinha, amount_cents: 20000, pocket_hint: reserva}
+  - text: "coloquei 100 na caixinha viagem"
+    expect: {intent: guardar_caixinha, amount_cents: 10000, pocket_hint: viagem}
+  - text: "joguei 300 na reserva"
+    expect: {intent: guardar_caixinha, amount_cents: 30000, pocket_hint: reserva}
+  - text: "pus 50 na viagem"
+    expect: {intent: guardar_caixinha, amount_cents: 5000, pocket_hint: viagem}
+  - text: "tirei 100 da viagem"
+    expect: {intent: resgatar_caixinha, amount_cents: 10000, pocket_hint: viagem}
+  - text: "resgatei 50 da reserva"
+    expect: {intent: resgatar_caixinha, amount_cents: 5000, pocket_hint: reserva}
+  - text: "saca 100 da reserva"
+    expect: {intent: resgatar_caixinha, amount_cents: 10000, pocket_hint: reserva}
+  - text: "minhas caixinhas"
+    expect: {intent: consultar_caixinhas}
+  - text: "quanto tá rendendo minha caixinha"
+    expect: {intent: consultar_caixinhas}
+  - text: "quanto rendeu esse mês"
+    expect: {intent: consultar_caixinhas}
+  - text: "meus financiamentos"
+    expect: {intent: consultar_financiamentos}
+  - text: "quanto falta do carro"
+    expect: {intent: consultar_financiamentos, pocket_hint: carro}
+  - text: "quantas parcelas faltam do consórcio da casa?"
+    expect: {intent: consultar_financiamentos}
