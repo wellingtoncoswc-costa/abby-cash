@@ -37,3 +37,15 @@ Design: identidade Vidro/Luz (docs/design), só tokens; Recharts já instalado; 
 - Estados: carregando (esqueleto), vazio ("Nenhum lançamento neste período" com atalho para ampliar), erro.
 - Chips dos filtros ativos removíveis; ao clicar num elemento do gráfico mostrar feedback imediato (chip aparece).
 Tipos à mão até o backend ser mesclado (`OverviewOut` conforme acima); depois `npm run gen:api`.
+
+## Decisões (backend)
+- Data efetiva única: `EFFECTIVE_ON` em `domain/budgets/service.py` (cartão = `Invoice.due_on`, resto = `occurred_on`); `month_spending` foi reescrito sobre ela (uma consulta, mesmos testes verdes) e o overview/lista a reutilizam, então o total do mês bate com `spent_cents`.
+- `GET /transactions` ganhou, de forma retrocompatível: `type`, `merchant` (rótulo; vazio = "Sem estabelecimento"), `uncategorized=true` (sem categoria), `effective=true` (start/end/ordem por data efetiva, para o drill-down bater com os gráficos; padrão segue `occurred_on`) e `limit` até 1000. `category_id=none` existe só no overview.
+- `by_account`: conta nula vira duas linhas distintas ("Cartão de crédito" para compras de cartão, "Sem conta" para o resto); filtro `account_id` casa `account_id` ou `counter_account_id` (como a lista) e por isso exclui compras de cartão.
+- `largest[].occurred_on` é a data real do lançamento (não a efetiva); `by_day` usa a data efetiva.
+- `merchant` agrupa pelo texto exato (trim), sem normalização de caixa/acentos.
+- `share_bp` = `v*10000 // total` (divisão inteira; soma pode ficar até alguns bp abaixo de 10000). `avg_daily_expense_cents` = despesa // dias do período (inclusivo).
+- `balance_series`: soma dos saldos iniciais das contas do espaço + efeito por mês agrupado no SQL (receita +, despesa −, transferência − na origem e + no destino); inclui lançamentos futuros até o fim de cada mês. Ignora filtros.
+- `upcoming`: contas `open|partial` do espaço (inclui espelho de fatura, `kind=invoice`) com vencimento em [hoje, hoje+30] no fuso do usuário; valor = restante (valor − pago).
+- Janela máxima: `end-start >= 3660` dias ou `start>end` -> 422 `invalid_range`. Sem rate limit (não há padrão para GETs). Sem índice novo.
+- Performance (50 mil lançamentos num único espaço, DB de teste): overview completo 0,30 s (1 mês) / 0,38 s (33 meses); a consulta base faz seq scan (16 ms por agregação) porque a data efetiva não é sargável; aceitável, revisar (índice por `space_id,occurred_on` + prefiltro) só se passar de ~200 mil lançamentos.
