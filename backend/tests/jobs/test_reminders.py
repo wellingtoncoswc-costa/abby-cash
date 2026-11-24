@@ -48,7 +48,7 @@ async def test_reminder_sent_once_day_before_and_due_day(session, ana, tg):
     assert [t for _, t in tg.sent][1] == "🔔 Hoje vence: Luz · R$ 150,00."
     assert len(tg.sent) == 2
     st = await session.scalar(select(ConversationState).where(ConversationState.kind == "reminder"))
-    assert st is not None and st.data["last_reminded_bill_id"]
+    assert st is not None and st.data["last_reminded_bill_ids"]
 
 
 async def test_reminder_respects_user_timezone(session, ana, tg):

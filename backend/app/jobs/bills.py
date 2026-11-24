@@ -30,9 +30,9 @@ _TEXT = {
 _OFFSET = {1: "day_before", 0: "due", -1: "overdue"}  # vencimento - hoje
 
 
-async def _remember(user_id: UUID, channel: str, bill_id: UUID, now: datetime) -> None:
+async def _remember(user_id: UUID, channel: str, bill_ids: list[UUID], now: datetime) -> None:
     """Contexto do "paguei" (24 h); não pisa em pergunta pendente ainda viva."""
-    values = {"kind": "reminder", "data": {"last_reminded_bill_id": str(bill_id)},
+    values = {"kind": "reminder", "data": {"last_reminded_bill_ids": [str(i) for i in bill_ids]},
               "expires_at": now + REMINDER_TTL}  # fmt: skip
     async with SessionLocal() as s:
         await s.execute(
@@ -78,6 +78,7 @@ async def _remind_user(user_id: UUID, now: datetime) -> None:
             if left > 0:
                 kind = _OFFSET[(b.due_on - today).days]
                 todo.append((b.id, kind, b.description, format_brl(left)))
+    sent: dict[str, list[UUID]] = {}
     for bill_id, kind, description, value in todo:
         async with SessionLocal() as s:  # insere primeiro: execuções concorrentes não duplicam
             claimed = await s.scalar(
@@ -94,7 +95,9 @@ async def _remind_user(user_id: UUID, now: datetime) -> None:
                 await s.execute(delete(BillReminderSent).where(BillReminderSent.id == claimed))
                 await s.commit()
                 continue
-        await _remember(user_id, channel, bill_id, now)
+        sent.setdefault(channel, []).append(bill_id)
+    for channel, ids in sent.items():
+        await _remember(user_id, channel, ids, now)
 
 
 async def send_bill_reminders(

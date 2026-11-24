@@ -64,3 +64,28 @@ async def test_partial_invoice_via_chat(ana, session, parser):
     parser.add(intent("pagar_conta", amount_cents=50_000))
     reply = await ana.say("paguei 500 da fatura")
     assert reply.startswith("✅ Paguei R$ 500,00 · Fatura Visa") and "Falta R$ 500,00." in reply
+
+
+async def test_paguei_names_other_bill_after_reminder(ana, session, parser):
+    await mk(session, ana, "Luz", 30, 15_000)
+    await mk(session, ana, "Internet", 26)
+    await send_bill_reminders({}, now=TS)  # lembra a Internet
+    parser.add(intent("pagar_conta", description="luz", amount_cents=15_000))
+    assert (await ana.say("paguei a luz 150")).startswith("✅ Paguei R$ 150,00 · Luz")
+
+
+async def test_paguei_amount_conflict_asks(ana, session, parser):
+    await mk(session, ana, "Luz", 26)
+    await send_bill_reminders({}, now=TS)
+    parser.add(intent("pagar_conta", amount_cents=4_000))
+    assert await ana.say("paguei 40") == "Pagar Luz R$ 40,00? Responda sim ou não"
+    assert (await ana.say("sim")).startswith("✅ Paguei R$ 40,00 · Luz")
+
+
+async def test_paguei_several_reminded_lists_only_them(ana, session):
+    await mk(session, ana, "Luz", 26)
+    await mk(session, ana, "Água", 26)
+    await mk(session, ana, "Internet", 30)
+    await send_bill_reminders({}, now=TS)
+    reply = await ana.say("paguei")
+    assert reply.startswith("Qual conta você pagou?") and "Internet" not in reply
