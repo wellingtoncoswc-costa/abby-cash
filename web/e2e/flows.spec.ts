@@ -19,6 +19,13 @@ async function login(page: Page, mail: string) {
   await page.getByRole('button', { name: 'Entrar' }).click()
 }
 
+/** No celular os destinos fora da barra inferior ficam na folha "Mais". */
+async function irPara(page: Page, name: string) {
+  const link = page.getByRole('link', { name })
+  if (!(await link.isVisible())) await page.getByRole('button', { name: 'Mais' }).click()
+  await link.click()
+}
+
 test('cadastro com convite → login → painel', async ({ page }) => {
   const mail = email('a')
   await register(page, process.env.E2E_INVITE_1!, mail)
@@ -32,7 +39,7 @@ test('onboarding', async ({ page }) => {
   const mail = email('b')
   await register(page, process.env.E2E_INVITE_2!, mail)
   await login(page, mail)
-  await page.getByRole('link', { name: 'Primeiros passos' }).click()
+  await irPara(page, 'Primeiros passos')
   await page.getByLabel('Nome da conta').fill('Nubank')
   await page.getByLabel('Saldo inicial (R$)').fill('1.500,00')
   await page.getByRole('button', { name: 'Adicionar conta' }).click()
@@ -53,7 +60,7 @@ test('categorias, lançamento com edição/exclusão, compra parcelada e prefer�
   const mail = email('c')
   await register(page, process.env.E2E_INVITE_3!, mail)
   await login(page, mail)
-  await page.getByRole('link', { name: 'Primeiros passos' }).click()
+  await irPara(page, 'Primeiros passos')
   await page.getByLabel('Nome da conta').fill('Nubank')
   await page.getByRole('button', { name: 'Adicionar conta' }).click()
   await expect(page.getByText('Nubank · R$ 0,00')).toBeVisible()
@@ -61,12 +68,12 @@ test('categorias, lançamento com edição/exclusão, compra parcelada e prefer�
   await page.getByRole('button', { name: 'Adicionar cartão' }).click()
   await expect(page.getByText('Cartão adicionado.')).toBeVisible()
 
-  await page.getByRole('link', { name: 'Categorias' }).click()
+  await irPara(page, 'Categorias')
   await page.getByLabel('Nome da nova categoria').fill('Mercado e Feira')
   await page.getByRole('button', { name: 'Criar categoria' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: /^Mercado e Feira/ })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Lançamentos' }).click()
+  await irPara(page, 'Lançamentos')
   await page.getByLabel('Valor (R$)', { exact: true }).fill('45,00')
   await page.getByLabel('Descrição', { exact: true }).fill('Compras')
   await page.getByLabel('Categoria').first().selectOption({ label: 'Mercado e Feira' })
@@ -89,7 +96,7 @@ test('categorias, lançamento com edição/exclusão, compra parcelada e prefer�
   await page.getByRole('button', { name: 'Lançar compra' }).click()
   await expect(page.getByRole('status')).toContainText('3x de R$ 100,00')
 
-  await page.getByRole('link', { name: 'Configurações' }).click()
+  await irPara(page, 'Configurações')
   await page.getByLabel('Horário dos lembretes').fill('08:30')
   await page.getByLabel('Receber resumo semanal').check()
   await page.getByRole('button', { name: 'Salvar preferências' }).click()

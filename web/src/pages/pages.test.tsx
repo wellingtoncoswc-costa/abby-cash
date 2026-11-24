@@ -44,7 +44,7 @@ test('painel mostra valores em R$ e pede teto', async () => {
   go('/')
   expect(await screen.findByText('Sem teto definido.', { exact: false })).toBeInTheDocument()
   expect((await screen.findAllByText('-R$ 1.234,56')).length).toBeGreaterThan(0)
-  expect(screen.getByLabelText('Espaço')).toHaveDisplayValue('Pessoal')
+  expect(within(screen.getByRole('group', { name: 'Espaço' })).getByRole('button', { name: 'Pessoal', pressed: true })).toBeInTheDocument()
 })
 
 test('pagar conta exige conta de origem', async () => {
