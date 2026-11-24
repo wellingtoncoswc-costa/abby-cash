@@ -17,7 +17,7 @@ from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.cards.service import sync_invoice_bill
 from app.domain.categories.models import Category, CategoryRule
-from app.domain.channels.models import ChannelLink, InboundMessage
+from app.domain.channels.models import ChannelLink, InboundMessage, OutboundMessage
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
 from app.domain.spaces.models import Space, SpaceInvite, SpaceMember
@@ -206,6 +206,7 @@ async def delete_account(session: AsyncSession, user: User) -> None:
         )
     ).all()  # antes de apagar os vínculos: é por eles que se acham as mensagens sem user_id
     await session.execute(delete(ChannelLink).where(ChannelLink.user_id == uid))
+    await session.execute(delete(OutboundMessage).where(OutboundMessage.user_id == uid))
     await session.execute(
         delete(InboundMessage).where(
             or_(

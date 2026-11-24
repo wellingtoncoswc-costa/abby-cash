@@ -81,3 +81,18 @@ async def test_delete_unknown_channel_is_rejected(client, session):
     ana = await make_user(session, "ana@x.com")
     r = await client.delete("/channels/evil%20x", headers=auth(ana))
     assert r.status_code == 422
+
+
+async def test_link_code_for_whatsapp_has_no_deep_link_and_links(client, session):
+    ana = await make_user(session, "ana@x.com")
+    r = await client.post(
+        "/channels/link-code", json={"channel": "whatsapp_evolution"}, headers=auth(ana)
+    )
+    assert r.status_code == 200 and r.json()["deep_link"] is None
+    assert await link_with_code(
+        session, channel="whatsapp_evolution", external_user_id="5511988887777",
+        code=r.json()["code"],
+    )  # fmt: skip
+    assert (await client.post(
+        "/channels/link-code", json={"channel": "sms"}, headers=auth(ana)
+    )).status_code == 422  # fmt: skip

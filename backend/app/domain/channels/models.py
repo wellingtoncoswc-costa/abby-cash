@@ -48,3 +48,16 @@ class ChannelLink(Base):
     verified_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class OutboundMessage(Base):
+    """Registro de cada tentativa de envio proativo (sem o texto: privacidade)."""
+
+    __tablename__ = "outbound_messages"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
+    channel: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(8))  # ok | failed
+    error_kind: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

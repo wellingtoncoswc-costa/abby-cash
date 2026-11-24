@@ -169,3 +169,16 @@ async def test_amount_and_date_bounds(session):
     for bad in (MAX_CENTS + 1, -MAX_CENTS - 1):
         with pytest.raises(DomainError, match="amount_too_large"):
             await create_account(session, initial_balance_cents=bad, **kw)
+
+
+async def test_whatsapp_origin_transaction_is_stored(session):
+    from app.domain.transactions.models import Transaction
+    from tests.factories import make_account
+
+    user = await make_user(session, "wa@x.com")
+    acc = await make_account(session, user.default_space_id)
+    tx = await _tx(session, user, acc, 4500)
+    tx.origin, tx.source_message_id = "whatsapp_evolution", "3EB0A1"
+    await session.commit()
+    got = await session.get(Transaction, tx.id, populate_existing=True)
+    assert got.origin == "whatsapp_evolution"

@@ -64,6 +64,23 @@ async def _set_webhook(url: str | None) -> None:
     print(f"webhook set: {target}")
 
 
+async def _evolution_set_webhook(url: str | None) -> None:
+    from app.channels.registry import evolution_adapter
+    from app.core.config import get_settings
+
+    s = get_settings()
+    if not (s.EVOLUTION_URL and s.EVOLUTION_API_KEY and s.EVOLUTION_INSTANCE):
+        raise SystemExit("EVOLUTION_URL, EVOLUTION_API_KEY and EVOLUTION_INSTANCE must be set")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,256}", s.EVOLUTION_WEBHOOK_SECRET):
+        raise SystemExit("EVOLUTION_WEBHOOK_SECRET must be 16-256 chars of [A-Za-z0-9_-]")
+    target = url or f"{s.PUBLIC_BASE_URL.rstrip('/')}/webhooks/whatsapp_evolution"
+    if not target.startswith(("https://", "http://")):
+        raise SystemExit("the webhook URL must be http(s)")
+    # a Evolution chama de dentro da rede do Compose: http://api:8000/... vale
+    await evolution_adapter().client.set_webhook(target, s.EVOLUTION_WEBHOOK_SECRET)
+    print(f"webhook set: {target}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -76,6 +93,8 @@ def main() -> None:
     pg.add_argument("--days", type=int, default=30)
     w = sub.add_parser("telegram-set-webhook")
     w.add_argument("--url", help="default: PUBLIC_BASE_URL/webhooks/telegram")
+    e = sub.add_parser("evolution-set-webhook")
+    e.add_argument("--url", help="default: PUBLIC_BASE_URL/webhooks/whatsapp_evolution")
     args = p.parse_args()
     if args.cmd == "create-admin":
         asyncio.run(_admin(args.email, args.name))
@@ -88,6 +107,8 @@ def main() -> None:
         asyncio.run(_purge_inbound(args.days))
     elif args.cmd == "telegram-set-webhook":
         asyncio.run(_set_webhook(args.url))
+    elif args.cmd == "evolution-set-webhook":
+        asyncio.run(_evolution_set_webhook(args.url))
     else:
         asyncio.run(_invite())
 
