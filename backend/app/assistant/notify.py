@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 from sqlalchemy import select
@@ -5,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.sender import notify_user
 from app.domain.spaces.models import SpaceMember
+
+SEND_TIMEOUT_S = 8
 
 
 async def notify_members(
@@ -18,5 +21,8 @@ async def notify_members(
             SpaceMember.space_id == space_id, SpaceMember.user_id != exclude_user_id
         )
     )
-    for uid in list(ids):
-        await notify_user(uid, text)  # canal preferido, com fallback; nunca levanta
+    # em paralelo e com teto de tempo: canal lento não atrasa a resposta de quem lançou
+    await asyncio.gather(
+        *(asyncio.wait_for(notify_user(uid, text), SEND_TIMEOUT_S) for uid in list(ids)),
+        return_exceptions=True,  # inclui TimeoutError; notify_user nunca levanta
+    )
