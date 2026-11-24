@@ -11,6 +11,7 @@ Você vai implementar o Abby Cash v1 do zero neste repositório. Ele é um assis
 1. Spec: docs/superpowers/specs/2026-11-23-abby-cash-design.md. Em caso de conflito, as seções 13 e 14 prevalecem.
 2. Plano: docs/superpowers/plans/2026-11-23-abby-cash-v1.md. Ele tem os marcos M1–M8, as interfaces, os testes obrigatórios e o aceite.
 3. Identidade visual: docs/design/identidade-visual.md e docs/design/logomarca.md. O abby cash tem a MESMA logomarca e o MESMO visual da família Abby (referência: abby-map). Copie os tokens e os arquivos de marca literalmente, sem reinterpretar cores, fonte ou logo. Nunca use hex fixo em componente, só tokens.
+   Frontend design: antes de criar ou alterar qualquer tela, layout ou componente visual do web (T1.5 e todo o M7, além de qualquer ajuste de interface em outros marcos), invoque a skill `frontend-design` (no plugin, `frontend-design:frontend-design`) e use-a para a qualidade do design: hierarquia, espaçamento, tipografia, estados vazios, de carregamento e de erro, microinterações, responsividade e acessibilidade. A skill trabalha DENTRO da identidade Abby: logo, paleta, fonte Onest, tokens e os padrões de tela de docs/design/identidade-visual.md prevalecem sobre qualquer sugestão estética dela. Se a skill não estiver instalada, pare e me avise.
 Leia os três inteiros antes de qualquer código. As "Restrições globais" e o "Foco de revisão" do plano valem para todas as tarefas. Não renomeie as interfaces do plano. Se precisar mudar alguma, atualize o plano no mesmo commit e me avise.
 
 ## Como trabalhar
