@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from app.api.deps import Session
+from app.api.deps import Session, rate_limit
 from app.channels.ingest import ingest
 from app.channels.registry import get_adapter
+from app.core.config import get_settings
+from app.core.http import client_ip
 from app.jobs.queue import enqueue_inbound
 
 MAX_BODY = 1_000_000  # updates do Telegram são pequenos; recusa antes de parsear
@@ -12,6 +14,7 @@ router = APIRouter(tags=["webhooks"])
 
 @router.post("/webhooks/{channel}")
 async def webhook(channel: str, request: Request, session: Session) -> dict[str, bool]:
+    await rate_limit(f"webhook_ip:{client_ip(request)}", get_settings().WEBHOOK_RATE_PER_MIN, 60)
     try:
         adapter = get_adapter(channel)
     except KeyError:

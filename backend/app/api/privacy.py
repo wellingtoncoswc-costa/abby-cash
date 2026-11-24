@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.api.auth import MAX_FAILS, MAX_IP_FAILS, _count, _hit
 from app.api.deps import CurrentUser, Session
+from app.core.http import client_ip
 from app.core.redis import redis
 from app.core.security import verify_password
 from app.domain.errors import DomainError
@@ -43,7 +44,7 @@ async def delete(body: DeleteIn, user: CurrentUser, session: Session, request: R
     # Só senha ERRADA (e TOTP errado) conta. Por USUÁRIO: INCR-first atômico, devolvido se a
     # senha estava certa e a recusa veio depois (família com membros, totp ausente...).
     # Por IP: teto extra, só incrementa em falha de senha.
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     key, ip_key = f"delete_pw:{user.id}", f"delete_pw_ip:{ip}"
     await _hit(key, MAX_FAILS)
     if int(await redis.get(ip_key) or 0) >= MAX_IP_FAILS:

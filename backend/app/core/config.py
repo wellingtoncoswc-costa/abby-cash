@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = "./storage"
     PUBLIC_BASE_URL: str = "http://localhost:8000"
     DEFAULT_TZ: str = "America/Sao_Paulo"
+    TOTP_ENC_KEY: str = ""  # chave Fernet (urlsafe base64 de 32 bytes); obrigatória em prod
+    TRUSTED_PROXIES: str = ""  # CIDRs separados por vírgula; só deles se aceita X-Forwarded-For
+    HSTS: bool = False  # ligar só atrás de TLS
+    WEBHOOK_RATE_PER_MIN: int = 600  # teto generoso por IP
+    HEARTBEAT_STALE_S: int = 90
 
     @model_validator(mode="after")
     def _reject_default_secret_in_prod(self) -> "Settings":
@@ -36,6 +41,8 @@ class Settings(BaseSettings):
             raise ValueError("JWT_SECRET must be set in prod")
         if self.ENV == "prod" and len(self.JWT_SECRET) < 32:
             raise ValueError("JWT_SECRET must be at least 32 chars in prod")
+        if self.ENV == "prod" and not self.TOTP_ENC_KEY:
+            raise ValueError("TOTP_ENC_KEY must be set in prod")
         return self
 
 
