@@ -1,15 +1,28 @@
 name: abby-cash
 # Rodar com: docker compose --env-file .env -f infra/docker-compose.prod.yml ...
 # (--env-file alimenta a interpolação de ${POSTGRES_PASSWORD}).
-# Esqueleto: o M8 completa (proxy, volumes, backups). Sem portas públicas.
+# Portas: só api (127.0.0.1:18000) e web (127.0.0.1:18081), para o Nginx do host. Nada público.
 services:
   api:
+    image: ${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-api:${ABBY_TAG:-latest}
     build: ../backend
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
       REDIS_URL: redis://redis:6379/0
       ENV: prod
+      STORAGE_DIR: /data/storage
+      PUBLIC_BASE_URL: https://abbycash.abbysystems.com.br
+      HSTS: "true"
+      TRUSTED_PROXIES: 172.29.77.0/24  # gateway da rede abby-cash-net (o Nginx do host chega por ela)
+    ports: ["127.0.0.1:18000:8000"]
+    volumes: [storage:/data/storage]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks: [abby-cash-net]
     restart: unless-stopped
     depends_on:
@@ -17,6 +30,7 @@ services:
       redis: {condition: service_started}
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
   worker:
+    image: ${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-api:${ABBY_TAG:-latest}
     build: ../backend
     command: arq app.worker.WorkerSettings
     env_file: ../.env
@@ -24,6 +38,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
       REDIS_URL: redis://redis:6379/0
       ENV: prod
+      STORAGE_DIR: /data/storage
+    volumes: [storage:/data/storage]
     networks: [abby-cash-net]
     restart: unless-stopped
     depends_on:
@@ -87,16 +103,50 @@ services:
     deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
   # STT (faster-whisper): só rede interna; limites para não competir com o abby-chat.
   stt:
+    image: ${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-stt:${ABBY_TAG:-latest}
     build: ../stt
     environment: {STT_MODEL: "${STT_MODEL:-small}"}
     volumes: [stt_models:/models]
     networks: [abby-cash-net]
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "2", memory: 2G}}}
+  # Web (build estático + fallback de SPA); o Nginx do host faz o proxy de `/` para cá.
+  web:
+    image: ${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-web:${ABBY_TAG:-latest}
+    build: {context: ../web, dockerfile: ../infra/web.Dockerfile}
+    ports: ["127.0.0.1:18081:8080"]
+    healthcheck: {test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"], interval: 30s, retries: 3}
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.25", memory: 64M}}}
+  # Backup diário 03:00 (America/Sao_Paulo): dump + anexos criptografados com age (chave pública).
+  # Sem .env inteiro: só o que o backup usa. Envio ao Drive (rclone) é opcional (BACKUP_RCLONE_REMOTE).
+  backup:
+    build: ./backup
+    environment:
+      PGHOST: postgres
+      PGUSER: abby
+      PGDATABASE: abby
+      PGPASSWORD: "${POSTGRES_PASSWORD}"
+      STORAGE_DIR: /data/storage
+      BACKUP_DIR: /backups
+      BACKUP_AGE_RECIPIENT: "${BACKUP_AGE_RECIPIENT:-}"  # vazio: backup.sh falha e alerta (obrigatória)
+      BACKUP_RCLONE_REMOTE: "${BACKUP_RCLONE_REMOTE:-}"
+      BACKUP_ADMIN_CHAT_ID: "${BACKUP_ADMIN_CHAT_ID:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+    volumes: [storage:/data/storage:ro, backups:/backups]
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
 networks:
   abby-cash-net:
+    ipam: {config: [{subnet: 172.29.77.0/24}]}  # fixa p/ TRUSTED_PROXIES; troque se colidir (ver deploy.md)
   evolution-net:
 volumes:
+  storage:
+  backups:
   stt_models:
   pgdata:
   evolution_pgdata:
