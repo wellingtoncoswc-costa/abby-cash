@@ -49,3 +49,13 @@ class BillReminderSent(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     kind: Mapped[str] = mapped_column(String(16))  # day_before | due | overdue
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BillRecurrenceSkip(Base):
+    """Ocorrência gerada que o usuário apagou: `_generate` não a recria."""
+
+    __tablename__ = "bill_recurrence_skips"
+
+    space_id: Mapped[UUID] = mapped_column(ForeignKey("spaces.id"), primary_key=True)
+    recurrence_id: Mapped[UUID] = mapped_column(primary_key=True)
+    due_on: Mapped[date] = mapped_column(Date, primary_key=True)

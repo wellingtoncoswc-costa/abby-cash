@@ -116,3 +116,30 @@ async def test_recurrence_generated_once_within_3_months(session, ana):
     dues = sorted(await session.scalars(select(Bill.due_on)))
     assert dues == [date(2026, 11, 10), date(2026, 12, 10), date(2027, 1, 10),
                     date(2027, 2, 10)]  # fmt: skip
+
+
+async def test_deleted_occurrence_is_not_resurrected(session, ana):
+    from app.domain.bills.service import delete_bill
+
+    await bill(session, ana, date(2026, 11, 10), recurrence=monthly(10))
+    await daily_bills_job({}, today=date(2026, 11, 25))
+    dec = await session.scalar(select(Bill).where(Bill.due_on == date(2026, 12, 10)))
+    await delete_bill(session, actor_id=ana.id, bill_id=dec.id)
+    await daily_bills_job({}, today=date(2026, 11, 26))
+    dues = sorted(await session.scalars(select(Bill.due_on)))
+    assert date(2026, 12, 10) not in dues and date(2027, 1, 10) in dues
+
+
+async def test_delete_series_stops_even_if_source_paid(session, ana):
+    from app.domain.bills.service import delete_bill
+
+    src = await bill(session, ana, date(2026, 11, 10), recurrence=monthly(10))
+    await daily_bills_job({}, today=date(2026, 11, 25))
+    src.status = "paid"  # origem já quitada
+    await session.commit()
+    jan = await session.scalar(select(Bill).where(Bill.due_on == date(2027, 1, 10)))
+    await delete_bill(session, actor_id=ana.id, bill_id=jan.id, series=True)
+    await session.refresh(src)
+    assert src.recurrence_rule is None
+    await daily_bills_job({}, today=date(2027, 3, 1))
+    assert date(2027, 4, 10) not in set(await session.scalars(select(Bill.due_on)))

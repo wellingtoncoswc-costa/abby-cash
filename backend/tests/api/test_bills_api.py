@@ -114,3 +114,15 @@ async def test_bills_routes_404_for_non_member_and_403_for_foreign_account(clien
         f"/bills/{bill['id']}/payments", json={"account_id": str(mine.id)}, headers=ha
     )
     assert pay.status_code == 403
+
+
+async def test_delete_series_over_http(client, session):
+    a = await make_user(session, "a@x.com")
+    h, sp = auth(a), str(a.default_space_id)
+    bill = await _bill(client, h, sp, recurrence={"kind": "monthly", "day": 20})
+    assert (await client.delete(f"/bills/{bill['id']}?series=true", headers=h)).status_code == 204
+    assert (await client.get(f"/spaces/{sp}/bills", headers=h)).json() == []
+    b = await make_user(session, "b@x.com")
+    other = await _bill(client, h, sp, recurrence={"kind": "monthly", "day": 20})
+    r = await client.delete(f"/bills/{other['id']}?series=true", headers=auth(b))
+    assert r.status_code == 404

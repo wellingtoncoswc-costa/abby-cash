@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.dates import add_months, local_today
 from app.core.db import SessionLocal
 from app.core.money import format_brl
-from app.domain.bills.models import Bill, BillReminderSent
+from app.domain.bills.models import Bill, BillRecurrenceSkip, BillReminderSent
 from app.domain.bills.recurrence import Recurrence, generate_occurrences
 from app.domain.bills.status import bill_paid_cents
 from app.domain.cards.models import Invoice
@@ -117,6 +117,14 @@ async def _generate(source_id: UUID, today: date) -> None:
         rule = Recurrence.from_json(src.recurrence_rule)
         end = add_months(today, 3)
         months = (end.year - src.due_on.year) * 12 + end.month - src.due_on.month + 1
+        skipped = set(
+            await s.scalars(
+                select(BillRecurrenceSkip.due_on).where(
+                    BillRecurrenceSkip.space_id == src.space_id,
+                    BillRecurrenceSkip.recurrence_id == src.id,
+                )
+            )
+        )
         rows = [
             {
                 "space_id": src.space_id, "kind": "manual", "description": src.description,
@@ -125,7 +133,7 @@ async def _generate(source_id: UUID, today: date) -> None:
                 "recurrence_id": src.id,
             }
             for d in generate_occurrences(rule, src.due_on, months)
-            if today <= d <= end
+            if today <= d <= end and d not in skipped
         ]  # fmt: skip
         if rows:
             await s.execute(

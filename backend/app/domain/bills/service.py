@@ -4,10 +4,11 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.audit import audit
-from app.domain.bills.models import Bill
+from app.domain.bills.models import Bill, BillRecurrenceSkip
 from app.domain.bills.recurrence import Recurrence
 from app.domain.errors import DomainError
 from app.domain.spaces.access import is_member, require_member
@@ -95,8 +96,34 @@ async def update_bill(
     return bill
 
 
-async def delete_bill(session: AsyncSession, *, actor_id: UUID, bill_id: UUID) -> None:
-    bill = await _open_bill(session, actor_id, bill_id)
+async def delete_bill(
+    session: AsyncSession, *, actor_id: UUID, bill_id: UUID, series: bool = False
+) -> None:
+    """Apaga a conta aberta. Ocorrência gerada de uma série fica registrada para não ser recriada;
+    `series=True` encerra a série (limpa a regra da origem, mesmo já paga) e apaga esta, se aberta."""
+    if series:
+        bill = await session.get(Bill, bill_id, with_for_update=True)
+        if bill is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        await require_member(session, actor_id, bill.space_id)
+        if bill.kind != "manual" or bill.recurrence_id is None:
+            raise DomainError("bill_not_recurring")
+        src = await session.get(Bill, bill.recurrence_id, with_for_update=True)
+        if src is not None:
+            src.recurrence_rule = None
+        audit(session, actor_id, "bill.series_stop", "bill", bill.recurrence_id,
+              {"space_id": str(bill.space_id)})  # fmt: skip
+        if bill.status != "open":
+            await session.commit()
+            return
+    else:
+        bill = await _open_bill(session, actor_id, bill_id)
+    if bill.recurrence_id is not None and bill.recurrence_id != bill.id:
+        await session.execute(
+            insert(BillRecurrenceSkip)
+            .values(space_id=bill.space_id, recurrence_id=bill.recurrence_id, due_on=bill.due_on)
+            .on_conflict_do_nothing()
+        )
     audit(session, actor_id, "bill.delete", "bill", bill.id, {"space_id": str(bill.space_id)})
     await session.delete(bill)
     await session.commit()

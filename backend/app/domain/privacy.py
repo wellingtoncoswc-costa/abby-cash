@@ -13,7 +13,7 @@ from app.core.serialize import row
 from app.domain.accounts.models import Account
 from app.domain.attachments import Attachment, remove_files
 from app.domain.audit import AuditLog, audit
-from app.domain.bills.models import Bill, BillReminderSent
+from app.domain.bills.models import Bill, BillRecurrenceSkip, BillReminderSent
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.cards.service import sync_invoice_bill
@@ -157,6 +157,9 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
     await session.execute(delete(Budget).where(Budget.space_id == space_id))
     await session.execute(delete(Goal).where(Goal.space_id == space_id))
     await session.execute(delete(BillReminderSent).where(BillReminderSent.bill_id.in_(bills)))
+    await session.execute(
+        delete(BillRecurrenceSkip).where(BillRecurrenceSkip.space_id == space_id)
+    )
     await session.execute(delete(Bill).where(Bill.space_id == space_id))
     await session.execute(delete(Invoice).where(Invoice.card_id.in_(cards)))
     await session.execute(delete(CreditCard).where(CreditCard.space_id == space_id))
