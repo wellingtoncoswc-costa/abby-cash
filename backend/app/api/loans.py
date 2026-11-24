@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import date
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -6,14 +7,18 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents, LoanOut
+from app.api.schemas import BillOut, Cents, InstallmentOut, LoanOut
 from app.core.serialize import row
 from app.domain.loans.models import Loan
 from app.domain.loans.service import (
     cancel_loan,
     create_loan,
+    list_installments,
     list_loans,
     loan_progress,
+    materialize_installment,
+    settle_installment,
+    unsettle_installment,
     update_loan,
     visible_loan,
 )
@@ -30,6 +35,7 @@ class LoanIn(BaseModel):
     category_id: UUID | None = None
     account_id: UUID | None = None
     notes: str | None = Field(default=None, max_length=500)
+    paid_installments: Annotated[int, Field(strict=True, ge=0, le=480)] = 0
 
 
 class LoanPatch(BaseModel):
@@ -78,3 +84,27 @@ async def patch(
 @router.delete("/loans/{loan_id}", status_code=204)
 async def delete(loan_id: UUID, user: CurrentUser, session: Session) -> None:
     await cancel_loan(session, actor_id=user.id, loan_id=loan_id)
+
+
+@router.get("/loans/{loan_id}/installments", response_model=list[InstallmentOut])
+async def installments(loan_id: UUID, user: CurrentUser, session: Session) -> list[Any]:
+    loan = await visible_loan(session, user.id, loan_id)
+    return [asdict(i) for i in await list_installments(session, loan)]
+
+
+@router.post("/loans/{loan_id}/installments/{number}/settle", response_model=InstallmentOut)
+async def settle(loan_id: UUID, number: int, user: CurrentUser, session: Session) -> Any:
+    i = await settle_installment(session, actor_id=user.id, loan_id=loan_id, number=number)
+    return asdict(i)
+
+
+@router.delete("/loans/{loan_id}/installments/{number}/settle", response_model=InstallmentOut)
+async def unsettle(loan_id: UUID, number: int, user: CurrentUser, session: Session) -> Any:
+    i = await unsettle_installment(session, actor_id=user.id, loan_id=loan_id, number=number)
+    return asdict(i)
+
+
+@router.post("/loans/{loan_id}/installments/{number}/materialize", response_model=BillOut)
+async def materialize(loan_id: UUID, number: int, user: CurrentUser, session: Session) -> Any:
+    b = await materialize_installment(session, actor_id=user.id, loan_id=loan_id, number=number)
+    return row(b)

@@ -26,6 +26,9 @@ async def invoice_paid(session: AsyncSession, invoice_id: UUID) -> int:
 
 
 async def refresh_status(session: AsyncSession, bill: Bill) -> None:
+    if bill.settled_historical_at is not None:  # baixa histórica: paga sem pagamento
+        bill.status = "paid"
+        return
     # conta espelho de fatura usa a mesma fonte de invoice_paid (status e pago não divergem)
     paid = (
         await invoice_paid(session, bill.invoice_id)

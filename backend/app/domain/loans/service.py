@@ -45,34 +45,37 @@ async def visible_loan(
     return loan
 
 
+def _bill(loan: Loan, n: int, *, historical: bool = False) -> Bill:
+    return Bill(
+        space_id=loan.space_id, kind="manual", amount_cents=loan.installment_cents,
+        description=f"{loan.name} ({n}/{loan.installments_total})", due_on=due_on(loan, n),
+        category_id=loan.category_id, loan_id=loan.id, installment_number=n,
+        status="paid" if historical else "open",
+        settled_historical_at=datetime.now(UTC) if historical else None,
+    )  # fmt: skip
+
+
 async def ensure_installments(session: AsyncSession, loan: Loan) -> None:
-    """Mantém até AHEAD parcelas em aberto geradas (as próximas), sem passar do total.
-    Não faz commit; quem chama já deve segurar o lock do empréstimo."""
+    """Mantém geradas as AHEAD primeiras parcelas não pagas (baixa histórica conta como paga),
+    sem passar do total. Não faz commit; quem chama já deve segurar o lock do empréstimo."""
     if loan.canceled_at is not None:
         return
-    open_n, last = (
-        await session.execute(
-            select(
-                func.count().filter(Bill.status != "paid"),
-                func.coalesce(func.max(Bill.installment_number), 0),
-            ).where(Bill.loan_id == loan.id)
-        )
-    ).one()
-    open_n, last = int(open_n or 0), int(last or 0)
-    for n in range(last + 1, min(loan.installments_total, last + AHEAD - open_n) + 1):
-        session.add(
-            Bill(
-                space_id=loan.space_id,
-                kind="manual",
-                amount_cents=loan.installment_cents,
-                description=f"{loan.name} ({n}/{loan.installments_total})",
-                due_on=due_on(loan, n),
-                category_id=loan.category_id,
-                status="open",
-                loan_id=loan.id,
-                installment_number=n,
-            )  # fmt: skip
-        )
+    have = dict(
+        (
+            await session.execute(
+                select(Bill.installment_number, Bill.status).where(Bill.loan_id == loan.id)
+            )
+        ).all()
+    )
+    slots = 0  # ponytail: percorre até 480 números por chamada; barato frente a uma ida ao banco
+    for n in range(1, loan.installments_total + 1):
+        if slots >= AHEAD:
+            break
+        if have.get(n) == "paid":
+            continue
+        slots += 1
+        if n not in have:
+            session.add(_bill(loan, n))
     await session.flush()
 
 
@@ -80,9 +83,12 @@ async def create_loan(
     session: AsyncSession, *, actor_id: UUID, space_id: UUID, kind: str, name: str,
     installment_cents: int, installments_total: int, first_due_on: date,
     category_id: UUID | None = None, account_id: UUID | None = None, notes: str | None = None,
+    paid_installments: int = 0,
 ) -> Loan:  # fmt: skip
     if kind not in ("financing", "consortium") or not 1 <= installments_total <= 480:
         raise DomainError("invalid_loan")
+    if not 0 <= paid_installments <= installments_total:
+        raise DomainError("invalid_paid_installments")
     await check_common(
         session, actor_id=actor_id, space_id=space_id, type="expense",
         amount_cents=installment_cents, category_id=category_id, occurred_on=first_due_on,
@@ -98,10 +104,12 @@ async def create_loan(
         raise DomainError("invalid_date")
     session.add(loan)
     await session.flush()
+    session.add_all(_bill(loan, n, historical=True) for n in range(1, paid_installments + 1))
     await ensure_installments(session, loan)
     audit(session, actor_id, "loan.create", "loan", loan.id,
           {"space_id": str(space_id), "installment_cents": installment_cents,
-           "installments_total": installments_total})  # fmt: skip
+           "installments_total": installments_total,
+           "paid_installments": paid_installments})  # fmt: skip
     await session.commit()
     return loan
 
@@ -198,3 +206,103 @@ async def top_up_after_payment(session: AsyncSession, bill: Bill) -> None:
         loan = await session.get(Loan, bill.loan_id, with_for_update=True)
         if loan is not None:
             await ensure_installments(session, loan)
+
+
+@dataclass(frozen=True)
+class Installment:
+    number: int
+    due_on: date
+    amount_cents: int
+    state: str  # open | paid_history | paid_real
+    bill_id: UUID | None
+
+
+def _installment(loan: Loan, n: int, bill: Bill | None) -> Installment:
+    if bill is None:
+        return Installment(n, due_on(loan, n), loan.installment_cents, "open", None)
+    state = (
+        "paid_history"
+        if bill.settled_historical_at
+        else "paid_real"
+        if bill.status == "paid"
+        else "open"
+    )  # parcela parcial segue "open"
+    return Installment(n, bill.due_on, bill.amount_cents, state, bill.id)
+
+
+async def list_installments(session: AsyncSession, loan: Loan) -> list[Installment]:
+    """Todas as parcelas 1..N, inclusive as ainda não geradas (calculadas)."""
+    bills = {
+        int(b.installment_number or 0): b
+        for b in await session.scalars(select(Bill).where(Bill.loan_id == loan.id))
+    }
+    nums = sorted(bills) if loan.canceled_at else range(1, loan.installments_total + 1)
+    return [_installment(loan, n, bills.get(n)) for n in nums]
+
+
+async def _locked_installment(
+    session: AsyncSession, actor_id: UUID, loan_id: UUID, number: int
+) -> tuple[Loan, Bill | None]:
+    loan = await visible_loan(session, actor_id, loan_id, lock=True)
+    if loan.canceled_at is not None:
+        raise DomainError("loan_canceled")
+    if not 1 <= number <= loan.installments_total:
+        raise DomainError("invalid_installment")
+    bill = await session.scalar(
+        select(Bill)
+        .where(Bill.loan_id == loan.id, Bill.installment_number == number)
+        .with_for_update()
+    )
+    return loan, bill
+
+
+async def materialize_installment(
+    session: AsyncSession, *, actor_id: UUID, loan_id: UUID, number: int
+) -> Bill:
+    """Gera a parcela (aberta) se ainda não existe, para poder pagá-la de verdade."""
+    loan, bill = await _locked_installment(session, actor_id, loan_id, number)
+    if bill is None:
+        bill = _bill(loan, number)
+        session.add(bill)
+        await session.flush()
+        await ensure_installments(session, loan)
+        await session.commit()
+    return bill
+
+
+async def settle_installment(
+    session: AsyncSession, *, actor_id: UUID, loan_id: UUID, number: int
+) -> Installment:
+    """Baixa histórica: já estava paga antes do cadastro; sem lançamento. Idempotente."""
+    loan, bill = await _locked_installment(session, actor_id, loan_id, number)
+    if bill is None:
+        bill = _bill(loan, number, historical=True)
+        session.add(bill)
+    elif bill.settled_historical_at is not None:
+        return _installment(loan, number, bill)
+    elif bill.status != "open":
+        raise HTTPException(409, "installment_paid_real" if bill.status == "paid"
+                            else "installment_partial")  # fmt: skip
+    else:
+        bill.status, bill.settled_historical_at = "paid", datetime.now(UTC)
+    await session.flush()
+    await ensure_installments(session, loan)
+    audit(session, actor_id, "loan.installment_settle", "bill", bill.id,
+          {"space_id": str(loan.space_id), "loan_id": str(loan.id), "number": number})  # fmt: skip
+    await session.commit()
+    return _installment(loan, number, bill)
+
+
+async def unsettle_installment(
+    session: AsyncSession, *, actor_id: UUID, loan_id: UUID, number: int
+) -> Installment:
+    """Desfaz a baixa histórica (volta a aberta). Pagamento real: 409. Idempotente."""
+    loan, bill = await _locked_installment(session, actor_id, loan_id, number)
+    if bill is not None and bill.settled_historical_at is not None:
+        bill.status, bill.settled_historical_at = "open", None
+        data = {"space_id": str(loan.space_id), "loan_id": str(loan.id), "number": number}
+        audit(session, actor_id, "loan.installment_unsettle", "bill", bill.id, data)
+        await session.commit()
+    elif bill is not None and bill.status == "paid":
+        raise HTTPException(409, "installment_paid_real")
+    return _installment(loan, number, bill)

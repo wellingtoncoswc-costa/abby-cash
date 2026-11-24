@@ -1,5 +1,5 @@
 from datetime import date, datetime, time
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -112,6 +112,14 @@ class LoanOut(Out):
     progress_pct: int
 
 
+class InstallmentOut(Out):
+    number: int
+    due_on: date
+    amount_cents: int
+    state: Literal["open", "paid_history", "paid_real"]
+    bill_id: UUID | None
+
+
 class CardOut(Out):
     id: UUID
     space_id: UUID
@@ -177,6 +185,7 @@ class BillOut(Out):
     invoice_id: UUID | None
     loan_id: UUID | None
     installment_number: int | None
+    settled_historical_at: datetime | None
     created_at: datetime
 
 

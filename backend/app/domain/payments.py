@@ -32,6 +32,8 @@ async def pay_bill(
     await session.refresh(bill, with_for_update=True)
     if bill.kind != "manual":
         raise DomainError("use_pay_invoice")
+    if bill.settled_historical_at is not None:
+        raise DomainError("bill_already_paid")
     await use_account(session, actor_id, account_id)
     remaining = bill.amount_cents - await bill_paid_cents(session, bill.id)
     amount = remaining if amount_cents is None else amount_cents
