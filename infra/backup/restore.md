@@ -1,6 +1,7 @@
 # Restauração de backup (testar em banco descartável)
 
 Os arquivos ficam no volume `abby-cash_backups` (`daily/`, `weekly/`, `monthly/`), criptografados com `age`.
+**Mantenha uma cópia fora do servidor** (`BACKUP_RCLONE_REMOTE`, ver `infra/deploy.md`): é fortemente recomendada e obrigatória antes de confiar nestes backups.
 A chave **privada** (gerada com `age-keygen`) fica só com o dono.
 
 ```bash
@@ -11,7 +12,7 @@ cd restore && ls -1t abby-db-*.age abby-files-*.age | head
 age -d -i ~/abby-backup.key abby-db-<ts>.dump.age > db.dump
 age -d -i ~/abby-backup.key abby-files-<ts>.tar.gz.age > files.tar.gz
 # 3. banco descartável (NUNCA o de produção)
-docker run -d --name abby-restore-test -e POSTGRES_PASSWORD=x -e POSTGRES_DB=abby postgres:16
+docker run -d --name abby-restore-test -e POSTGRES_PASSWORD=x -e POSTGRES_DB=abby postgres:16.6
 sleep 5
 docker exec -i abby-restore-test pg_restore -U postgres -d abby --no-owner --role=postgres < db.dump
 # 4. verificações

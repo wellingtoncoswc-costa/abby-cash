@@ -24,6 +24,19 @@ grep -q "skipping remote upload" "$tmp/out"
 [[ "$(ls "$tmp"/b/daily/abby-files-* | wc -l)" == 7 ]]
 [[ "$(ls "$tmp"/b/daily/*.tmp 2>/dev/null | wc -l)" == 0 ]]
 
+# remoto: copy + poda so dos nossos prefixos (nunca sync)
+cat >"$tmp/bin/rclone" <<STUB
+#!/bin/sh
+echo "\$@" >> $tmp/rclone.log
+if [ "\$1" = lsf ]; then printf 'other.txt\n'; for i in 1 2 3 4 5 6 7 8 9; do echo abby-db-2026010\$i.dump.age; done; fi
+STUB
+chmod +x "$tmp/bin/rclone"
+BACKUP_RCLONE_REMOTE=r:x bash "$tmp/backup.sh" >/dev/null 2>&1
+grep -q "^copy " "$tmp/rclone.log"; ! grep -q "sync" "$tmp/rclone.log"
+grep -q "deletefile r:x/daily/abby-db-20260101" "$tmp/rclone.log"
+! grep -q "other.txt" <(grep deletefile "$tmp/rclone.log")
+rm "$tmp/bin/rclone"
+
 # falha (pg_dump quebrado) -> alerta e status != 0
 printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/pg_dump"
 if bash "$tmp/backup.sh" >/dev/null 2>&1; then echo "expected failure"; exit 1; fi

@@ -42,9 +42,18 @@ prune "$BACKUP_DIR/daily" 7
 prune "$BACKUP_DIR/weekly" 4
 prune "$BACKUP_DIR/monthly" 6
 
+# remoto: `copy` (nunca `sync`: um erro local nao apaga o remoto) e retencao so dos NOSSOS arquivos
+rprune() { # rprune <subdir> <manter>: apaga do remoto os mais antigos com nossos prefixos
+  local sub="$1" keep="$2" prefix f
+  for prefix in abby-db- abby-files-; do
+    { rclone lsf --files-only "$BACKUP_RCLONE_REMOTE/$sub" 2>/dev/null || true; } |
+      grep "^$prefix" | sort -r | tail -n +"$((keep + 1))" |
+      while IFS= read -r f; do rclone deletefile "$BACKUP_RCLONE_REMOTE/$sub/$f"; done
+  done
+}
 if [[ -n "${BACKUP_RCLONE_REMOTE:-}" ]]; then
-  # sync espelha a retencao local no remoto (a pasta remota e so dos backups)
-  rclone sync "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+  rclone copy "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" --include "abby-db-*" --include "abby-files-*"
+  rprune daily 7; rprune weekly 4; rprune monthly 6
 else
   echo "BACKUP_RCLONE_REMOTE not set: skipping remote upload (local backup only)"
 fi
