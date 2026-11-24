@@ -9,7 +9,7 @@ SSH no servidor; registro DNS **A/AAAA** de `abbycash.abbysystems.com.br` aponta
 ## 1. Inspeção prévia (somente leitura)
 ```bash
 docker ps --format '{{.Names}}\t{{.Ports}}' | grep -i chat        # abby-chat está em contêiner?
-systemctl status nginx; nginx -V 2>&1 | head -2                   # Nginx no host? versão >= 1.25.1 (http2 on)
+systemctl status nginx; nginx -V 2>&1 | head -2                   # Nginx no host? o conf usa `listen 443 ssl` sem http2 de propósito: no 1.24 `http2` no listen vale para o socket :443 compartilhado e mudaria os outros sites
 nginx -T 2>/dev/null | grep -E 'server_name|listen|include'       # servers existentes, portas 80/443
 ss -ltnp | grep -E ':(80|443|18000|18081)\b'                       # portas livres
 docker network ls; ip -4 addr | grep 172.29.77                     # sub-rede 172.29.77.0/24 livre?
