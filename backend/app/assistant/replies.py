@@ -29,7 +29,8 @@ HELP = (
     "Contas: paguei · paguei o financiamento do carro · guardei 500 na meta viagem\n"
     "Entre contas: transferi 300 do Nubank para o Itaú\n"
     "Caixinhas: guardei 200 na reserva · tirei 100 da viagem\n"
-    "Criar caixinha ou financiamento: pelo painel web\n"
+    "Criar: criar caixinha reserva · novo financiamento do carro · cadastrar consórcio\n"
+    "Parcelas: paguei a parcela 12 do financiamento do carro · já paguei até a 17 do consórcio\n"
     "Resumo semanal: resumo semanal on · resumo semanal off"
 )
 DIGEST_ON = "✅ Resumo semanal ligado: domingo às 20h."
@@ -53,6 +54,7 @@ _DOMAIN_ERRORS = {
     "amount_too_small": ZERO,
     "amount_too_large": "Esse valor é alto demais.",
     "invalid_date": "Data inválida.",
+    "bill_already_paid": "Essa parcela já está paga.",
     "invalid_installments": "Parcelas: de 2 a 48.",
     "invalid_transfer": "Escolha duas contas diferentes.",
     "invalid_category": "Essa categoria não existe neste espaço.",

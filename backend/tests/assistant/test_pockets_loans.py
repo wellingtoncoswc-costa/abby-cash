@@ -163,14 +163,17 @@ async def test_paguei_financiamento_pays_the_open_installment(ana, session, pars
     assert paid == "paid"
 
 
-async def test_create_goes_to_the_panel_and_help_lists_commands(ana, parser):
-    for text in ("quero criar uma caixinha", "cadastrar financiamento do carro"):
-        assert (await ana.say(text)).startswith("Caixinhas e financiamentos são criados no painel")
+async def test_create_starts_the_guided_flow_and_help_lists_commands(ana, parser):
+    assert await ana.say("quero criar uma caixinha") == "Qual o nome da caixinha?"
+    await ana.say("cancelar")
+    assert (await ana.say("cadastrar financiamento do carro")).startswith("Qual o nome do financ")
+    await ana.say("cancelar")
     help_ = await ana.say("ajuda")
     for needle in ("caixinhas", "guardei 200 na reserva", "tirei 100 da viagem",
-                   "paguei o financiamento do carro", "financiamentos"):  # fmt: skip
+                   "paguei o financiamento do carro", "financiamentos",
+                   "criar caixinha", "paguei a parcela 12"):  # fmt: skip
         assert needle in help_
-    assert parser.calls == []
+    assert "painel web" not in help_.split("Criar:")[1].splitlines()[0]
 
 
 async def test_low_confidence_pocket_write_is_not_executed(ana, session, parser):

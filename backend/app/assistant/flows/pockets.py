@@ -27,10 +27,6 @@ from app.domain.transactions.service import account_balance
 
 NO_POCKET = "Você ainda não tem caixinhas. Crie uma no painel web (Caixinhas)."
 NO_LOAN = "Você ainda não tem financiamentos. Cadastre um no painel web (Financiamentos)."
-CREATE_ON_PANEL = (
-    "Caixinhas e financiamentos são criados no painel web (Caixinhas / Financiamentos). "
-    "Por aqui eu guardo, resgato e consulto."
-)
 _CREATE = re.compile(
     r"\b(criar|cria|crie|abrir|abre|abra|cadastrar|cadastra|cadastre)\b"
 )  # fmt: skip
