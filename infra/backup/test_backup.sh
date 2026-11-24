@@ -15,6 +15,8 @@ cp "$here/backup.sh" "$tmp/backup.sh"
 cp "$tmp/alert_stub" "$tmp/alert.sh"
 export PATH="$tmp/bin:$PATH" BACKUP_DIR="$tmp/b" STORAGE_DIR="$tmp/storage" BACKUP_AGE_RECIPIENT=age1x
 
+mkdir -p "$tmp/b/daily"
+echo truncated >"$tmp/b/daily/abby-db-20200101-000000.dump.age.tmp" # sobra de falha anterior
 for _ in 1 2 3 4 5 6 7 8 9; do # 9 execucoes, timestamps distintos
   bash "$tmp/backup.sh" >"$tmp/out" 2>&1 || { cat "$tmp/out" "$tmp/alerts"; exit 1; }
   sleep 1
@@ -23,6 +25,7 @@ grep -q "skipping remote upload" "$tmp/out"
 [[ "$(ls "$tmp"/b/daily/abby-db-* | wc -l)" == 7 ]]
 [[ "$(ls "$tmp"/b/daily/abby-files-* | wc -l)" == 7 ]]
 [[ "$(ls "$tmp"/b/daily/*.tmp 2>/dev/null | wc -l)" == 0 ]]
+[[ ! -e "$tmp/b/daily/abby-db-20200101-000000.dump.age" ]] # sobra apagada, nao promovida
 
 # remoto: copy + poda so dos nossos prefixos (nunca sync)
 cat >"$tmp/bin/rclone" <<STUB

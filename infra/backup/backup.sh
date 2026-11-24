@@ -18,10 +18,12 @@ mkdir -p "$BACKUP_DIR"/{daily,weekly,monthly}
 umask 077
 
 d="$BACKUP_DIR/daily"
-# escreve em .tmp e renomeia: um backup incompleto nunca parece valido
+rm -f -- "$d"/*.tmp # sobras de execucoes que falharam; nunca promovidas
+# escreve em .tmp e renomeia logo apos o pipeline: um backup incompleto nunca parece valido
 pg_dump -Fc | age -r "$BACKUP_AGE_RECIPIENT" >"$d/abby-db-$ts.dump.age.tmp"
+mv "$d/abby-db-$ts.dump.age.tmp" "$d/abby-db-$ts.dump.age"
 tar -czf - -C "$STORAGE_DIR" . | age -r "$BACKUP_AGE_RECIPIENT" >"$d/abby-files-$ts.tar.gz.age.tmp"
-for f in "$d"/*.tmp; do mv "$f" "${f%.tmp}"; done
+mv "$d/abby-files-$ts.tar.gz.age.tmp" "$d/abby-files-$ts.tar.gz.age"
 
 # semanal (domingo) e mensal (dia 1): hardlinks, sem duplicar espaco
 for kind in db files; do
@@ -47,7 +49,7 @@ rprune() { # rprune <subdir> <manter>: apaga do remoto os mais antigos com nosso
   local sub="$1" keep="$2" prefix f
   for prefix in abby-db- abby-files-; do
     { rclone lsf --files-only "$BACKUP_RCLONE_REMOTE/$sub" 2>/dev/null || true; } |
-      grep "^$prefix" | sort -r | tail -n +"$((keep + 1))" |
+      { grep "^$prefix" || true; } | sort -r | tail -n +"$((keep + 1))" |
       while IFS= read -r f; do rclone deletefile "$BACKUP_RCLONE_REMOTE/$sub/$f"; done
   done
 }
