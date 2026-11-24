@@ -22,6 +22,8 @@ from app.assistant.replies import (
     ALREADY,
     ALREADY_HANDLED,
     BAD_DATE,
+    DIGEST_OFF,
+    DIGEST_ON,
     HELP,
     MEDIA,
     NO_FAMILY,
@@ -30,7 +32,7 @@ from app.assistant.replies import (
     domain_error_text,
     http_error_text,
 )
-from app.assistant.shortcuts import answer, try_shortcut
+from app.assistant.shortcuts import answer, digest_toggle, try_shortcut
 from app.assistant.state import clear_state, get_state
 from app.assistant.turn import Draft, Turn
 from app.channels.registry import get_adapter
@@ -44,6 +46,7 @@ from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
 from app.domain.errors import DomainError
 from app.domain.spaces.models import Space, SpaceMember
+from app.domain.users.models import User
 
 STALE = timedelta(minutes=5)
 log = logging.getLogger(__name__)
@@ -273,6 +276,12 @@ async def interpret(
 
 
 async def fresh(t: Turn, text: str) -> str:
+    on = digest_toggle(text)
+    if on is not None:
+        t.intent = "ajuda"  # ponytail: sem intent própria; só o log do turno
+        await t.session.execute(update(User).where(User.id == t.user_id).values(weekly_digest=on))
+        await t.session.commit()
+        return DIGEST_ON if on else DIGEST_OFF
     h = extract_hints(text, t.today)
     if h.bad_date:
         return BAD_DATE

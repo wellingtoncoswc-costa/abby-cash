@@ -29,8 +29,11 @@ HELP = (
     "• #pessoal presente 150 (só você vê)\n"
     "Consultas: saldo · teto · faturas · quanto gastei esse mês\n"
     "Ajustes: corrigir · apagar último\n"
-    "Contas: paguei · guardei 500 na viagem"
+    "Contas: paguei · guardei 500 na viagem\n"
+    "Resumo semanal: resumo semanal on · resumo semanal off"
 )
+DIGEST_ON = "✅ Resumo semanal ligado: domingo às 20h."
+DIGEST_OFF = "Resumo semanal desligado."
 AI_DOWN = "⚠️ A IA está indisponível agora; lancei do jeito simples (categoria Outros)."
 CORRECT_PROMPT = (
     "O que está errado? Responda como: valor 50 · categoria Lazer · descrição cinema · "
