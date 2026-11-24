@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from uuid import UUID
 
@@ -9,6 +9,8 @@ from app.domain.accounts.models import Account
 from app.domain.cards.models import CreditCard
 from app.domain.categories.models import Category, CategoryRule
 from app.domain.goals.models import Goal
+from app.domain.loans.models import Loan
+from app.domain.pockets.models import Pocket
 from app.domain.spaces.access import require_member
 from app.domain.spaces.models import Space, SpaceMember
 
@@ -42,6 +44,18 @@ class CtxGoal:
 
 
 @dataclass(frozen=True)
+class CtxPocket:
+    id: UUID
+    name: str
+
+
+@dataclass(frozen=True)
+class CtxLoan:
+    id: UUID
+    name: str
+
+
+@dataclass(frozen=True)
 class SpaceContext:
     """O que o interpretador (e os fluxos) sabem do espaço-alvo. Categorias e metas são do espaço;
     contas e cartões são os que o usuário PODE USAR (qualquer espaço de que é membro)."""
@@ -56,6 +70,8 @@ class SpaceContext:
     default_account_id: UUID | None
     today: date
     tz: str
+    pockets: list[CtxPocket] = field(default_factory=list)  # caixinhas abertas do espaço
+    loans: list[CtxLoan] = field(default_factory=list)  # financiamentos/consórcios ativos
 
 
 async def load_space_context(
@@ -77,6 +93,16 @@ async def load_space_context(
         select(CreditCard).where(CreditCard.space_id.in_(mine)).order_by(CreditCard.name)
     )
     goals = await session.scalars(select(Goal).where(Goal.space_id == space_id).order_by(Goal.name))
+    pockets = await session.scalars(
+        select(Pocket)
+        .where(Pocket.space_id == space_id, Pocket.closed_at.is_(None))
+        .order_by(Pocket.name)
+    )
+    loans = await session.scalars(
+        select(Loan)
+        .where(Loan.space_id == space_id, Loan.canceled_at.is_(None))
+        .order_by(Loan.name)
+    )
     rules = await session.execute(
         select(CategoryRule.merchant_norm, Category.name)
         .join(Category, Category.id == CategoryRule.category_id)
@@ -94,4 +120,6 @@ async def load_space_context(
         default_account_id=member.default_account_id,
         today=today,
         tz=tz,
+        pockets=[CtxPocket(p.id, p.name) for p in pockets],
+        loans=[CtxLoan(x.id, x.name) for x in loans],
     )

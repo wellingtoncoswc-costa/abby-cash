@@ -24,9 +24,11 @@ HELP = (
     "• tv 3000 em 10x no nubank\n"
     "• recebi 3000 de salário\n"
     "• #pessoal presente 150 (só você vê)\n"
-    "Consultas: saldo · teto · faturas · quanto gastei esse mês\n"
+    "Consultas: saldo · teto · faturas · caixinhas · financiamentos · quanto gastei esse mês\n"
     "Ajustes: corrigir · apagar último\n"
-    "Contas: paguei · guardei 500 na viagem\n"
+    "Contas: paguei · paguei o financiamento do carro · guardei 500 na meta viagem\n"
+    "Caixinhas: guardei 200 na reserva · tirei 100 da viagem\n"
+    "Criar caixinha ou financiamento: pelo painel web\n"
     "Resumo semanal: resumo semanal on · resumo semanal off"
 )
 DIGEST_ON = "✅ Resumo semanal ligado: domingo às 20h."
