@@ -54,7 +54,7 @@ export function Onboarding() {
 export function Invite() {
   const { token } = useParams({ strict: false }) as { token?: string }
   const nav = useNavigate()
-  const accept = useSend(() => api('POST', `/spaces/invites/${encodeURIComponent(token ?? '')}/accept`), () => void nav({ to: '/espacos' }))
+  const accept = useSend(() => api('POST', '/spaces/invites/accept', { token: token ?? '' }), () => void nav({ to: '/espacos' }))
   return (
     <Card title="Convite para um espaço">
       <p className="mb-2">Aceitar entrar no espaço familiar?</p>

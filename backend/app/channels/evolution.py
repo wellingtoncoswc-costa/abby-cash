@@ -1,5 +1,6 @@
 import base64
 import hmac
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -64,10 +65,25 @@ class EvolutionClient:
             },
         )  # fmt: skip
 
-    async def get_base64(self, message_id: str) -> tuple[bytes, str]:
-        data = await self._call(
-            "POST", "chat/getBase64FromMediaMessage", message={"key": {"id": message_id}}
-        )
+    async def get_base64(self, message_id: str, max_bytes: int) -> tuple[bytes, str]:
+        """Lê em streaming com teto (base64 ~4/3 + envelope) antes de decodificar."""
+        cap = max_bytes * 4 // 3 + 4096
+        try:
+            async with self._client.stream(
+                "POST", f"{self._url}/chat/getBase64FromMediaMessage/{self._instance}",
+                headers={"apikey": self._key}, json={"message": {"key": {"id": message_id}}},
+            ) as r:  # fmt: skip
+                r.raise_for_status()
+                if int(r.headers.get("content-length") or 0) > cap:
+                    raise MediaTooLarge
+                buf = bytearray()
+                async for chunk in r.aiter_bytes():
+                    buf += chunk
+                    if len(buf) > cap:
+                        raise MediaTooLarge
+            data = json.loads(buf)
+        except (httpx.HTTPError, ValueError) as e:
+            raise ChannelError(f"evolution media failed ({type(e).__name__})") from None
         try:
             mime = str(data["mimetype"]).split(";")[0].strip()
             return base64.b64decode(data["base64"]), mime
@@ -149,7 +165,7 @@ class EvolutionAdapter:
         await self.client.send_text(external_user_id, text)
 
     async def download_media(self, media_ref: str, max_bytes: int) -> tuple[bytes, str]:
-        data, mime = await self.client.get_base64(media_ref)
-        if len(data) > max_bytes:  # ponytail: o endpoint é base64, não dá para checar antes
+        data, mime = await self.client.get_base64(media_ref, max_bytes)
+        if len(data) > max_bytes:
             raise MediaTooLarge
         return data, mime

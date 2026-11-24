@@ -26,8 +26,12 @@ async def test_space_isolation_over_http(client, session):
 
     link = (await client.post(f"/spaces/{fam}/invites", headers=ha)).json()["link"]
     token = link.rsplit("/", 1)[1]
-    assert (await client.post(f"/spaces/invites/{token}/accept", headers=hb)).status_code == 200
-    assert (await client.post(f"/spaces/invites/{token}/accept", headers=hb)).status_code == 404
+    assert (
+        await client.post("/spaces/invites/accept", json={"token": token}, headers=hb)
+    ).status_code == 200
+    assert (
+        await client.post("/spaces/invites/accept", json={"token": token}, headers=hb)
+    ).status_code == 404
     assert fam in [s["id"] for s in (await client.get("/spaces", headers=hb)).json()]
 
     b_id = await session.scalar(select(User.id).where(User.email == "b@x.com"))

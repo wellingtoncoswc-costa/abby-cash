@@ -150,3 +150,13 @@ async def tx_line(
     if private:
         parts.append("🔒 pessoal")
     return "✅ " + " · ".join(parts) + ('\nResponda "corrigir" se errei.' if hint else "")
+
+
+RATE_LIMITED = "Muitas mensagens por hora. Respire um pouco e continue mais tarde. 🙂"
+OVER_BUDGET = (
+    "Atingi o limite diário de IA deste espaço; lancei do jeito simples. "
+    "Comandos como 'saldo' e 'ajuda' seguem funcionando."
+)
+OVER_BUDGET_MEDIA = (
+    "Atingi o limite diário de IA (fotos e áudios) deste espaço. Tente amanhã ou escreva."
+)

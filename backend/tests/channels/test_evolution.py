@@ -6,6 +6,7 @@ import httpx
 import pytest
 from starlette.requests import Request
 
+from app.channels.base import MediaTooLarge
 from app.channels.evolution import EvolutionAdapter, EvolutionClient
 from app.channels.telegram import ChannelError
 
@@ -160,3 +161,9 @@ def test_unsupported_logs_type_only(caplog):
     assert adapter().parse_event(ev) is None
     assert "type=contactMessage" in caplog.text
     assert "SECRETNAME" not in caplog.text and "5511988887777" not in caplog.text
+
+
+async def test_download_media_bounds_response_while_reading():
+    big = httpx.Response(200, json={"base64": "A" * 20_000, "mimetype": "audio/ogg"})
+    with pytest.raises(MediaTooLarge):
+        await adapter(lambda r: big).download_media("3EB0A3", 100)

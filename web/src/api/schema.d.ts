@@ -140,7 +140,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/spaces/invites/{token}/accept": {
+    "/spaces/invites/accept": {
         parameters: {
             query?: never;
             header?: never;
@@ -150,7 +150,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Accept Invite */
-        post: operations["accept_invite_spaces_invites__token__accept_post"];
+        post: operations["accept_invite_spaces_invites_accept_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -852,6 +852,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptInvite */
+        AcceptInvite: {
+            /** Token */
+            token: string;
+        };
         /** AccountDetailOut */
         AccountDetailOut: {
             /**
@@ -1919,18 +1924,20 @@ export interface operations {
             };
         };
     };
-    accept_invite_spaces_invites__token__accept_post: {
+    accept_invite_spaces_invites_accept_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path: {
-                token: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInvite"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

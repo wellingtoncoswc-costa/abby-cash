@@ -44,10 +44,14 @@ async def create_family(body: FamilyIn, user: CurrentUser, session: Session) -> 
     return {"id": str(space.id), "name": space.name}
 
 
-@router.post("/invites/{token}/accept")
-async def accept_invite(token: str, user: CurrentUser, session: Session) -> dict[str, str]:
+class AcceptInvite(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/invites/accept")  # token no corpo: nunca em path/log de acesso
+async def accept_invite(body: AcceptInvite, user: CurrentUser, session: Session) -> dict[str, str]:
     try:
-        space_id = await accept_space_invite(session, token=token, user_id=user.id)
+        space_id = await accept_space_invite(session, token=body.token, user_id=user.id)
     except ValueError:
         raise HTTPException(404, "not_found") from None
     return {"space_id": str(space_id)}

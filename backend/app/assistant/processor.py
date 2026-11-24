@@ -11,7 +11,7 @@ from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.usage import record_ai_usage
+from app.ai.usage import over_budget, record_ai_usage
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
 from app.assistant.flows import edit, extras, launch, pay, query, receipt
 from app.assistant.flows.common import already_done
@@ -28,6 +28,9 @@ from app.assistant.replies import (
     HELP,
     NO_FAMILY,
     NOT_UNDERSTOOD,
+    OVER_BUDGET,
+    OVER_BUDGET_MEDIA,
+    RATE_LIMITED,
     ZERO,
     domain_error_text,
     http_error_text,
@@ -41,7 +44,7 @@ from app.core.config import get_settings
 from app.core.dates import to_local_date
 from app.core.db import SessionLocal, engine
 from app.core.money import format_brl
-from app.core.redis import redis
+from app.core.redis import incr_ttl, redis
 from app.core.text import fold
 from app.domain.attachments import MAX_BYTES
 from app.domain.channels.linking import find_user_by_link, link_with_code
@@ -268,6 +271,8 @@ async def interpret(
     shortcut = try_shortcut(re.sub(r"#\w+", " ", text))  # "#pessoal gastos" também é atalho
     if shortcut is not None:
         return shortcut, None
+    if await over_budget(t.session, space_id):
+        return fallback_launch(text, h), OVER_BUDGET
     try:
         if t.parser is None:
             raise RuntimeError("no parser configured")
@@ -346,6 +351,10 @@ async def handle(session: AsyncSession, ctx: dict[str, Any], row: InboundMessage
     user = await find_user_by_link(session, row.channel, row.external_user_id)
     if user is None:
         return await unlinked(session, row.channel, row.external_user_id, row.text or "")
+    n = await incr_ttl(f"msgrate:{user.id}", 3600)
+    if n > get_settings().MSG_RATE_PER_HOUR:  # sem LLM; avisa só 1x
+        row.user_id = user.id
+        return RATE_LIMITED if n == get_settings().MSG_RATE_PER_HOUR + 1 else None
     row.user_id = user.id
     await session.commit()  # id durável: um rollback adiante não pode deixar a linha sem dono
     t = Turn(
@@ -359,6 +368,8 @@ async def handle(session: AsyncSession, ctx: dict[str, Any], row: InboundMessage
         space_id, error = await target_space(t, h)
         if space_id is None:
             return error or NOT_UNDERSTOOD
+        if await over_budget(session, space_id):
+            return OVER_BUDGET_MEDIA
         return await receipt.start(t, row, ctx.get("receipt_reader"), space_id, h.private)
     if row.media_kind == "audio":
         heard, failure = await transcribe(t, row, ctx.get("transcriber"))
@@ -377,6 +388,9 @@ async def transcribe(
     t: Turn, row: InboundMessage, transcriber: Any
 ) -> tuple[str | None, str | None]:
     """Áudio -> (texto, None) ou (None, resposta de falha). O texto nunca é logado."""
+    space_id, _ = await target_space(t, extract_hints("", t.today))
+    if space_id is not None and await over_budget(t.session, space_id, stt=True):
+        return None, OVER_BUDGET_MEDIA
     try:
         data, mime = await get_adapter(row.channel).download_media(row.media_ref or "", MAX_BYTES)
         heard = await transcriber.transcribe(data, mime)
@@ -387,7 +401,6 @@ async def transcribe(
         return None, AUDIO_FAIL
     if not heard.text:
         return None, AUDIO_FAIL
-    space_id, _ = await target_space(t, extract_hints("", t.today))
     if space_id is not None:
         await record_ai_usage(space_id, "stt", seconds=heard.duration_s)
     return str(heard.text), None
