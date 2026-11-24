@@ -38,6 +38,7 @@ from app.core.config import get_settings
 from app.core.dates import to_local_date
 from app.core.db import SessionLocal, engine
 from app.core.money import format_brl
+from app.core.redis import redis
 from app.core.text import fold
 from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
@@ -47,18 +48,20 @@ from app.domain.spaces.models import Space, SpaceMember
 STALE = timedelta(minutes=5)
 log = logging.getLogger(__name__)
 
-UNLINKED = (
+_UNLINKED = (
     "Oi! Eu sou a Abby Cash, assistente de finanças. Para usar este chat, abra o painel web, "
-    "vá em Canais, escolha Vincular Telegram e envie aqui o código de 6 dígitos "
+    "vá em Canais, escolha Vincular {chat} e envie aqui o código de 6 dígitos "
     "(ou toque no link que o painel mostra)."
+)
+_ALREADY_LINKED = "Este {chat} já está vinculado a outra conta."
+_LINKED_OK = (
+    "✅ {chat} vinculado, {{name}}! Agora é só me mandar seus gastos, "
+    "por exemplo: gastei 45 no mercado."
 )
 INVALID_CODE = "Código inválido ou expirado. Gere um novo no painel web (Canais)."
 TOO_MANY = "Muitas tentativas. Tente de novo em 1 hora."
-ALREADY_LINKED = "Este Telegram já está vinculado a outra conta."
-LINKED_OK = (
-    "✅ Telegram vinculado, {name}! Agora é só me mandar seus gastos, "
-    "por exemplo: gastei 45 no mercado."
-)
+UNLINKED = _UNLINKED.format(chat="Telegram")
+UNLINKED_TTL_S = 86400
 FAILED = "Tive um problema ao processar sua mensagem. Tente de novo em instantes."
 
 _CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?([0-9]{6})", re.ASCII | re.IGNORECASE)
@@ -91,21 +94,28 @@ async def claim(session: AsyncSession, inbound_id: UUID) -> bool:
     return got is not None
 
 
-async def unlinked(session: AsyncSession, channel: str, external_user_id: str, text: str) -> str:
+async def unlinked(
+    session: AsyncSession, channel: str, external_user_id: str, text: str
+) -> str | None:
     """Remetente desconhecido: só instrução fixa (ou vínculo, se mandou um código). Nada é gravado
     no domínio."""
+    chat = "WhatsApp" if channel == "whatsapp_evolution" else "Telegram"
     m = _CODE.fullmatch(text.strip())
     if not m:
-        return UNLINKED
+        # estranho que insiste não vira spam: instrução no máximo 1x/24h por (canal, remetente)
+        first = await redis.set(
+            f"unlinked_reply:{channel}:{external_user_id}", 1, nx=True, ex=UNLINKED_TTL_S
+        )
+        return _UNLINKED.format(chat=chat) if first else None
     try:
         user = await link_with_code(
             session, channel=channel, external_user_id=external_user_id, code=m.group(1)
         )
     except DomainError as e:
-        return TOO_MANY if str(e) == "too_many_attempts" else ALREADY_LINKED
+        return TOO_MANY if str(e) == "too_many_attempts" else _ALREADY_LINKED.format(chat=chat)
     if user is None:
         return INVALID_CODE
-    return LINKED_OK.format(name=user.name.split()[0])
+    return _LINKED_OK.format(chat=chat).format(name=user.name.split()[0])
 
 
 def merge_hints(p: ParsedIntent, h: Hints) -> ParsedIntent:
