@@ -41,6 +41,8 @@ class Bill(Base):
     invoice_id: Mapped[UUID | None] = mapped_column(ForeignKey("invoices.id"), unique=True)
     loan_id: Mapped[UUID | None] = mapped_column(ForeignKey("loans.id"), index=True)
     installment_number: Mapped[int | None] = mapped_column(Integer)
+    # parcela paga antes do cadastro no app: status paid, sem lançamento nem conta de origem
+    settled_historical_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

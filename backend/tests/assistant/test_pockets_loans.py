@@ -178,3 +178,18 @@ async def test_low_confidence_pocket_write_is_not_executed(ana, session, parser)
     parser.add(intent("guardar_caixinha", amount_cents=10_000, confidence=0.3))
     assert (await ana.say("sei lá 100 reserva")).startswith("Não entendi")
     assert await moves(session) == 0
+
+
+async def test_paguei_financiamento_skips_historical_installments(ana, session, parser):
+    from app.domain.bills.models import Bill
+
+    await create_loan(
+        session, actor_id=ana.user.id, space_id=ana.user.default_space_id, kind="financing",
+        name="Carro", installment_cents=100_000, installments_total=12,
+        first_due_on=date(2026, 12, 10), paid_installments=2,
+    )  # fmt: skip
+    parser.add(intent("pagar_conta", description="financiamento do carro"))
+    reply = await ana.say("paguei o financiamento do carro")
+    assert reply.startswith("✅ Paguei R$ 1.000,00 · Carro (3/12)")
+    st = await session.scalars(select(Bill.status).where(Bill.installment_number == 3))
+    assert list(st) == ["paid"]

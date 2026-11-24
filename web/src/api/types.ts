@@ -22,6 +22,7 @@ export type ChannelLinkRow = { channel: string; verified_at: string | null }
 export type Pocket = S['PocketOut']
 export type Cdi = S['CdiLatestOut']
 export type Loan = S['LoanOut']
+export type Installment = S['InstallmentOut']
 
 // Visão geral de Análises (tipo gerado do OpenAPI).
 export type ReportTotals = { income_cents: number; expense_cents: number; net_cents: number; tx_count: number; avg_daily_expense_cents: number }

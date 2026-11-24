@@ -54,3 +54,14 @@ Rendimento (Decimal, arredondamento, idempotência, dia sem CDI), saldo/disponí
 - `remaining_cents` = saldo a pagar das parcelas geradas + (não geradas × valor atual da parcela). `progress_pct` = pagas × 100 // total.
 - Conta com caixinha ou empréstimo vinculado não pode ser excluída (`account_in_use`). `AccountOut` agora traz `institution`, `balance_cents`, `pockets_cents`, `available_cents` (em lista, criar, editar e detalhe).
 - Migração única `d1e2f3a4b5c6` (head); o `scripts/migrate_check.sh` foi reproduzido manualmente (upgrade head + `alembic check` + downgrade), porque o compose do worktree não tem `.env`.
+
+## Decisões (parcelas históricas)
+- Baixa histórica = `bills.settled_historical_at` (timestamptz, migração `b8c9d0e1f2a3`). A parcela fica `status='paid'` sem lançamento; `refresh_status` a mantém `paid`. Como todo consumidor (contas abertas, lembretes, digest, upcoming, chat) já filtra por `status != 'paid'`, ela some de todos sem mudança; `bill_paid_cents` continua somando só lançamentos (não entra em dinheiro pago/relatórios). `pay_bill` recusa baixa histórica (422 `bill_already_paid`). LoanOut conta como paga (`paid_count` = status paid).
+- `POST /spaces/{sid}/loans` aceita `paid_installments` (0..total; fora disso 422) e cria as parcelas 1..N como baixa histórica em lote (um flush). `ensure_installments` agora mantém geradas as 3 **primeiras não pagas** por número (percorre 1..total, pula pagas), então funciona com baixas esparsas (ex. #200 de 360) sem preencher o vão.
+- `GET /loans/{id}/installments` lista 1..N (calculadas se não geradas) com `state` open|paid_history|paid_real (parcial = open). Financiamento cancelado lista só as existentes.
+- `POST|DELETE /loans/{id}/installments/{n}/settle`: idempotentes; materializam se preciso; auditam `loan.installment_settle/unsettle` (só na mudança real). Pagamento real/parcial: 409 `installment_paid_real` / `installment_partial`. n fora de 1..total: 422 `invalid_installment`; financiamento cancelado: 422 `loan_canceled`.
+- `POST /loans/{id}/installments/{n}/materialize` (extra, escolha minha): gera a parcela aberta e devolve a conta; o web a usa antes de `POST /bills/{id}/payments` em "Paguei agora".
+- Permissão: igual ao PATCH (`visible_loan`: membro do espaço; não-membro 404). Não existe papel "só leitura" no espaço, então não há 403 nesses endpoints.
+- Desfazer pagamento real: excluir o lançamento (já reabre a parcela); a UI explica.
+- LGPD: export/delete são genéricos por colunas do model, então cobrem o campo novo (teste de export).
+- Web: `Ver parcelas` (lista com "mostrar mais" de 24 em 24 até 480, "Ir para a próxima em aberto" e "Ir para a parcela nº"), checkbox com rótulo completo, ícone+texto por estado. Verificado com vite preview + Playwright (API simulada, desktop/celular); o escuro não foi capturado de verdade (tema do app não segue `prefers-color-scheme` no emulador).

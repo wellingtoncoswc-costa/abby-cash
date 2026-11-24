@@ -94,8 +94,78 @@ test('financiamentos: progresso, falta, cadastro e exclusão', async () => {
   await userEvent.clear(screen.getByLabelText('Quantidade de parcelas (1 a 480)'))
   await userEvent.type(screen.getByLabelText('Quantidade de parcelas (1 a 480)'), '24')
   await userEvent.click(screen.getByRole('button', { name: 'Cadastrar' }))
-  expect(body('/spaces/s1/loans', 'POST')).toEqual({ kind: 'financing', name: 'Moto', installment_cents: 50000, installments_total: 24, first_due_on: '2026-12-15' })
+  expect(body('/spaces/s1/loans', 'POST')).toEqual({ kind: 'financing', name: 'Moto', installment_cents: 50000, installments_total: 24, first_due_on: '2026-12-15', paid_installments: 0 })
   await userEvent.click(screen.getByRole('button', { name: /Editar financiamento/ }))
   await userEvent.click(screen.getByRole('button', { name: 'Excluir' }))
   expect(calls.some(([u, i]) => u === '/loans/l1' && i.method === 'DELETE')).toBe(true)
+})
+
+const inst = (n: number, state = 'open', bill_id: string | null = null) => ({ number: n, due_on: `2026-${String(n + 11).padStart(2, '0')}-10`, amount_cents: 85000, state, bill_id })
+
+function goInst(rows: unknown[]) {
+  go('/financiamentos')
+  const base = globalThis.fetch as unknown as (u: string, i?: RequestInit) => Promise<Response>
+  vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
+    if (url === '/loans/l1/installments') { calls.push([url, init]); return J(rows) }
+    if (url.startsWith('/loans/l1/installments/')) { calls.push([url, init]); return J(inst(1, init.method === 'DELETE' ? 'open' : 'paid_history', 'b1')) }
+    if (url === '/bills/b9/payments') { calls.push([url, init]); return J({}, 201) }
+    return base(url, init)
+  })
+}
+
+test('parcelas: marcar como já paga antes e desmarcar com confirmação', async () => {
+  goInst([inst(1, 'paid_history', 'b1'), inst(2, 'paid_real', 'b2'), inst(3, 'open', 'b3'), inst(4)])
+  await userEvent.click(await screen.findByRole('button', { name: 'Ver parcelas' }))
+  const hist = await screen.findByRole('checkbox', { name: 'Parcela 1 de 48 · 10/12/2026 · R$ 850,00' })
+  expect(hist).toBeChecked()
+  expect(screen.getByText(/Paga \(já estava paga antes\)/)).toBeInTheDocument()
+  expect(screen.getByText(/Paga \(com lançamento\)/)).toBeInTheDocument()
+  expect(screen.getByText(/Em aberto · próxima/)).toBeInTheDocument()
+  // pagamento real: explica e não desfaz
+  await userEvent.click(screen.getByRole('checkbox', { name: /Parcela 2 de 48/ }))
+  expect(screen.getByRole('status')).toHaveTextContent('exclua o lançamento')
+  expect(calls.some(([u, i]) => u.includes('/settle') && i.method === 'DELETE')).toBe(false)
+  // histórica: confirma e desfaz
+  vi.stubGlobal('confirm', () => true)
+  await userEvent.click(hist)
+  expect(calls.some(([u, i]) => u === '/loans/l1/installments/1/settle' && i.method === 'DELETE')).toBe(true)
+  // aberta: escolhe "já estava paga antes" (sem lançamento)
+  await userEvent.click(screen.getByRole('checkbox', { name: /Parcela 4 de 48/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Já estava paga antes' }))
+  expect(calls.some(([u, i]) => u === '/loans/l1/installments/4/settle' && i.method === 'POST')).toBe(true)
+  expect(calls.some(([u]) => u.startsWith('/bills/'))).toBe(false)
+})
+
+test('parcelas: "Paguei agora" exige conta e materializa antes de pagar', async () => {
+  goInst([inst(1, 'open', null)])
+  await userEvent.click(await screen.findByRole('button', { name: 'Ver parcelas' }))
+  await userEvent.click(await screen.findByRole('checkbox', { name: /Parcela 1 de 48/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Paguei agora' }))
+  expect(screen.getByRole('button', { name: 'Confirmar pagamento' })).toBeDisabled()
+  await userEvent.selectOptions(screen.getByLabelText('Pagar com a conta'), 'a1')
+  const { fetch: f } = globalThis
+  vi.stubGlobal('fetch', async (u: string, i: RequestInit = {}) => (u === '/loans/l1/installments/1/materialize' ? (calls.push([u, i]), J({ id: 'b9' })) : f(u, i)))
+  await userEvent.click(screen.getByRole('button', { name: 'Confirmar pagamento' }))
+  const pay = calls.find(([u]) => u === '/bills/b9/payments')!
+  expect(JSON.parse(pay[1].body as string)).toMatchObject({ account_id: 'a1', amount_cents: 85000 })
+  expect(calls.findIndex(([u]) => u.endsWith('/materialize'))).toBeLessThan(calls.findIndex(([u]) => u === '/bills/b9/payments'))
+})
+
+test('cadastro: parcelas já pagas valida 0..total e vai no corpo', async () => {
+  go('/financiamentos')
+  await screen.findByText('Carro')
+  await userEvent.type(screen.getByLabelText('Nome'), 'Moto')
+  await userEvent.type(screen.getByLabelText('Valor da parcela (R$)'), '500,00')
+  await userEvent.type(screen.getByLabelText('Quantidade de parcelas (1 a 480)'), '24')
+  await userEvent.type(screen.getByLabelText('Primeiro vencimento'), '2026-12-15')
+  const paid = screen.getByLabelText('Parcelas já pagas')
+  expect(paid).toHaveValue('0')
+  expect(paid).toHaveAccessibleDescription(/Informe quantas parcelas você já pagou antes de cadastrar/)
+  await userEvent.clear(paid)
+  await userEvent.type(paid, '25')
+  expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeDisabled()
+  await userEvent.clear(paid)
+  await userEvent.type(paid, '10')
+  await userEvent.click(screen.getByRole('button', { name: 'Cadastrar' }))
+  expect(body('/spaces/s1/loans', 'POST')).toMatchObject({ installments_total: 24, paid_installments: 10 })
 })

@@ -21,6 +21,10 @@ const MSG: Record<string, string> = {
   invalid_transfer: 'Escolha duas contas diferentes.',
   not_editable: 'Este lançamento não pode ser editado; exclua e lance de novo.',
   insufficient_balance: 'Valor maior que o saldo da caixinha.',
+  installment_paid_real: 'Esta parcela foi paga com lançamento; exclua o lançamento para desfazer.',
+  installment_partial: 'Esta parcela tem pagamento parcial; exclua o lançamento para desfazer.',
+  bill_already_paid: 'Esta parcela já está paga.',
+  invalid_paid_installments: 'Parcelas já pagas: informe de 0 até o total.',
   invalid_setting: 'Configuração inválida.',
 }
 export const errText = (e: unknown) =>
