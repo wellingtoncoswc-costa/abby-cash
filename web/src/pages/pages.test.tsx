@@ -25,6 +25,7 @@ const routes: Record<string, (init: RequestInit) => Response> = {
 }
 let calls: [string, RequestInit][] = []
 
+let txExtra: Record<string, unknown> = {}
 function go(path: string) {
   calls = []
   vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
@@ -32,7 +33,7 @@ function go(path: string) {
     const key = Object.keys(routes).find((k) => url === k || url.startsWith(`${k}?`))
     if (key) return routes[key](init)
     if (url.includes('/budgets/')) return J({ detail: 'budget_not_found' }, 404)
-    if (url.includes('/transactions')) return J([{ id: 't1', space_id: SP, type: 'expense', amount_cents: 123456, occurred_on: '2026-11-20', description: 'Mercado', merchant: null, category_id: 'c1', account_id: 'a1', attachment_id: 'att1', installment_total: null }])
+    if (url.includes('/transactions')) return J([{ id: 't1', space_id: SP, type: 'expense', amount_cents: 123456, occurred_on: '2026-11-20', description: 'Mercado', merchant: null, category_id: 'c1', account_id: 'a1', attachment_id: 'att1', installment_total: null, ...txExtra }])
     return J({ detail: 'x' }, 404)
   })
   const router = makeRouter(createMemoryHistory({ initialEntries: [path] }))
@@ -84,7 +85,19 @@ test('detalhe do lançamento: comprovante, edição e exclusão', async () => {
   await userEvent.type(screen.getByLabelText('Descrição (edição)'), 'Feira')
   await userEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
   const patch = calls.find(([u, i]) => u === '/transactions/t1' && i.method === 'PATCH')!
-  expect(JSON.parse(patch[1].body as string)).toMatchObject({ description: 'Feira', amount_cents: 123456 })
+  expect(JSON.parse(patch[1].body as string)).toEqual({ description: 'Feira' })
+})
+
+test('lançamento de cartão/parcelado: sem valor e data, com aviso', async () => {
+  txExtra = { card_id: 'k1', installment_group_id: 'g1', installment_number: 1, installment_total: 2 }
+  try {
+    go('/lancamentos')
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
+    expect(await screen.findByRole('note')).toHaveTextContent('não podem ser editados')
+    await userEvent.click(screen.getByRole('button', { name: 'Editar lançamento' }))
+    expect(screen.queryByLabelText('Valor (R$) (edição)')).toBeNull()
+    expect(screen.queryByLabelText('Data (edição)')).toBeNull()
+  } finally { txExtra = {} }
 })
 
 test('compra parcelada mostra o impacto nas faturas', async () => {

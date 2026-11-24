@@ -25,21 +25,32 @@ export function Receipt({ id }: { id: string }) {
 
 function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
   const cats = useCategories()
+  const locked = !!(t.card_id || t.installment_group_id) // valor e data mexem na fatura: só pelo chat/recriando
+  const init: Record<string, string> = { amount: centsText(t.amount_cents), description: t.description, merchant: t.merchant ?? '', occurred_on: t.occurred_on, category_id: t.category_id ?? '' }
   const net = (v: Record<string, string>) => {
-    const cents = parseBRL(v.amount)
-    if (!cents) return Promise.reject(new ApiError(422, 'invalid_amount'))
-    return api('PATCH', `/transactions/${t.id}`, { amount_cents: cents, description: v.description, merchant: v.merchant || null, category_id: v.category_id || null, occurred_on: v.occurred_on } satisfies S['TransactionPatch'])
+    const body: S['TransactionPatch'] = {}
+    if (v.description !== init.description) body.description = v.description
+    if (v.merchant !== init.merchant) body.merchant = v.merchant || null
+    if (v.category_id !== init.category_id) body.category_id = v.category_id || null
+    if (!locked && v.occurred_on !== init.occurred_on) body.occurred_on = v.occurred_on
+    if (!locked && v.amount !== init.amount) {
+      const cents = parseBRL(v.amount)
+      if (!cents) return Promise.reject(new ApiError(422, 'invalid_amount'))
+      body.amount_cents = cents
+    }
+    return Object.keys(body).length ? api('PATCH', `/transactions/${t.id}`, body) : Promise.resolve()
   }
   return (
     <Card title="Detalhes do lançamento">
       <p>{t.description || t.merchant || 'Lançamento'} · {formatBRL(t.amount_cents)}{t.installment_total ? ` · parcela ${t.installment_number}/${t.installment_total}` : ''}</p>
+      {locked && <p role="note" className="text-sm">Valor e data de compras no cartão ou parceladas não podem ser editados aqui (afetam a fatura). Exclua e lance de novo para corrigir.</p>}
       <EditBox
         what="lançamento"
         fields={[
-          { k: 'amount', label: 'Valor (R$) (edição)', v: centsText(t.amount_cents) },
+          ...(locked ? [] : [{ k: 'amount', label: 'Valor (R$) (edição)', v: init.amount }]),
           { k: 'description', label: 'Descrição (edição)', v: t.description },
           { k: 'merchant', label: 'Estabelecimento (edição)', v: t.merchant ?? '' },
-          { k: 'occurred_on', label: 'Data (edição)', v: t.occurred_on, type: 'date' },
+          ...(locked ? [] : [{ k: 'occurred_on', label: 'Data (edição)', v: init.occurred_on, type: 'date' }]),
           { k: 'category_id', label: 'Categoria (edição)', v: t.category_id ?? '', options: [['', 'Sem categoria'], ...cats.data.map((c): [string, string] => [c.id, c.name])] },
         ]}
         save={(v) => net(v).then(onClose)}
