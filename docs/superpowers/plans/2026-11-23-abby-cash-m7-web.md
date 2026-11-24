@@ -19,15 +19,14 @@ Tipos: `web/src/api/schema.d.ts` gerado do OpenAPI do FastAPI (`npm run gen:api`
 - Testes: Vitest (money, client, páginas com fetch mockado); Playwright `e2e/` contra backend local.
 
 ## Lacunas de API
-- Sem rotas de categorias (listar/CRUD): painel e lançamentos mostram "Categoria #xxxx"; filtro por categoria só aceita id; tela de categorias não existe.
-- Sem `GET /me` nem `PATCH` de configurações (fuso, horário dos lembretes, canal preferido, resumo semanal): tela de configurações é somente informativa/desabilitada.
-- Sem editar/excluir lançamento, nem anexos, nem filtro por cartão/autor na listagem.
-- Sem listar membros de um espaço nem alterar papéis (só convidar e remover por id).
-- Sem editar/excluir contas, cartões, contas a pagar, metas; sem listar faturas de todos os cartões (por cartão, sim).
-- Código de convite de plataforma (cadastro) não tem rota de criação; o convite de espaço (`/invite/{token}`) é aceito após login.
+Resolvidas no backend e usadas na web: categorias (CRUD), `GET /me` + `PATCH /me/settings`, editar/excluir lançamento/conta/cartão/conta a pagar/meta, filtros cartão/autor + `X-Total-Count`, listar/sair/remover membros, `POST /admin/signup-invites`, `GET /attachments/{id}`, response models no OpenAPI.
+Restam:
+- Sem alterar papéis de membros; sem listar faturas de todos os cartões (só por cartão); sem upload de anexo pela web (o comprovante vem do WhatsApp/Telegram).
+- `POST card-purchases` não devolve mensagem de impacto: a web calcula "Nx de R$ …, em N fatura(s)" a partir das parcelas devolvidas.
 - Cookie de refresh é `Secure`: em dev só funciona em `localhost` (ou HTTPS).
+- Nginx de produção precisa encaminhar as rotas novas (`/me`, `/categories`, `/transactions`, `/attachments`, `/admin`).
 
 ## Não feito / pendências
-- Categorias (tela e nomes), editar/excluir lançamentos e anexos, filtros por cartão/autor, papéis de membros, edição das configurações: dependem das lacunas acima.
-- Compra no cartão (parcelada) não tem formulário na web; só criação de cartão, listagem de faturas e pagamento.
+- Limites por categoria no teto (a API aceita, a tela só preserva os existentes); papéis de membros.
 - Teste de ícones/instalação do PWA só verificado pelo build (manifest + sw gerados), não em dispositivo.
+- Recibo (imagem) e página Admin cobertos só por Vitest/pytest, não por Playwright.
