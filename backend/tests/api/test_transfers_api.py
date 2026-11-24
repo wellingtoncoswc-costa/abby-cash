@@ -96,8 +96,8 @@ async def test_pockets_guard_uses_available_only_with_pockets(client, session):
     assert (await _acc(client, a, src))["balance_cents"] == -20_000
     # com caixinha: só o disponível sai
     src2 = await make_account(session, sp, name="Inter", initial=100_000)
-    pk = await client.post(f"/spaces/{sp}/pockets", headers=h,
-                           json={"account_id": str(src2.id), "name": "Reserva", "cdi_bp": 12_000})  # fmt: skip
+    body = {"account_id": str(src2.id), "name": "Reserva", "cdi_bp": 12_000}
+    pk = await client.post(f"/spaces/{sp}/pockets", headers=h, json=body)
     await client.post(
         f"/pockets/{pk.json()['id']}/deposit", headers=h, json={"amount_cents": 60_000}
     )
