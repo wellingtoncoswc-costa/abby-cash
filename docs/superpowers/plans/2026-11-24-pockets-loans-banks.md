@@ -40,3 +40,17 @@ Espaço pessoal continua privado (nada de caixinha pessoal aparece a não-membro
 
 ## Testes obrigatórios
 Rendimento (Decimal, arredondamento, idempotência, dia sem CDI), saldo/disponível, depósito acima do disponível, resgate lança rendimento pendente, lançamento mensal único, parcelas de fim de mês (31/jan → 28/fev), 480 parcelas, isolamento de espaço (403/404 para não-membro; pessoal privado), LGPD export/delete incluem as tabelas novas, migração com head única.
+
+## Decisões (backend)
+- Data de criação da caixinha = `created_at` convertido para `DEFAULT_TZ`; só dias de CDI **depois** dela rendem. Rendimento que arredonda para 0 não grava `accrual`.
+- Depósito/resgate com `occurred_on` no futuro ou anterior ao último `accrual` da caixinha: 422 `invalid_date` (não reescreve rendimento já creditado).
+- Resgate acima do saldo: 422 `insufficient_balance`; depósito acima do disponível: 409 `insufficient_available`; excluir com saldo: 422 `pocket_has_balance`. Caixinha excluída (`closed_at`) some da lista e responde 404.
+- Receita mensal "Rendimento": uma por caixinha e mês. Se, depois de lançada (resgate no meio do mês), chegam novos dias do mesmo mês, a mesma receita e o `pocket_yield_postings` são **ajustados** (valor/data) em vez de criar outra. Lançamento sem autor (`created_by` NULL, `origin='system'`). Categoria "Rendimentos" (income) criada sob demanda no espaço.
+- `PocketOut.balance_cents` inclui rendimento ainda não lançado; `pending_yield_cents` = rendimento creditado e não lançado; `month_yield_cents` = Σ accruals do mês corrente.
+- Criar caixinha exige a conta no mesmo espaço do `{sid}` (senão 404/403); qualquer membro do espaço opera (`require_member`).
+- Job `sync_cdi_job`: cron de hora em hora (08:30 a 20:30 SP). Só busca no BCB se falta o último dia útil (sem calendário de feriados: em feriado repete a consulta). Falha: contador no Redis; 3 seguidas avisam os admins (Telegram) uma vez por dia; sucesso zera.
+- `GET /cdi/latest`: `daily_pct` e `annual_pct` vão como string decimal (nunca float); 404 `cdi_unavailable` se ainda não há taxa.
+- Parcelas: mantém-se 3 parcelas não pagas geradas (completa ao criar e ao pagar uma parcela). Parcela de financiamento pode ser editada/paga como conta comum, mas **não apagada** (422 `loan_bill_locked`; use `DELETE /loans/{id}`). Cancelar apaga só parcelas sem pagamento; parcial e paga ficam. Lista de empréstimos omite cancelados; `GET /loans/{id}` mostra com `canceled_at`.
+- `remaining_cents` = saldo a pagar das parcelas geradas + (não geradas × valor atual da parcela). `progress_pct` = pagas × 100 // total.
+- Conta com caixinha ou empréstimo vinculado não pode ser excluída (`account_in_use`). `AccountOut` agora traz `institution`, `balance_cents`, `pockets_cents`, `available_cents` (em lista, criar, editar e detalhe).
+- Migração única `d1e2f3a4b5c6` (head); o `scripts/migrate_check.sh` foi reproduzido manualmente (upgrade head + `alembic check` + downgrade), porque o compose do worktree não tem `.env`.
