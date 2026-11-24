@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { api, ApiError } from './api/client'
 import { useSpace } from './space'
 import type { Account, Category, Me, Member } from './api/types'
@@ -23,8 +23,8 @@ export const errText = (e: unknown) =>
   e instanceof ApiError ? (MSG[e.detail] ?? `Não foi possível concluir (${e.detail}).`) : 'Falha de conexão.'
 
 export const Card = ({ title, children }: { title?: string; children: ReactNode }) => (
-  <section className="mb-4 rounded-xl border border-border p-4">
-    {title && <h2 className="mb-2 text-lg font-semibold">{title}</h2>}
+  <section className="mb-4 rounded-2xl border border-border bg-card p-4 md:p-5">
+    {title && <h2 className="mb-3 text-base font-semibold tracking-tight">{title}</h2>}
     {children}
   </section>
 )
@@ -32,7 +32,7 @@ export const Card = ({ title, children }: { title?: string; children: ReactNode 
 export const Btn = ({ className = '', ...p }: ButtonHTMLAttributes<HTMLButtonElement>) => (
   <button
     {...p}
-    className={`rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${className}`}
+    className={`rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 ${className}`}
   />
 )
 
@@ -49,9 +49,11 @@ export const Field = ({ label, children }: { label: string; children: ReactNode 
 export const Bar = ({ value, max }: { value: number; max: number }) => {
   const pct = max > 0 ? Math.min(100, Math.floor((value * 100) / max)) : 0
   const color = value > max ? 'bg-destructive' : pct >= 80 ? 'bg-warning' : 'bg-primary'
+  const [on, setOn] = useState(false)
+  useEffect(() => { const id = requestAnimationFrame(() => setOn(true)); return () => cancelAnimationFrame(id) }, [])
   return (
-    <div className="h-3 w-full overflow-hidden rounded bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+      <div className={`h-full rounded-full ${color} transition-[width] duration-700 ease-out`} style={{ width: `${on ? pct : 0}%` }} />
     </div>
   )
 }
