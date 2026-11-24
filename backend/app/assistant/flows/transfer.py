@@ -3,10 +3,12 @@ from uuid import UUID
 
 from fastapi import HTTPException
 
+from app.assistant import links
 from app.assistant.context import SpaceContext
 from app.assistant.flows.common import ask
 from app.assistant.flows.payment import _match, _tokens
 from app.assistant.intents import ParsedIntent
+from app.assistant.links import with_link
 from app.assistant.replies import FUTURE_DATE, ZERO, account_label, options_text, tx_line
 from app.assistant.turn import Draft, Pay, Turn
 from app.core.money import format_brl
@@ -89,4 +91,4 @@ async def run(t: Turn, d: Draft) -> str:
             f"A conta {source.name} tem só {format_brl(max(free, 0))} disponíveis (fora das "
             f"caixinhas); você pediu {format_brl(p.amount_cents)}."
         )
-    return await tx_line(t.session, tx, t.today, hint=False)
+    return with_link(await tx_line(t.session, tx, t.today, hint=False), links.lancamentos())

@@ -189,3 +189,77 @@ cases:
     expect: {intent: aporte_meta}
   - text: "paguei 80 de pix pro joão no almoço"
     expect: {intent: lancar_despesa, amount_cents: 8000}
+  # --- análises: resumo_periodo (visão geral) e maiores_gastos (ranking) ---
+  - text: "resumo do mês"
+    expect: {intent: resumo_periodo, period: mes}
+  - text: "como tô esse mês?"
+    expect: {intent: resumo_periodo, period: mes}
+  - text: "como estou esse mes"
+    expect: {intent: resumo_periodo}
+  - text: "resumão da semana"
+    expect: {intent: resumo_periodo, period: semana}
+  - text: "como foi a semana?"
+    expect: {intent: resumo_periodo, period: semana}
+  - text: "comparar com o mês passado"
+    expect: {intent: resumo_periodo}
+  - text: "resumo do mês passado"
+    expect: {intent: resumo_periodo, period: mes_passado}
+  - text: "maiores gastos do mês"
+    expect: {intent: maiores_gastos, period: mes}
+  - text: "no que mais gastei?"
+    expect: {intent: maiores_gastos}
+  - text: "onde mais gastei essa semana"
+    expect: {intent: maiores_gastos, period: semana}
+  - text: "quais foram as maiores despesas do mês passado"
+    expect: {intent: maiores_gastos, period: mes_passado}
+  # --- NÃO são análise ---
+  - text: "quanto gastei de mercado hoje"
+    expect: {intent: consultar_gastos, period: hoje}
+  - text: "quanto gastei esse mês"
+    expect: {intent: consultar_gastos, period: mes}
+  - text: "quanto tenho na conta?"
+    expect: {intent: consultar_saldo}
+  - text: "gastei 120 no mercado"
+    expect: {intent: lancar_despesa, amount_cents: 12000}
+  # --- criar caixinha (new_name, cdi_bp = % do CDI x 100, account_hint) ---
+  - text: "criar caixinha reserva de emergência a 120% do CDI na conta nubank"
+    expect: {intent: criar_caixinha, new_name: reserva de emergência, cdi_bp: 12000, account_hint: nubank}
+  - text: "nova caixinha viagem"
+    expect: {intent: criar_caixinha, new_name: viagem}
+  - text: "quero criar uma caixinha"
+    expect: {intent: criar_caixinha}
+  - text: "abre um cofrinho pra reforma rendendo 102,5% do cdi"
+    expect: {intent: criar_caixinha, new_name: reforma, cdi_bp: 10250}
+  - text: "cria uma caixinha chamada Natal no itaú"
+    expect: {intent: criar_caixinha, new_name: natal, account_hint: itaú}
+  # --- criar financiamento/consórcio (amount_cents = parcela; loan_installments; first_due_on) ---
+  - text: "novo financiamento do carro, 48 parcelas de 1.890 começando 10/12, já paguei 17"
+    expect: {intent: criar_financiamento, new_name: carro, loan_kind: financing, amount_cents: 189000, loan_installments: 48, first_due_on: "2026-12-10", paid_installments: 17}
+  - text: "cadastrar consórcio do imóvel"
+    expect: {intent: criar_financiamento, new_name: imóvel, loan_kind: consortium}
+  - text: "cadastra um financiamento da moto de 36x de 650"
+    expect: {intent: criar_financiamento, new_name: moto, loan_kind: financing, amount_cents: 65000, loan_installments: 36}
+  - text: "quero cadastrar o financiamento da casa, 360 parcelas"
+    expect: {intent: criar_financiamento, new_name: casa, loan_kind: financing, loan_installments: 360}
+  # --- baixar parcela (installment_number, through) vs pagar o financiamento ---
+  - text: "paguei a parcela 12 do financiamento do carro"
+    expect: {intent: baixar_parcela, installment_number: 12, pocket_hint: carro}
+  - text: "já paguei até a 17 do consórcio"
+    expect: {intent: baixar_parcela, installment_number: 17, through: true}
+  - text: "quitei a parcela 3 da casa pelo nubank"
+    expect: {intent: baixar_parcela, installment_number: 3, pocket_hint: casa, account_hint: nubank}
+  - text: "baixa as parcelas até a 8 do carro, ja estavam pagas"
+    expect: {intent: baixar_parcela, installment_number: 8, through: true, pocket_hint: carro}
+  - text: "paguei o financiamento do carro"
+    expect: {intent: pagar_conta}
+  # --- NÃO confusão ---
+  - text: "guardei 200 na reserva de emergência"
+    expect: {intent: guardar_caixinha, amount_cents: 20000}
+  - text: "coloquei 500 na caixinha viagem"
+    expect: {intent: guardar_caixinha, amount_cents: 50000, pocket_hint: viagem}
+  - text: "meus financiamentos"
+    expect: {intent: consultar_financiamentos}
+  - text: "quanto falta do financiamento do carro"
+    expect: {intent: consultar_financiamentos, pocket_hint: carro}
+  - text: "tv 3000 em 10x no nubank"
+    expect: {intent: lancar_parcelado, installments: 10}

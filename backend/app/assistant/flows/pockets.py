@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from app.assistant import links
 from app.assistant.flows.common import ask
 from app.assistant.intents import ParsedIntent
 from app.assistant.replies import ZERO, options_text
@@ -25,12 +26,21 @@ from app.domain.pockets.service import (
 from app.domain.spaces.access import require_member
 from app.domain.transactions.service import account_balance
 
-NO_POCKET = "Você ainda não tem caixinhas. Crie uma no painel web (Caixinhas)."
-NO_LOAN = "Você ainda não tem financiamentos. Cadastre um no painel web (Financiamentos)."
-CREATE_ON_PANEL = (
-    "Caixinhas e financiamentos são criados no painel web (Caixinhas / Financiamentos). "
-    "Por aqui eu guardo, resgato e consulto."
-)
+
+def no_pocket() -> str:
+    return (
+        'Você ainda não tem caixinhas. Diga "criar caixinha" e eu cadastro por aqui, '
+        f"ou use o painel:\n{links.caixinhas()}"
+    )
+
+
+def no_loan() -> str:
+    return (
+        'Você ainda não tem financiamentos. Diga "cadastrar financiamento" e eu cadastro por '
+        f"aqui, ou use o painel:\n{links.financiamentos()}"
+    )
+
+
 _CREATE = re.compile(
     r"\b(criar|cria|crie|abrir|abre|abra|cadastrar|cadastra|cadastre)\b"
 )  # fmt: skip
@@ -72,7 +82,7 @@ async def run(t: Turn, d: Draft) -> str:
         return await ask(t, d, "amount", prefix + question)
     ctx = await t.context(d.space_id)
     if not ctx.pockets:
-        return NO_POCKET
+        return no_pocket()
     if d.payment is None:
         ids = match_by_name(p.pocket_hint, [(x.id, x.name) for x in ctx.pockets])
         only = len(ctx.pockets) == 1 and not _key(p.pocket_hint)
@@ -134,7 +144,7 @@ async def caixinhas(t: Turn, space_id: UUID) -> str:
         )
     )
     if not pockets:
-        return NO_POCKET
+        return no_pocket()
     lines, total, accounts = [], 0, []
     for x in pockets:
         s = await pocket_stats(t.session, x.id, t.today)
@@ -152,7 +162,7 @@ async def caixinhas(t: Turn, space_id: UUID) -> str:
                 t.session, acc.id
             )
             out.append(f"Disponível na conta {acc.name}: {format_brl(free)}")
-    return "\n".join(out)
+    return links.with_link("\n".join(out), links.caixinhas())
 
 
 _KIND = {"financing": "financiamento", "consortium": "consórcio"}
@@ -161,7 +171,7 @@ _KIND = {"financing": "financiamento", "consortium": "consórcio"}
 async def financiamentos(t: Turn, p: ParsedIntent, space_id: UUID) -> str:
     loans = await list_loans(t.session, viewer_id=t.user_id, space_id=space_id)
     if not loans:
-        return NO_LOAN
+        return no_loan()
     ids = match_by_name(p.pocket_hint, [(x.id, x.name) for x in loans])
     if p.pocket_hint and not ids:
         return "Não achei esse financiamento. Os seus: " + ", ".join(x.name for x in loans) + "."
@@ -170,7 +180,7 @@ async def financiamentos(t: Turn, p: ParsedIntent, space_id: UUID) -> str:
         if ids and x.id not in ids:
             continue
         lines.append(await _loan_line(t, x, detail=bool(ids)))
-    return "🎯 Financiamentos:\n" + "\n".join(lines)
+    return links.with_link("🎯 Financiamentos:\n" + "\n".join(lines), links.financiamentos())
 
 
 async def _loan_line(t: Turn, x: Loan, *, detail: bool) -> str:

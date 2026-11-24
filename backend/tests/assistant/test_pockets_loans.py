@@ -2,6 +2,8 @@ from datetime import date
 
 from sqlalchemy import func, select
 
+from app.assistant import links
+from app.assistant.flows.pockets import no_pocket
 from app.domain.loans.service import create_loan
 from app.domain.pockets.models import PocketMovement
 from app.domain.pockets.service import create_pocket, deposit
@@ -42,9 +44,7 @@ async def test_single_pocket_without_name_is_used(ana, session, parser):
 
 async def test_no_pocket_points_to_panel(ana, parser):
     parser.add(intent("guardar_caixinha", amount_cents=10_000, pocket_hint="reserva"))
-    assert await ana.say("guardei 100 na reserva") == (
-        "Você ainda não tem caixinhas. Crie uma no painel web (Caixinhas)."
-    )
+    assert await ana.say("guardei 100 na reserva") == no_pocket()
 
 
 async def test_ambiguous_or_missing_name_asks_by_number(ana, session, parser):
@@ -120,7 +120,8 @@ async def test_query_pockets_lists_balance_cdi_month_yield_total_and_available(
         "🎯 Caixinhas:\n"
         "• Reserva: R$ 200,00 · 110,5% do CDI · rendeu R$ 0,00 no mês\n"
         "Total: R$ 200,00\n"
-        "Disponível na conta Nubank: R$ 4.800,00"
+        "Disponível na conta Nubank: R$ 4.800,00\n"
+        f"Detalhes no painel:\n{links.caixinhas()}"
     )
     assert parser.calls == []
 
@@ -140,13 +141,15 @@ async def test_query_loans_list_and_detail(ana, session, parser):
         "🎯 Financiamentos:\n"
         "• Carro (financiamento): 0 de 12 pagas · faltam R$ 12.000,00 · próxima R$ 1.000,00 "
         "em 10/12\n"
-        "• Casa (consórcio): 0 de 60 pagas · faltam R$ 60.000,00 · próxima R$ 1.000,00 em 10/12"
+        "• Casa (consórcio): 0 de 60 pagas · faltam R$ 60.000,00 · próxima R$ 1.000,00 em 10/12\n"
+        f"Detalhes no painel:\n{links.financiamentos()}"
     )
     parser.add(intent("consultar_financiamentos", pocket_hint="carro"))
     assert await ana.say("quanto falta do carro") == (
         "🎯 Financiamentos:\n"
         "• Carro (financiamento): 0 de 12 pagas · faltam R$ 12.000,00 · próxima R$ 1.000,00 "
-        "em 10/12 · termina em 11/2027"
+        "em 10/12 · termina em 11/2027\n"
+        f"Detalhes no painel:\n{links.financiamentos()}"
     )
     parser.add(intent("consultar_financiamentos", pocket_hint="moto"))
     assert (await ana.say("quanto falta da moto")).startswith("Não achei esse financiamento.")
@@ -163,14 +166,17 @@ async def test_paguei_financiamento_pays_the_open_installment(ana, session, pars
     assert paid == "paid"
 
 
-async def test_create_goes_to_the_panel_and_help_lists_commands(ana, parser):
-    for text in ("quero criar uma caixinha", "cadastrar financiamento do carro"):
-        assert (await ana.say(text)).startswith("Caixinhas e financiamentos são criados no painel")
+async def test_create_starts_the_guided_flow_and_help_lists_commands(ana, parser):
+    assert await ana.say("quero criar uma caixinha") == "Qual o nome da caixinha?"
+    await ana.say("cancelar")
+    assert (await ana.say("cadastrar financiamento do carro")).startswith("Qual o nome do financ")
+    await ana.say("cancelar")
     help_ = await ana.say("ajuda")
     for needle in ("caixinhas", "guardei 200 na reserva", "tirei 100 da viagem",
-                   "paguei o financiamento do carro", "financiamentos"):  # fmt: skip
+                   "paguei o financiamento do carro", "financiamentos",
+                   "criar caixinha", "paguei a parcela 12"):  # fmt: skip
         assert needle in help_
-    assert parser.calls == []
+    assert "painel web" not in help_.split("Criar:")[1].splitlines()[0]
 
 
 async def test_low_confidence_pocket_write_is_not_executed(ana, session, parser):

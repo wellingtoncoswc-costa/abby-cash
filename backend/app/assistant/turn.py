@@ -13,7 +13,7 @@ from app.assistant.intents import ParsedIntent
 class Pay(BaseModel):
     """Uma opção/escolha: conta, cartão, conta a pagar ou caixinha (rótulo pronto)."""
 
-    type: Literal["account", "card", "bill", "pocket"]
+    type: Literal["account", "card", "bill", "pocket", "loan"]
     id: UUID
     label: str
 
