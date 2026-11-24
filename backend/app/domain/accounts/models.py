@@ -14,3 +14,4 @@ class Account(Base):
     type: Mapped[str] = mapped_column(String(16))  # checking | wallet | savings
     name: Mapped[str] = mapped_column(String(100))
     initial_balance_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    institution: Mapped[str | None] = mapped_column(String(40))  # chave do catálogo do web

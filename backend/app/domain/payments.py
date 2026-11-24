@@ -11,6 +11,7 @@ from app.domain.bills.models import Bill
 from app.domain.bills.status import bill_paid_cents, refresh_status
 from app.domain.cards.service import invoice_remaining, visible_invoice
 from app.domain.errors import DomainError
+from app.domain.loans.service import top_up_after_payment
 from app.domain.spaces.access import require_member
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.rules import check_common
@@ -49,6 +50,7 @@ async def pay_bill(
     session.add(tx)
     await session.flush()
     await refresh_status(session, bill)
+    await top_up_after_payment(session, bill)
     audit(
         session,
         actor_id,

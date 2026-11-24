@@ -1,11 +1,12 @@
 from dataclasses import asdict
 from datetime import date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, Session
 from app.api.schemas import AccountDetailOut, AccountOut, SignedCents
@@ -20,21 +21,34 @@ from app.domain.accounts.service import (
 )
 from app.domain.accounts.statement import account_statement
 from app.domain.errors import DomainError
+from app.domain.pockets.service import account_pockets_cents
 from app.domain.spaces.models import SpaceMember
 from app.domain.transactions.service import account_balance
 
 router = APIRouter(tags=["accounts"])
+
+Institution = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,40}$")]
+
+
+async def _out(session: AsyncSession, acc: Account) -> dict[str, Any]:
+    balance = await account_balance(session, acc.id)
+    pockets = await account_pockets_cents(session, acc.id)
+    return row(acc) | {
+        "balance_cents": balance, "pockets_cents": pockets, "available_cents": balance - pockets
+    }  # fmt: skip
 
 
 class AccountIn(BaseModel):
     type: Literal["checking", "wallet", "savings"]
     name: str = Field(min_length=1, max_length=100)
     initial_balance_cents: SignedCents = 0
+    institution: Institution | None = None
 
 
 class AccountPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     initial_balance_cents: SignedCents | None = None
+    institution: Institution | None = None  # null remove o banco
 
 
 class DefaultAccountIn(BaseModel):
@@ -47,9 +61,9 @@ async def create(
 ) -> dict[str, Any]:
     acc = await create_account(
         session, actor_id=user.id, space_id=space_id, type=body.type, name=body.name,
-        initial_balance_cents=body.initial_balance_cents,
+        initial_balance_cents=body.initial_balance_cents, institution=body.institution,
     )  # fmt: skip
-    return row(acc)
+    return await _out(session, acc)
 
 
 @router.get("/accounts", response_model=list[AccountOut])
@@ -61,23 +75,25 @@ async def list_accounts(user: CurrentUser, session: Session) -> list[dict[str, A
         .where(SpaceMember.user_id == user.id)
         .order_by(Account.name)
     )
-    return [row(a) for a in rows]
+    return [await _out(session, a) for a in rows]
 
 
 @router.get("/accounts/{account_id}", response_model=AccountDetailOut)
 async def get_account(account_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
     acc = await visible_account(session, user.id, account_id)
-    return row(acc) | {"balance_cents": await account_balance(session, acc.id)}
+    return await _out(session, acc)
 
 
 @router.patch("/accounts/{account_id}", response_model=AccountOut)
 async def patch(
     account_id: UUID, body: AccountPatch, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
-    fields = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
-    return row(
-        await update_account(session, actor_id=user.id, account_id=account_id, fields=fields)
-    )
+    fields = {
+        k: v for k, v in body.model_dump(exclude_unset=True).items()
+        if v is not None or k == "institution"
+    }  # fmt: skip
+    acc = await update_account(session, actor_id=user.id, account_id=account_id, fields=fields)
+    return await _out(session, acc)
 
 
 @router.delete("/accounts/{account_id}", status_code=204)
