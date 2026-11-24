@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { api, ApiError } from './api/client'
-import { useSpace } from './space'
+import { spaceLabel, useSpace } from './space'
 import type { Account, Category, Me, Member } from './api/types'
 
 const MSG: Record<string, string> = {
@@ -18,7 +18,13 @@ const MSG: Record<string, string> = {
   invalid_amount: 'Valor inválido.',
   admin_only: 'Apenas administradores.',
   insufficient_available: 'Valor maior que o disponível na conta (saldo menos o que está nas caixinhas).',
+  invalid_transfer: 'Escolha duas contas diferentes.',
+  not_editable: 'Este lançamento não pode ser editado; exclua e lance de novo.',
   insufficient_balance: 'Valor maior que o saldo da caixinha.',
+  installment_paid_real: 'Esta parcela foi paga com lançamento; exclua o lançamento para desfazer.',
+  installment_partial: 'Esta parcela tem pagamento parcial; exclua o lançamento para desfazer.',
+  bill_already_paid: 'Esta parcela já está paga.',
+  invalid_paid_installments: 'Parcelas já pagas: informe de 0 até o total.',
   invalid_setting: 'Configuração inválida.',
 }
 export const errText = (e: unknown) =>
@@ -81,6 +87,17 @@ export function useAccounts(all = false) {
   const { spaceId } = useSpace()
   const q = useGet<Account[]>('/accounts')
   return { ...q, data: q.data?.filter((a) => all || a.space_id === spaceId) ?? [] }
+}
+
+/** Contas de TODOS os espaços do usuário; rótulo "Nome · Espaço" quando há mais de um espaço. */
+export function useAllAccounts() {
+  const { spaces } = useSpace()
+  const q = useGet<Account[]>('/accounts')
+  const label = (a: Account) => {
+    const sp = spaces.find((s) => s.id === a.space_id)
+    return spaces.length > 1 && sp ? `${a.name} · ${spaceLabel(sp)}` : a.name
+  }
+  return { ...q, data: q.data ?? [], label }
 }
 
 export const AccountSelect = ({ value, onChange, accounts }: { value: string; onChange: (v: string) => void; accounts: Account[] }) => (

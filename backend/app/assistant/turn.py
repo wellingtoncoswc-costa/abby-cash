@@ -11,9 +11,9 @@ from app.assistant.intents import ParsedIntent
 
 
 class Pay(BaseModel):
-    """Uma opção/escolha: conta, cartão ou conta a pagar (rótulo já pronto para mostrar)."""
+    """Uma opção/escolha: conta, cartão, conta a pagar ou caixinha (rótulo pronto)."""
 
-    type: Literal["account", "card", "bill"]
+    type: Literal["account", "card", "bill", "pocket"]
     id: UUID
     label: str
 
@@ -21,10 +21,11 @@ class Pay(BaseModel):
 class Draft(BaseModel):
     """Ação em andamento que precisou perguntar algo; vai inteira para `conversation_state`."""
 
-    action: Literal["launch", "pay", "aporte"]
+    action: Literal["launch", "pay", "aporte", "pocket", "transfer"]
     p: ParsedIntent
     space_id: UUID
-    payment: Pay | None = None
+    payment: Pay | None = None  # origem (pagamento, aporte, transferência)
+    to: Pay | None = None  # destino da transferência
     bill_id: UUID | None = None
     options: list[Pay] = []
     warn: str | None = None

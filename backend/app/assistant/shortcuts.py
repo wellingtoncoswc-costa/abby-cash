@@ -21,6 +21,8 @@ _register(
 _register("consultar_saldo", "saldo", "meu saldo", "qual o saldo", "qual meu saldo")
 _register("consultar_teto", "teto", "meu teto", "como esta o teto")
 _register("consultar_faturas", "fatura", "faturas", "minhas faturas")
+_register("consultar_caixinhas", "caixinhas", "minhas caixinhas", "quanto rendeu")
+_register("consultar_financiamentos", "financiamentos", "meus financiamentos")
 _register("consultar_gastos", "gastos", "meus gastos", "quanto gastei", period="mes")
 _register("ajuda", "ajuda", "help", "menu", "comandos", "start")
 

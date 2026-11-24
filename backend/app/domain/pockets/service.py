@@ -142,7 +142,7 @@ async def _last_accrual(session: AsyncSession, pocket_id: UUID) -> date | None:
 
 async def _move(
     session: AsyncSession, *, actor_id: UUID, pocket_id: UUID, kind: str, amount_cents: int,
-    on: date | None,
+    on: date | None, origin: str, source_message_id: str | None,
 ) -> PocketMovement:  # fmt: skip
     pocket = await visible_pocket(session, actor_id, pocket_id, lock=True)
     today = local_today(_tz())
@@ -165,7 +165,14 @@ async def _move(
         await post_yield(session, pocket, today, include_current=True)
         if amount_cents > (await pocket_stats(session, pocket.id, today)).balance:
             raise DomainError("insufficient_balance")
-    mv = PocketMovement(pocket_id=pocket.id, kind=kind, amount_cents=amount_cents, occurred_on=on)
+    mv = PocketMovement(
+        pocket_id=pocket.id,
+        kind=kind,
+        amount_cents=amount_cents,
+        occurred_on=on,
+        origin=origin,
+        source_message_id=source_message_id,
+    )
     session.add(mv)
     await session.flush()
     audit(session, actor_id, f"pocket.{kind}", "pocket", pocket.id,
@@ -181,9 +188,12 @@ async def deposit(
     pocket_id: UUID,
     amount_cents: int,
     on: date | None = None,
+    origin: str = "web",
+    source_message_id: str | None = None,
 ) -> PocketMovement:
     return await _move(session, actor_id=actor_id, pocket_id=pocket_id, kind="deposit",
-                       amount_cents=amount_cents, on=on)  # fmt: skip
+                       amount_cents=amount_cents, on=on, origin=origin,
+                       source_message_id=source_message_id)  # fmt: skip
 
 
 async def withdraw(
@@ -193,9 +203,12 @@ async def withdraw(
     pocket_id: UUID,
     amount_cents: int,
     on: date | None = None,
+    origin: str = "web",
+    source_message_id: str | None = None,
 ) -> PocketMovement:
     return await _move(session, actor_id=actor_id, pocket_id=pocket_id, kind="withdraw",
-                       amount_cents=amount_cents, on=on)  # fmt: skip
+                       amount_cents=amount_cents, on=on, origin=origin,
+                       source_message_id=source_message_id)  # fmt: skip
 
 
 async def list_movements(

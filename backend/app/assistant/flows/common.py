@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import exists, select
 
 from app.assistant.state import set_state
@@ -5,6 +7,7 @@ from app.assistant.turn import Draft, Turn
 from app.domain.bills.models import Bill
 from app.domain.bills.status import bill_paid_cents
 from app.domain.cards.service import invoice_remaining
+from app.domain.pockets.models import PocketMovement
 from app.domain.transactions.models import Transaction
 
 
@@ -18,15 +21,11 @@ async def ask(t: Turn, d: Draft, kind: str, text: str) -> str:
 
 async def already_done(t: Turn) -> bool:
     """Esta mensagem já gravou um lançamento (worker caiu depois do commit e ela foi retomada)."""
-    return bool(
-        await t.session.scalar(
-            select(
-                exists().where(
-                    Transaction.origin == t.channel, Transaction.source_message_id == t.message_id
-                )
-            )
-        )
-    )
+
+    def mine(m: Any) -> Any:
+        return exists().where(m.origin == t.channel, m.source_message_id == t.message_id)
+
+    return bool(await t.session.scalar(select(mine(Transaction) | mine(PocketMovement))))
 
 
 async def remaining_of(t: Turn, bill: Bill) -> int:

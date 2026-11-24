@@ -16,9 +16,19 @@ Você interpreta mensagens de um assistente de finanças pessoais (Abby Cash), e
 Brasil, e devolve só o JSON do esquema. Regras:
 - intent: lancar_despesa, lancar_receita, lancar_parcelado (compra dividida em 2 ou mais \
 parcelas), corrigir (mudar o ÚLTIMO lançamento), apagar (apagar o último lançamento), \
-pagar_conta (quitar conta/fatura já existente), nova_conta_a_pagar (conta com vencimento \
-futuro), aporte_meta (guardar dinheiro numa meta), consultar_gastos, consultar_teto, \
-consultar_saldo, consultar_faturas, ajuda ou desconhecido.
+pagar_conta (quitar conta/fatura/parcela já existente, em geral sem valor: "paguei a conta de \
+luz", "paguei o financiamento do carro"; com valor digitado para uma despesa comum, como "paguei \
+1.234,56 de aluguel", é lancar_despesa), nova_conta_a_pagar (conta com vencimento \
+futuro), aporte_meta (guardar dinheiro numa META), guardar_caixinha (colocar dinheiro numa \
+CAIXINHA/cofrinho que rende: "guardei 200 na reserva", "joguei 300 na reserva"), resgatar_caixinha \
+(tirar dinheiro da caixinha: "tirei 100 da viagem", "saca 100 da reserva"), consultar_caixinhas \
+("minhas caixinhas", "quanto tá rendendo"), consultar_financiamentos (financiamentos e \
+consórcios: "meus financiamentos", "quanto falta do carro"), transferir_contas (mover dinheiro de \
+uma conta cadastrada para outra: "transferi 300 do Nubank para o Itaú", "passa 200 da conta X \
+pra Y", "move 500 do Itaú pro Nubank", "mandei 1000 da poupança pra corrente"), \
+consultar_gastos, consultar_teto, \
+consultar_saldo, consultar_faturas, ajuda ou desconhecido. Se o nome citado for de uma caixinha \
+da lista, é caixinha; se for de uma meta, é aporte_meta.
 - amount_cents: valor TOTAL em centavos, inteiro. "45" = 4500; "1.234,56" = 123456; \
 "mil e duzentos" = 120000; "3x de 500" = 150000. Nunca invente valor: sem valor, use null.
 - occurred_on: data ISO (AAAA-MM-DD) calculada a partir do "hoje" da mensagem ("ontem", \
@@ -28,10 +38,16 @@ consultar_saldo, consultar_faturas, ajuda ou desconhecido.
 receita para receita). Responda sempre o número, nunca o nome; null se nenhuma servir.
 - merchant: nome do estabelecimento; description: descrição curta do gasto.
 - account_hint e card_hint: o texto que o usuário usou para a forma de pagamento ("nubank", \
-"pix", "dinheiro", "cartão"); null se não disse.
+"pix", "dinheiro", "cartão"); null se não disse. Em transferir_contas, account_hint é a conta de \
+ORIGEM e to_account_hint a de DESTINO ("transferi 300 do nubank pro itaú": nubank / itaú), nunca \
+inverta; null para o lado que a mensagem não citar.
+- Mover dinheiro entre contas (transferir_contas) não é guardar em caixinha (guardar_caixinha), \
+nem aporte em meta (aporte_meta), nem pagar fatura/conta (pagar_conta): "guardei 200 na reserva" e \
+"paguei a fatura do nubank" NÃO são transferência.
 - private: true só se a mensagem tiver #pessoal.
-- goal_hint: nome (ou parte) da meta. period: hoje, ontem, semana, mes ou mes_passado, nas \
-consultas.
+- goal_hint: nome (ou parte) da meta. pocket_hint: nome (ou parte) da caixinha, ou do \
+financiamento em consultar_financiamentos; sem a palavra "caixinha"; null se não citou.
+- period: hoje, ontem, semana, mes ou mes_passado, nas consultas.
 - choice: o número escolhido, apenas quando a mensagem é só um número.
 - confidence: de 0 a 1; abaixo de 0.6 quando a mensagem for ambígua.
 - corrigir: preencha apenas o que o usuário quer mudar (amount_cents, category_index, \
@@ -70,6 +86,8 @@ def build_system_prompt(ctx: SpaceContext) -> str:
         f"Contas: {names([a.name for a in ctx.accounts])}\n"
         f"Cartões: {names([c.name for c in ctx.cards])}\n"
         f"Metas: {names([g.name for g in ctx.goals])}\n"
+        f"Caixinhas: {names([p.name for p in ctx.pockets])}\n"
+        f"Financiamentos: {names([x.name for x in ctx.loans])}\n"
         f"Regras aprendidas (estabelecimento -> número da categoria; têm prioridade): {rules}\n"
     )
 

@@ -328,6 +328,9 @@ export interface paths {
         /**
          * List
          * @description Total (sem paginação) no cabeçalho X-Total-Count; o corpo segue sendo a lista.
+         *
+         *     `effective=true`: start/end/ordem pela data de competência (cartão = vencimento da fatura),
+         *     a mesma das Análises. `merchant` é o rótulo ("Sem estabelecimento" = vazio).
          */
         get: operations["list__spaces__space_id__transactions_get"];
         put?: never;
@@ -551,6 +554,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{space_id}/reports/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Overview */
+        get: operations["get_overview_spaces__space_id__reports_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/spaces/{space_id}/goals": {
         parameters: {
             query?: never;
@@ -761,6 +781,58 @@ export interface paths {
         head?: never;
         /** Patch */
         patch: operations["patch_loans__loan_id__patch"];
+        trace?: never;
+    };
+    "/loans/{loan_id}/installments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Installments */
+        get: operations["installments_loans__loan_id__installments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/loans/{loan_id}/installments/{number}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle */
+        post: operations["settle_loans__loan_id__installments__number__settle_post"];
+        /** Unsettle */
+        delete: operations["unsettle_loans__loan_id__installments__number__settle_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/loans/{loan_id}/installments/{number}/materialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Materialize */
+        post: operations["materialize_loans__loan_id__installments__number__materialize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/spaces/{space_id}/categories": {
@@ -1132,6 +1204,13 @@ export interface components {
             /** Institution */
             institution?: string | null;
         };
+        /** BalancePoint */
+        BalancePoint: {
+            /** Month */
+            month: string;
+            /** Balance Cents */
+            balance_cents: number;
+        };
         /** BillIn */
         BillIn: {
             /** Description */
@@ -1190,6 +1269,8 @@ export interface components {
             loan_id: string | null;
             /** Installment Number */
             installment_number: number | null;
+            /** Settled Historical At */
+            settled_historical_at: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1244,6 +1325,71 @@ export interface components {
             spent_cents: number;
             /** Categories */
             categories: components["schemas"]["BudgetCategoryOut"][];
+        };
+        /** ByAccount */
+        ByAccount: {
+            /** Account Id */
+            account_id: string | null;
+            /** Name */
+            name: string;
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+        };
+        /** ByCategory */
+        ByCategory: {
+            /** Category Id */
+            category_id: string | null;
+            /** Name */
+            name: string;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Count */
+            count: number;
+            /** Share Bp */
+            share_bp: number;
+        };
+        /** ByDay */
+        ByDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+        };
+        /** ByMerchant */
+        ByMerchant: {
+            /** Merchant */
+            merchant: string;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Count */
+            count: number;
+        };
+        /** ByMonth */
+        ByMonth: {
+            /** Month */
+            month: string;
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Net Cents */
+            net_cents: number;
+        };
+        /** ByWeekday */
+        ByWeekday: {
+            /** Dow */
+            dow: number;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Count */
+            count: number;
         };
         /** CardIn */
         CardIn: {
@@ -1490,6 +1636,25 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InstallmentOut */
+        InstallmentOut: {
+            /** Number */
+            number: number;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "paid_history" | "paid_real";
+            /** Bill Id */
+            bill_id: string | null;
+        };
         /** InvoiceDetailOut */
         InvoiceDetailOut: {
             /**
@@ -1556,6 +1721,29 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** Largest */
+        Largest: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Description */
+            description: string;
+            /** Merchant */
+            merchant: string | null;
+            /** Category Id */
+            category_id: string | null;
+            /** Amount Cents */
+            amount_cents: number;
+            /** Type */
+            type: string;
+        };
         /** LinkCodeIn */
         LinkCodeIn: {
             /**
@@ -1588,6 +1776,11 @@ export interface components {
             account_id?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Paid Installments
+             * @default 0
+             */
+            paid_installments: number;
         };
         /** LoanOut */
         LoanOut: {
@@ -1706,6 +1899,29 @@ export interface components {
             amount_cents: number;
             /** Occurred On */
             occurred_on?: string | null;
+        };
+        /** OverviewOut */
+        OverviewOut: {
+            totals: components["schemas"]["Totals"];
+            previous: components["schemas"]["Totals"];
+            /** By Category */
+            by_category: components["schemas"]["ByCategory"][];
+            /** By Merchant */
+            by_merchant: components["schemas"]["ByMerchant"][];
+            /** By Account */
+            by_account: components["schemas"]["ByAccount"][];
+            /** By Day */
+            by_day: components["schemas"]["ByDay"][];
+            /** By Month */
+            by_month: components["schemas"]["ByMonth"][];
+            /** By Weekday */
+            by_weekday: components["schemas"]["ByWeekday"][];
+            /** Largest */
+            largest: components["schemas"]["Largest"][];
+            /** Balance Series */
+            balance_series: components["schemas"]["BalancePoint"][];
+            /** Upcoming */
+            upcoming: components["schemas"]["Upcoming"][];
         };
         /** PasswordIn */
         PasswordIn: {
@@ -1902,6 +2118,19 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** Totals */
+        Totals: {
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Net Cents */
+            net_cents: number;
+            /** Tx Count */
+            tx_count: number;
+            /** Avg Daily Expense Cents */
+            avg_daily_expense_cents: number;
+        };
         /** TransactionIn */
         TransactionIn: {
             /**
@@ -2001,6 +2230,28 @@ export interface components {
             category_id?: string | null;
             /** Occurred On */
             occurred_on?: string | null;
+        };
+        /** Upcoming */
+        Upcoming: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "bill" | "invoice";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Description */
+            description: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Amount Cents */
+            amount_cents: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -2736,6 +2987,10 @@ export interface operations {
                 account_id?: string | null;
                 card_id?: string | null;
                 created_by?: string | null;
+                type?: ("expense" | "income" | "transfer") | null;
+                merchant?: string | null;
+                uncategorized?: boolean;
+                effective?: boolean;
                 limit?: number;
                 offset?: number;
             };
@@ -3392,6 +3647,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_spaces__space_id__reports_overview_get: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                account_id?: string | null;
+                card_id?: string | null;
+                /** @description UUID ou 'none' (sem categoria) */
+                category_id?: string | null;
+                merchant?: string | null;
+                type?: ("expense" | "income") | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -4084,6 +4381,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    installments_loans__loan_id__installments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_loans__loan_id__installments__number__settle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsettle_loans__loan_id__installments__number__settle_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materialize_loans__loan_id__installments__number__materialize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOut"];
                 };
             };
             /** @description Validation Error */
