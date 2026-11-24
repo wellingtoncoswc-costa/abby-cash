@@ -99,8 +99,8 @@ async def update_bill(
 async def delete_bill(
     session: AsyncSession, *, actor_id: UUID, bill_id: UUID, series: bool = False
 ) -> None:
-    """Apaga a conta aberta. Ocorrência gerada de uma série fica registrada para não ser recriada;
-    `series=True` encerra a série (limpa a regra da origem, mesmo já paga) e apaga esta, se aberta."""
+    """Apaga a conta aberta; ocorrência gerada fica registrada para não ser recriada.
+    `series=True` encerra a série (limpa a regra da origem, mesmo paga) e apaga esta, se aberta."""
     if series:
         bill = await session.get(Bill, bill_id, with_for_update=True)
         if bill is None:

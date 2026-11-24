@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.models import Account
 from app.domain.audit import audit
+from app.domain.bills.models import Bill
 from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 from app.domain.categories.models import Category
 from app.domain.errors import DomainError
@@ -124,6 +125,23 @@ async def accept_space_invite(session: AsyncSession, *, token: str, user_id: UUI
 async def _drop_member(session: AsyncSession, space_id: UUID, user_id: UUID) -> int:
     res = await session.execute(
         delete(SpaceMember).where(SpaceMember.space_id == space_id, SpaceMember.user_id == user_id)
+    )
+    # contas dele no espaço ficam sem responsável (todos são avisados) e deixam de ser o padrão
+    # em outros espaços (ele perdeu o acesso a estas contas)
+    await session.execute(
+        update(Bill)
+        .where(Bill.space_id == space_id, Bill.responsible_user_id == user_id)
+        .values(responsible_user_id=None)
+    )
+    await session.execute(
+        update(SpaceMember)
+        .where(
+            SpaceMember.user_id == user_id,
+            SpaceMember.default_account_id.in_(
+                select(Account.id).where(Account.space_id == space_id)
+            ),
+        )
+        .values(default_account_id=None)
     )
     user = await session.get(User, user_id)
     if user is not None and user.default_space_id == space_id:
