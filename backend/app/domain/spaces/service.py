@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.models import Account
+from app.domain.audit import audit
 from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 from app.domain.categories.models import Category
 from app.domain.spaces.access import require_member
@@ -33,6 +34,10 @@ async def provision_user(session: AsyncSession, user: User) -> None:
     session.add(wallet)
     _seed_categories(session, space.id)
     await session.flush()
+    audit(
+        session, user.id, "account.create", "account", wallet.id,
+        {"space_id": str(space.id), "type": "wallet"},
+    )  # fmt: skip
     session.add(
         SpaceMember(space_id=space.id, user_id=user.id, role="owner", default_account_id=wallet.id)
     )
@@ -51,6 +56,7 @@ async def create_family_space(session: AsyncSession, *, owner_id: UUID, name: st
         raise ValueError("family_space_exists") from None
     _seed_categories(session, space.id)
     session.add(SpaceMember(space_id=space.id, user_id=owner_id, role="owner"))
+    audit(session, owner_id, "space.create_family", "space", space.id)
     await session.commit()
     return space
 
@@ -74,29 +80,39 @@ async def create_space_invite(
         expires_at=datetime.now(UTC) + timedelta(days=INVITE_DAYS),
     )
     session.add(inv)
+    await session.flush()
+    audit(session, created_by, "space.invite", "space_invite", inv.id, {"space_id": str(space_id)})
     await session.commit()
     return inv
 
 
 async def accept_space_invite(session: AsyncSession, *, token: str, user_id: UUID) -> UUID:
-    # UPDATE condicional é atômico: só uma requisição consome o token
+    # 1) trava o espaço (mesma ordem de delete_account: espaço, depois convite) para que a
+    # exclusão do dono não purgue um membro novo; 2) UPDATE condicional atômico: um só consome
+    sid = await session.scalar(select(SpaceInvite.space_id).where(SpaceInvite.token == token))
+    locked = sid and await session.scalar(select(Space.id).where(Space.id == sid).with_for_update())
     space_id = (
-        await session.execute(
-            update(SpaceInvite)
-            .where(
-                SpaceInvite.token == token,
-                SpaceInvite.used_at.is_(None),
-                SpaceInvite.expires_at > datetime.now(UTC),
+        (
+            await session.execute(
+                update(SpaceInvite)
+                .where(
+                    SpaceInvite.token == token,
+                    SpaceInvite.used_at.is_(None),
+                    SpaceInvite.expires_at > datetime.now(UTC),
+                )
+                .values(used_at=datetime.now(UTC))
+                .returning(SpaceInvite.space_id)
             )
-            .values(used_at=datetime.now(UTC))
-            .returning(SpaceInvite.space_id)
-        )
-    ).scalar_one_or_none()
+        ).scalar_one_or_none()
+        if locked
+        else None
+    )
     if space_id is None:
         await session.rollback()
         raise ValueError("invalid_invite")
     try:
         session.add(SpaceMember(space_id=space_id, user_id=user_id, role="member"))
+        audit(session, user_id, "space.accept_invite", "space", space_id)
         await session.commit()
     except IntegrityError:  # já é membro: não consome o convite
         await session.rollback()
@@ -118,6 +134,10 @@ async def remove_member(
     if user is not None and user.default_space_id == space_id:
         user.default_space_id = await session.scalar(
             select(Space.id).where(Space.owner_id == user_id, Space.type == "personal")
+        )
+    if res.rowcount:  # type: ignore[attr-defined]
+        audit(
+            session, actor_id, "space.remove_member", "space", space_id, {"user_id": str(user_id)}
         )
     await session.commit()
     if res.rowcount == 0:  # type: ignore[attr-defined]

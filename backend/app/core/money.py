@@ -2,7 +2,8 @@ import re
 from decimal import Decimal, InvalidOperation
 
 _CHARS = re.compile(r"^[\d.,]+$")
-MAX_CENTS = 100_000_000_000  # R$ 1.000.000.000,00
+MAX_CENTS = 10**12  # R$ 10 bi: teto de qualquer valor monetário (cabe em BIGINT)
+_MAX_PARSED_CENTS = 10**11  # R$ 1 bi: teto de valor digitado no chat
 _THOUSANDS = re.compile(r"^[1-9]\d{0,2}(\.\d{3})+$")
 
 
@@ -28,7 +29,7 @@ def parse_brl(text: str) -> int | None:
     if scaled != scaled.to_integral_value():  # sem arredondamento silencioso
         return None
     cents = int(scaled)
-    return cents if 0 < cents <= MAX_CENTS else None
+    return cents if 0 < cents <= _MAX_PARSED_CENTS else None
 
 
 def format_brl(cents: int) -> str:
