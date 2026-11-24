@@ -1,4 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { Marca } from '../marca'
 import { useState, type FormEvent } from 'react'
 import { api, ApiError, login } from '../api/client'
 import type { S } from '../api/types'
@@ -20,7 +21,7 @@ export function Login() {
   }
   return (
     <main className="mx-auto max-w-sm p-4">
-      <h1 className="my-6 text-2xl font-bold">Abby Cash</h1>
+      <Marca grande />
       <form onSubmit={submit}>
         <Card title="Entrar">
           <Field label="E-mail"><input type="email" autoComplete="username" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
@@ -45,7 +46,7 @@ export function Register() {
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   return (
     <main className="mx-auto max-w-sm p-4">
-      <h1 className="my-6 text-2xl font-bold">Abby Cash</h1>
+      <Marca grande />
       <form onSubmit={(e) => { e.preventDefault(); m.mutate() }}>
         <Card title="Criar conta com convite">
           <Field label="Código do convite"><input required maxLength={64} value={f.invite_code} onChange={set('invite_code')} /></Field>

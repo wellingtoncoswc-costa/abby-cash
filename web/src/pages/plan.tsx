@@ -60,7 +60,7 @@ function GoalActions({ g }: { g: Goal }) {
       <Err e={send.error} />
       <div className="flex gap-2">
         <Btn type="button" disabled={send.isPending || !cents || !acc} onClick={() => send.mutate('contributions')}>Aportar</Btn>
-        <Btn type="button" disabled={send.isPending || !cents || !acc} onClick={() => send.mutate('withdrawals')} className="bg-slate-600 hover:bg-slate-700">Retirar</Btn>
+        <Btn type="button" disabled={send.isPending || !cents || !acc} onClick={() => send.mutate('withdrawals')} className="bg-muted-foreground hover:bg-muted-foreground/90">Retirar</Btn>
       </div>
     </form>
   )
@@ -92,7 +92,7 @@ export function Goals() {
         <Card key={g.id} title={g.name}>
           <p>{formatBRL(g.saved_cents)} de {formatBRL(g.target_cents)}{g.deadline ? ` · até ${g.deadline.split('-').reverse().join('/')}` : ''}</p>
           <Bar value={g.saved_cents} max={g.target_cents} />
-          {g.monthly_needed_cents != null && <p className={g.behind ? 'text-amber-600' : ''}>Necessário por mês: {formatBRL(g.monthly_needed_cents)}{g.behind ? ' (atrasada)' : ''}</p>}
+          {g.monthly_needed_cents != null && <p className={g.behind ? 'text-warning' : ''}>Necessário por mês: {formatBRL(g.monthly_needed_cents)}{g.behind ? ' (atrasada)' : ''}</p>}
           <GoalActions g={g} />
           <EditBox
             what="meta"

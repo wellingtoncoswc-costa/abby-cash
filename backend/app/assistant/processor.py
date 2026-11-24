@@ -57,7 +57,7 @@ STALE = timedelta(minutes=5)
 log = logging.getLogger(__name__)
 
 _UNLINKED = (
-    "Oi! Eu sou a Abby Cash, assistente de finanças. Para usar este chat, abra o painel web, "
+    "Oi! Eu sou a abby cash, assistente de finanças. Para usar este chat, abra o painel web, "
     "vá em Canais, escolha Vincular {chat} e envie aqui o código de 6 dígitos "
     "(ou toque no link que o painel mostra)."
 )

@@ -14,7 +14,7 @@ function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultC
   const pay = useSend(() => api('POST', path, { account_id: acc, amount_cents: cents ?? undefined, paid_on: today() } satisfies S['PayBillIn']))
   const invalid = !acc || (amt !== '' && !cents) || (!!requireAmount && !cents)
   return (
-    <form className="mt-2 rounded-md bg-slate-50 p-2 dark:bg-slate-900" onSubmit={(e) => { e.preventDefault(); if (!invalid) pay.mutate() }}>
+    <form className="mt-2 rounded-md bg-muted p-2" onSubmit={(e) => { e.preventDefault(); if (!invalid) pay.mutate() }}>
       <Field label="Pagar com a conta"><AccountSelect accounts={accounts.data} value={acc} onChange={setAcc} /></Field>
       <Field label={requireAmount ? 'Valor a pagar (R$)' : 'Valor (R$, vazio = o que falta)'}><input inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value)} /></Field>
       <Err e={pay.error} />
@@ -48,7 +48,7 @@ export function Billing() {
       </Card>
       <Card>
         {(bills.data ?? []).length === 0 ? <p>Nenhuma conta cadastrada.</p> : (
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+          <ul className="divide-y divide-border">
             {[...(bills.data ?? [])].sort((a, b) => a.due_on.localeCompare(b.due_on)).map((b) => (
               <li key={b.id} className="py-2">
                 <div className="flex justify-between"><span>{b.description}<br /><small>{br(b.due_on)} · {label[b.status]}{b.kind === 'invoice' ? ' · fatura' : ''}</small></span><span>{formatBRL(b.amount_cents)}</span></div>
@@ -105,7 +105,7 @@ export function Cards() {
             save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
             remove={() => api('DELETE', `/cards/${c.id}`).then(() => setSel(''))} />) })()}
         {(invoices.data ?? []).map((i) => (
-          <div key={i.id} className="border-t border-slate-200 py-2 dark:border-slate-800">
+          <div key={i.id} className="border-t border-border py-2">
             <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
               <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}</span><span>{formatBRL(i.total_cents)}</span>
             </button>
@@ -128,7 +128,7 @@ export function CardForm({ f, setF, onSubmit, err, busy, lim }: { f: CF; setF: (
         <Field label="Dia do vencimento"><input type="number" min={1} max={31} required value={f.due_day} onChange={(e) => setF({ ...f, due_day: e.target.value })} /></Field>
       </div>
       <Field label="Limite (R$, opcional)"><input inputMode="decimal" value={f.limit} onChange={(e) => setF({ ...f, limit: e.target.value })} /></Field>
-      {f.limit && !lim && <p role="alert" className="text-sm text-red-600">Limite inválido.</p>}
+      {f.limit && !lim && <p role="alert" className="text-sm text-destructive">Limite inválido.</p>}
       <Err e={err} />
       <Btn type="submit" disabled={busy || (!!f.limit && !lim)}>Adicionar cartão</Btn>
     </form>

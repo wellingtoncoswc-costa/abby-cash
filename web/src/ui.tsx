@@ -23,7 +23,7 @@ export const errText = (e: unknown) =>
   e instanceof ApiError ? (MSG[e.detail] ?? `Não foi possível concluir (${e.detail}).`) : 'Falha de conexão.'
 
 export const Card = ({ title, children }: { title?: string; children: ReactNode }) => (
-  <section className="mb-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+  <section className="mb-4 rounded-xl border border-border p-4">
     {title && <h2 className="mb-2 text-lg font-semibold">{title}</h2>}
     {children}
   </section>
@@ -32,12 +32,12 @@ export const Card = ({ title, children }: { title?: string; children: ReactNode 
 export const Btn = ({ className = '', ...p }: ButtonHTMLAttributes<HTMLButtonElement>) => (
   <button
     {...p}
-    className={`rounded-md bg-teal-700 px-4 py-2 font-medium text-white hover:bg-teal-800 disabled:opacity-50 ${className}`}
+    className={`rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${className}`}
   />
 )
 
 export const Err = ({ e }: { e: unknown }) =>
-  e ? <p role="alert" className="my-2 text-sm text-red-600 dark:text-red-400">{errText(e)}</p> : null
+  e ? <p role="alert" className="my-2 text-sm text-destructive">{errText(e)}</p> : null
 
 export const Field = ({ label, children }: { label: string; children: ReactNode }) => (
   <label className="mb-3 block">
@@ -48,9 +48,9 @@ export const Field = ({ label, children }: { label: string; children: ReactNode 
 
 export const Bar = ({ value, max }: { value: number; max: number }) => {
   const pct = max > 0 ? Math.min(100, Math.floor((value * 100) / max)) : 0
-  const color = value > max ? 'bg-red-600' : pct >= 80 ? 'bg-amber-500' : 'bg-teal-600'
+  const color = value > max ? 'bg-destructive' : pct >= 80 ? 'bg-warning' : 'bg-primary'
   return (
-    <div className="h-3 w-full overflow-hidden rounded bg-slate-200 dark:bg-slate-800" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+    <div className="h-3 w-full overflow-hidden rounded bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
       <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
     </div>
   )
@@ -132,7 +132,7 @@ export function EditBox({ fields, save, remove, what, canEdit = true }: { fields
   if (!canEdit) return null
   if (!open) return <button type="button" className="mt-1 mr-3 underline" onClick={() => { setV(Object.fromEntries(fields.map((f) => [f.k, f.v]))); setOpen(true) }}>Editar {what}</button>
   return (
-    <form className="mt-2 rounded-md bg-slate-50 p-2 dark:bg-slate-900" onSubmit={(e) => { e.preventDefault(); sv.mutate() }}>
+    <form className="mt-2 rounded-md bg-muted p-2" onSubmit={(e) => { e.preventDefault(); sv.mutate() }}>
       {fields.map((f) => <Field key={f.k} label={f.label}>
         {f.options ? <select value={v[f.k]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })}>{f.options.map(([o, l]) => <option key={o} value={o}>{l}</option>)}</select>
           : <input type={f.type} value={v[f.k]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} />}
@@ -140,8 +140,8 @@ export function EditBox({ fields, save, remove, what, canEdit = true }: { fields
       <Err e={sv.error ?? del.error} />
       <div className="flex gap-2">
         <Btn type="submit" disabled={sv.isPending}>Salvar alterações</Btn>
-        <Btn type="button" className="bg-slate-600 hover:bg-slate-700" onClick={() => setOpen(false)}>Cancelar</Btn>
-        <Btn type="button" className="bg-red-700 hover:bg-red-800" disabled={del.isPending} onClick={() => { if (confirm(`Excluir ${what}?`)) del.mutate() }}>Excluir</Btn>
+        <Btn type="button" className="bg-muted-foreground hover:bg-muted-foreground/90" onClick={() => setOpen(false)}>Cancelar</Btn>
+        <Btn type="button" className="bg-destructive hover:bg-destructive/90" disabled={del.isPending} onClick={() => { if (confirm(`Excluir ${what}?`)) del.mutate() }}>Excluir</Btn>
       </div>
     </form>
   )

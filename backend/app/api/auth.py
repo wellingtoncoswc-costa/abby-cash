@@ -137,7 +137,7 @@ async def setup_2fa(body: PasswordIn, user: CurrentUser, session: Session) -> di
     # ponytail: segredo TOTP em texto puro no banco; cifrar com chave do env no M8
     user.totp_secret = pyotp.random_base32()
     await session.commit()
-    uri = pyotp.TOTP(user.totp_secret).provisioning_uri(name=user.email, issuer_name="Abby Cash")
+    uri = pyotp.TOTP(user.totp_secret).provisioning_uri(name=user.email, issuer_name="abby cash")
     return {"secret": user.totp_secret, "uri": uri}
 
 

@@ -42,7 +42,7 @@ export function Categories() {
       </Card>
       {(['expense', 'income'] as const).map((k) => (
         <Card key={k} title={k === 'expense' ? 'Despesas' : 'Receitas'}>
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+          <ul className="divide-y divide-border">
             {cats.data.filter((c) => c.kind === k).map((c) => <Row key={c.id} c={c} others={cats.data.filter((o) => o.kind === k && o.id !== c.id)} />)}
           </ul>
         </Card>

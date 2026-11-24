@@ -6,7 +6,7 @@ import { formatBRL } from '../lib/money'
 import { useSpace } from '../space'
 import { Bar, Card, br, Err, monthKey, useCatName, useGet } from '../ui'
 
-const COLORS = ['#0f766e', '#2563eb', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#65a30d', '#db2777']
+const COLORS = [1, 2, 3, 4, 5].map((n) => `var(--chart-${n})`).concat([1, 2, 3].map((n) => `color-mix(in oklab, var(--chart-${n}) 60%, transparent)`))
 
 export function Dashboard() {
   const { spaceId } = useSpace()
@@ -72,14 +72,14 @@ export function Dashboard() {
 export const TxList = ({ items, onSelect }: { items: Tx[]; onSelect?: (t: Tx) => void }) => {
   const catName = useCatName()
   return (
-    <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+    <ul className="divide-y divide-border">
       {items.map((t) => {
         const title = t.description || t.merchant || 'Lançamento'
         const body = <>{title}{t.installment_total ? ` (${t.installment_number}/${t.installment_total})` : ''}<br /><small>{br(t.occurred_on)} · {catName(t.category_id)}</small></>
         return (
           <li key={t.id} className="flex justify-between py-2">
             {onSelect ? <button type="button" className="text-left underline-offset-2 hover:underline" aria-label={`Abrir ${title}`} onClick={() => onSelect(t)}>{body}</button> : <span>{body}</span>}
-            <span className={t.type === 'income' ? 'text-teal-700 dark:text-teal-400' : ''}>{t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}{formatBRL(t.amount_cents)}</span>
+            <span className={t.type === 'income' ? 'text-success' : ''}>{t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}{formatBRL(t.amount_cents)}</span>
           </li>
         )
       })}

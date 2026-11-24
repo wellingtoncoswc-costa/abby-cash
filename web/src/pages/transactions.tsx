@@ -129,7 +129,7 @@ export function Transactions() {
           <CategorySelect value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
           <Field label="Data"><input type="date" required value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
           <Field label="Conta"><AccountSelect accounts={accounts.data} value={f.account_id} onChange={(v) => setF({ ...f, account_id: v })} /></Field>
-          {f.amount && !cents && <p role="alert" className="text-sm text-red-600">Valor inválido.</p>}
+          {f.amount && !cents && <p role="alert" className="text-sm text-destructive">Valor inválido.</p>}
           <Err e={create.error} />
           <Btn type="submit" disabled={create.isPending || !cents}>Salvar</Btn>
         </form>

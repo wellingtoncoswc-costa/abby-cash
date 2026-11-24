@@ -25,7 +25,7 @@ export function LinkChannel() {
       </div>
       <Err e={gen.error ?? del.error ?? links.error} />
       {code && (
-        <div className="mt-3 rounded-md bg-slate-50 p-3 dark:bg-slate-900" role="status">
+        <div className="mt-3 rounded-md bg-muted p-3" role="status">
           <p>Código para {CH[code.channel]} (vale {Math.round(code.expires_in_s / 60)} min):</p>
           <p className="my-1 font-mono text-3xl tracking-widest">{code.code}</p>
           {code.deep_link ? (
@@ -68,7 +68,7 @@ export function Spaces() {
             </li>
           ))}
         </ul>
-        {active?.type === 'family' && <Btn className="mt-2 bg-red-700 hover:bg-red-800" disabled={leave.isPending} onClick={() => { if (confirm('Sair deste espaço?')) leave.mutate() }}>Sair do espaço</Btn>}
+        {active?.type === 'family' && <Btn className="mt-2 bg-destructive hover:bg-destructive/90" disabled={leave.isPending} onClick={() => { if (confirm('Sair deste espaço?')) leave.mutate() }}>Sair do espaço</Btn>}
         <Err e={members.error ?? leave.error ?? kick.error} />
       </Card>
       {!hasFamily && (
@@ -129,7 +129,7 @@ function DeleteAccount() {
         <Field label="Código 2FA (se ativo)"><input inputMode="numeric" value={f.totp} onChange={(e) => setF({ ...f, totp: e.target.value })} /></Field>
         <label className="mb-3 flex items-center gap-2"><input type="checkbox" className="!w-auto" checked={ok} onChange={(e) => setOk(e.target.checked)} />Entendo que isso não pode ser desfeito</label>
         <Err e={del.error} />
-        <Btn type="submit" disabled={!ok || del.isPending} className="bg-red-700 hover:bg-red-800">Excluir minha conta</Btn>
+        <Btn type="submit" disabled={!ok || del.isPending} className="bg-destructive hover:bg-destructive/90">Excluir minha conta</Btn>
       </form>
     </Card>
   )
