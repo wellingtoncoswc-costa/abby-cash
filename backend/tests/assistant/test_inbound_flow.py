@@ -124,3 +124,49 @@ async def test_purge_old_inbound_deletes_only_rows_past_retention(session):
     assert await purge_old_inbound(session, days=30) == 1
     ids = list(await session.scalars(select(InboundMessage.id)))
     assert ids == [new]
+
+
+async def test_unlinked_instructions_once_per_day_but_codes_always_answered(session, adapter):
+    ana = await make_user(session, "ana@x.com")
+    await run(session, "oi", msg_id=1)
+    await run(session, "oi de novo", msg_id=2)
+    assert adapter.sent == [("111", UNLINKED)]  # segunda instrução suprimida
+    await run(session, "000000", msg_id=3)
+    assert "inválido" in adapter.sent[-1][1] and len(adapter.sent) == 2
+    code = await create_link_code(ana.id, "telegram")
+    await run(session, code, msg_id=4)
+    assert "vinculado" in adapter.sent[-1][1]
+
+
+async def test_whatsapp_replies_use_whatsapp_wording(session, monkeypatch):
+    from app.channels import registry
+    from tests.assistant.fakes import FakeAdapter
+
+    wa = FakeAdapter()
+    monkeypatch.setitem(registry._adapters, "whatsapp_evolution", wa)
+    ana = await make_user(session, "ana@x.com")
+    await run(session, "oi", channel="whatsapp_evolution", msg_id=1)
+    assert "Vincular WhatsApp" in wa.sent[0][1] and "Telegram" not in wa.sent[0][1]
+    code = await create_link_code(ana.id, "whatsapp_evolution")
+    await run(session, code, channel="whatsapp_evolution", msg_id=2)
+    assert "WhatsApp vinculado" in wa.sent[1][1] and "Telegram" not in wa.sent[1][1]
+
+
+async def test_purge_also_drops_old_outbound(session):
+    from sqlalchemy import text as sql
+
+    from app.channels.ingest import purge_old_inbound
+    from app.domain.channels.models import OutboundMessage
+
+    ana = await make_user(session, "ana@x.com")
+    session.add_all(
+        [OutboundMessage(user_id=ana.id, channel="telegram", status="ok") for _ in range(2)]
+    )
+    await session.commit()
+    await session.execute(
+        sql("update outbound_messages set created_at = now() - interval '31 days' "
+            "where id = (select id from outbound_messages limit 1)")
+    )  # fmt: skip
+    await session.commit()
+    await purge_old_inbound(session, days=30)
+    assert await session.scalar(select(func.count()).select_from(OutboundMessage)) == 1

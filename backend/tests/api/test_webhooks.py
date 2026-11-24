@@ -149,3 +149,39 @@ async def test_non_numeric_content_length_is_400_not_500(client, enqueued):
         "/webhooks/telegram", content=b"{}", headers={**HEADERS, "Content-Length": "abc"}
     )
     assert r.status_code == 400
+
+
+EVO = Path(__file__).resolve().parents[1] / "fixtures" / "evolution"
+
+
+@pytest.fixture
+def evo(monkeypatch):
+    from app.channels.evolution import EvolutionAdapter, EvolutionClient
+
+    a = EvolutionAdapter(EvolutionClient("http://evo", "K", "abby"), "s3cret")
+    monkeypatch.setitem(registry._adapters, "whatsapp_evolution", a)
+
+
+async def test_evolution_webhook_secret_and_ingest(client, session, enqueued, evo):
+    body = json.loads((EVO / "text.json").read_text(encoding="utf-8"))
+    url = "/webhooks/whatsapp_evolution"
+    assert (await client.post(url, json=body)).status_code == 401
+    r = await client.post(url, json=body, headers={"x-webhook-secret": "s3cret"})
+    assert r.status_code == 200
+    assert (await client.post(url + "?token=s3cret", json=body)).status_code == 401  # sem query
+    r = await client.post(url, json=body, headers={"x-webhook-secret": "s3cret"})  # duplicata
+    assert r.status_code == 200 and await count(session) == 1
+    row = await session.scalar(select(InboundMessage))
+    assert (row.channel, row.external_user_id, row.text) == (
+        "whatsapp_evolution", "5511988887777", "gastei 45 no mercado",
+    )  # fmt: skip
+
+
+async def test_evolution_webhook_malformed_is_400_and_group_ignored(client, session, enqueued, evo):
+    h = {"x-webhook-secret": "s3cret"}
+    url = "/webhooks/whatsapp_evolution"
+    assert (await client.post(url, content=b"{nope", headers=h)).status_code == 400
+    assert (await client.post(url, json=[1], headers=h)).status_code == 400
+    group = json.loads((EVO / "group.json").read_text(encoding="utf-8"))
+    assert (await client.post(url, json=group, headers=h)).status_code == 200
+    assert await count(session) == 0

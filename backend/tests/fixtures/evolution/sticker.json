@@ -1,0 +1,24 @@
+{
+  "event": "messages.upsert",
+  "instance": "abby",
+  "data": {
+    "key": {
+      "remoteJid": "5511988887777@s.whatsapp.net",
+      "fromMe": false,
+      "id": "3EB0A9"
+    },
+    "pushName": "Ana",
+    "message": {
+      "stickerMessage": {}
+    },
+    "messageType": "stickerMessage",
+    "messageTimestamp": 1764082800,
+    "instanceId": "i-1",
+    "source": "android"
+  },
+  "destination": "https://x/webhooks/whatsapp_evolution",
+  "date_time": "2026-11-25T12:00:00.000-03:00",
+  "sender": "5511900000000@s.whatsapp.net",
+  "server_url": "http://evolution:8080",
+  "apikey": "INSTANCE-KEY"
+}

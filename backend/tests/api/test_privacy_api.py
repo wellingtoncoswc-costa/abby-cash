@@ -493,3 +493,14 @@ async def test_delete_account_removes_inbound_by_external_id_even_without_user_i
     await delete_account(session, a)
     ids = list(await session.scalars(select(InboundMessage.id)))
     assert ids == [theirs] and mine not in ids
+
+
+async def test_delete_account_removes_outbound_messages(session):
+    from app.domain.channels.models import OutboundMessage
+    from app.domain.privacy import delete_account
+
+    a = await make_user(session, "a@x.com")
+    session.add(OutboundMessage(user_id=a.id, channel="telegram", status="ok"))
+    await session.commit()
+    await delete_account(session, a)
+    assert await session.scalar(select(func.count()).select_from(OutboundMessage)) == 0

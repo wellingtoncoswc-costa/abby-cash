@@ -61,7 +61,7 @@ class Transaction(Base):
     installment_total: Mapped[int | None] = mapped_column(Integer)
     # NULL = "Usuário removido"
     created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
-    origin: Mapped[str] = mapped_column(String(16), default="web")  # web | telegram | whatsapp_*
+    origin: Mapped[str] = mapped_column(String(32), default="web")  # web | telegram | whatsapp_*
     source_message_id: Mapped[str | None] = mapped_column(String(128))
     attachment_id: Mapped[UUID | None] = mapped_column()  # tabela de anexos chega no M6
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

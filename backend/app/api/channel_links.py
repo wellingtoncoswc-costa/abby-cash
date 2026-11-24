@@ -15,7 +15,7 @@ from app.domain.channels.models import ChannelLink
 router = APIRouter(prefix="/channels", tags=["channels"])
 
 
-Channel = Literal["telegram"]  # M4 acrescenta whatsapp_evolution
+Channel = Literal["telegram", "whatsapp_evolution"]
 
 
 class LinkCodeIn(BaseModel):

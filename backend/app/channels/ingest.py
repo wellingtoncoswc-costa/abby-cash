@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.base import InboundMessage as Inbound
-from app.domain.channels.models import InboundMessage
+from app.domain.channels.models import InboundMessage, OutboundMessage
 
 
 async def ingest(
@@ -54,10 +54,16 @@ async def ingest(
 
 
 async def purge_old_inbound(session: AsyncSession, days: int = 30) -> int:
-    """Retenção: apaga as linhas de `inbound_messages` com mais de `days` dias. Devolve quantas.
+    """Retenção: apaga `inbound_messages` e `outbound_messages` com mais de `days` dias.
+    Devolve quantas de entrada.
     ponytail: sem job agendado ainda; por ora `python -m app.cli purge-inbound` (cron)."""
     res = await session.execute(
         delete(InboundMessage).where(InboundMessage.created_at < func.now() - timedelta(days=days))
+    )
+    await session.execute(
+        delete(OutboundMessage).where(
+            OutboundMessage.created_at < func.now() - timedelta(days=days)
+        )
     )
     await session.commit()
     return int(res.rowcount)  # type: ignore[attr-defined]
