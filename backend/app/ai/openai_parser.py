@@ -25,7 +25,8 @@ CAIXINHA/cofrinho que rende: "guardei 200 na reserva", "joguei 300 na reserva"),
 ("minhas caixinhas", "quanto tá rendendo"), consultar_financiamentos (financiamentos e \
 consórcios: "meus financiamentos", "quanto falta do carro"), transferir_contas (mover dinheiro de \
 uma conta cadastrada para outra: "transferi 300 do Nubank para o Itaú", "passa 200 da conta X \
-pra Y", "move 500 do Itaú pro Nubank", "mandei 1000 da poupança pra corrente"), consultar_gastos, consultar_teto, \
+pra Y", "move 500 do Itaú pro Nubank", "mandei 1000 da poupança pra corrente"), \
+consultar_gastos, consultar_teto, \
 consultar_saldo, consultar_faturas, ajuda ou desconhecido. Se o nome citado for de uma caixinha \
 da lista, é caixinha; se for de uma meta, é aporte_meta.
 - amount_cents: valor TOTAL em centavos, inteiro. "45" = 4500; "1.234,56" = 123456; \
