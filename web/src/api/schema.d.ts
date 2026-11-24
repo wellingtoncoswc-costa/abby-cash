@@ -1593,7 +1593,6 @@ export interface components {
             created_by: string | null;
             /** Origin */
             origin: string;
-            /** Source Message Id */
             /** Attachment Id */
             attachment_id: string | null;
             /**
