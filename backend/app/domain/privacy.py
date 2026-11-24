@@ -21,6 +21,8 @@ from app.domain.categories.models import Category, CategoryRule
 from app.domain.channels.models import ChannelLink, InboundMessage, OutboundMessage
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
+from app.domain.loans.models import Loan
+from app.domain.pockets.models import Pocket, PocketMovement, PocketYieldPosting
 from app.domain.spaces.models import Space, SpaceInvite, SpaceMember
 from app.domain.transactions.models import Transaction
 from app.domain.users.models import RefreshToken, SignupInvite, User
@@ -28,6 +30,7 @@ from app.domain.users.models import RefreshToken, SignupInvite, User
 EXPORT_MODELS: dict[str, Any] = {
     "accounts": Account, "categories": Category, "cards": CreditCard,
     "transactions": Transaction, "bills": Bill, "goals": Goal, "budgets": Budget,
+    "pockets": Pocket, "loans": Loan,
 }  # fmt: skip
 CSV_COLUMNS = [
     "id", "space_id", "type", "amount_cents", "occurred_on", "description", "merchant",
@@ -69,6 +72,11 @@ async def export_user_data(session: AsyncSession, user: User) -> bytes:
         select(BudgetCategory).where(BudgetCategory.budget_id.in_(budget_ids))
     )
     data["budget_categories"] = [row(c) for c in cats]
+    pocket_ids = [p["id"] for p in data["pockets"]]
+    mvs = await session.scalars(
+        select(PocketMovement).where(PocketMovement.pocket_id.in_(pocket_ids))
+    )
+    data["pocket_movements"] = [row(m) for m in mvs]
     members = await session.scalars(select(SpaceMember).where(SpaceMember.space_id.in_(space_ids)))
     # só UUIDs dos outros membros: sem e-mail/nome
     data["space_members"] = [
@@ -122,6 +130,7 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
         (Transaction, Transaction.invoice_id, invoices),
         (Transaction, Transaction.bill_id, bills),
         (Goal, Goal.account_id, accs),
+        (Loan, Loan.account_id, accs),
         (SpaceMember, SpaceMember.default_account_id, accs),
         (CreditCard, CreditCard.payment_account_id, accs),
     ]
@@ -141,6 +150,12 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
             .distinct()
         )
     )
+    pockets = select(Pocket.id).where(Pocket.space_id == space_id)
+    await session.execute(
+        delete(PocketYieldPosting).where(PocketYieldPosting.pocket_id.in_(pockets))
+    )
+    await session.execute(delete(PocketMovement).where(PocketMovement.pocket_id.in_(pockets)))
+    await session.execute(delete(Pocket).where(Pocket.space_id == space_id))
     await session.execute(delete(Transaction).where(Transaction.space_id == space_id))
     for inv_id in foreign_invoices:
         inv = await session.get(Invoice, inv_id)
@@ -159,6 +174,7 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
     await session.execute(delete(BillReminderSent).where(BillReminderSent.bill_id.in_(bills)))
     await session.execute(delete(BillRecurrenceSkip).where(BillRecurrenceSkip.space_id == space_id))
     await session.execute(delete(Bill).where(Bill.space_id == space_id))
+    await session.execute(delete(Loan).where(Loan.space_id == space_id))
     await session.execute(delete(Invoice).where(Invoice.card_id.in_(cards)))
     await session.execute(delete(CreditCard).where(CreditCard.space_id == space_id))
     await session.execute(delete(Account).where(Account.space_id == space_id))

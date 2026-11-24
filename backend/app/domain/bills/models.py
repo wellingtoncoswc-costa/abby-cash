@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -23,6 +24,7 @@ class Bill(Base):
     __table_args__ = (
         CheckConstraint("amount_cents >= 0", name="ck_bills_amount_nonneg"),
         UniqueConstraint("space_id", "recurrence_id", "due_on", name="uq_bills_recurrence_due"),
+        UniqueConstraint("loan_id", "installment_number", name="uq_bills_loan_installment"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -37,6 +39,8 @@ class Bill(Base):
     recurrence_rule: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     recurrence_id: Mapped[UUID | None] = mapped_column()  # id da conta-origem (que tem a regra)
     invoice_id: Mapped[UUID | None] = mapped_column(ForeignKey("invoices.id"), unique=True)
+    loan_id: Mapped[UUID | None] = mapped_column(ForeignKey("loans.id"), index=True)
+    installment_number: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
