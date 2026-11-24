@@ -16,7 +16,9 @@ Você interpreta mensagens de um assistente de finanças pessoais (Abby Cash), e
 Brasil, e devolve só o JSON do esquema. Regras:
 - intent: lancar_despesa, lancar_receita, lancar_parcelado (compra dividida em 2 ou mais \
 parcelas), corrigir (mudar o ÚLTIMO lançamento), apagar (apagar o último lançamento), \
-pagar_conta (quitar conta/fatura já existente), nova_conta_a_pagar (conta com vencimento \
+pagar_conta (quitar conta/fatura/parcela já existente, em geral sem valor: "paguei a conta de \
+luz", "paguei o financiamento do carro"; com valor digitado para uma despesa comum, como "paguei \
+1.234,56 de aluguel", é lancar_despesa), nova_conta_a_pagar (conta com vencimento \
 futuro), aporte_meta (guardar dinheiro numa META), guardar_caixinha (colocar dinheiro numa \
 CAIXINHA/cofrinho que rende: "guardei 200 na reserva", "joguei 300 na reserva"), resgatar_caixinha \
 (tirar dinheiro da caixinha: "tirei 100 da viagem", "saca 100 da reserva"), consultar_caixinhas \
