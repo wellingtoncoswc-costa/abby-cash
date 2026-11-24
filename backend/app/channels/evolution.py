@@ -10,11 +10,19 @@ from starlette.requests import Request
 from app.channels.base import InboundMessage
 from app.channels.telegram import ChannelError
 
+log = logging.getLogger(__name__)
+
 # a URL e o header carregam a chave: nada de log de requisições do httpx
 for _name in ("httpx", "httpcore"):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
-_USER_JID = "@s.whatsapp.net"  # só 1:1; fora: @g.us, status@broadcast, @newsletter, @lid
+_USER_JID = "@s.whatsapp.net"  # só 1:1; fora: @g.us, status@broadcast, @newsletter
+_WRAPPERS = (
+    "ephemeralMessage",
+    "viewOnceMessage",
+    "viewOnceMessageV2",
+    "documentWithCaptionMessage",
+)
 
 
 class EvolutionClient:
@@ -74,7 +82,7 @@ class EvolutionAdapter:
         self.client, self._secret = client, secret
 
     def verify(self, request: Request) -> bool:
-        got = request.headers.get("x-webhook-secret") or request.query_params.get("token", "")
+        got = request.headers.get("x-webhook-secret", "")
         # sem segredo configurado nada passa; bytes: compare_digest recusa str não ASCII
         return bool(self._secret) and hmac.compare_digest(got.encode(), self._secret.encode())
 
@@ -102,9 +110,16 @@ class EvolutionAdapter:
         data = body["data"]
         key = data["key"]
         jid = key["remoteJid"]
+        if jid.endswith("@lid"):  # número real em campos alternativos (Evolution >= 2.3)
+            jid = key.get("remoteJidAlt") or key.get("senderPn") or data.get("senderPn") or jid
         if key.get("fromMe") or not jid.endswith(_USER_JID) or not jid[: -len(_USER_JID)].isdigit():
             return None
         msg = data.get("message") or {}
+        for _ in range(3):  # desembrulha mensagens temporárias / visualização única / doc + legenda
+            inner = next((msg[w].get("message") for w in _WRAPPERS if w in msg), None)
+            if not isinstance(inner, dict):
+                break
+            msg = inner
         text = msg.get("conversation") or (msg.get("extendedTextMessage") or {}).get("text")
         media_kind: Any = None
         if "audioMessage" in msg:
@@ -112,6 +127,8 @@ class EvolutionAdapter:
         elif "imageMessage" in msg:
             media_kind, text = "image", text or msg["imageMessage"].get("caption")
         if not text and media_kind is None:
+            # só o tipo do evento: nunca conteúdo nem número
+            log.info("evolution unsupported message type=%s", str(data.get("messageType"))[:40])
             return None
         mid = key["id"]
         return InboundMessage(

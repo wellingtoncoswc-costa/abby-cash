@@ -67,10 +67,10 @@ async def test_parse_webhook_bad_json_is_value_error():
         await adapter().parse_webhook(r)
 
 
-def test_verify_header_query_and_fail_closed():
+def test_verify_header_only_and_fail_closed():
     a = adapter()
     assert a.verify(req({"x-webhook-secret": "s3cret"}))
-    assert a.verify(req(query="token=s3cret"))
+    assert not a.verify(req(query="token=s3cret"))
     assert not a.verify(req({"x-webhook-secret": "nope"}))
     assert not a.verify(req())
     assert not a.verify(req({"x-webhook-secret": "é"}))
@@ -118,3 +118,45 @@ async def test_set_webhook_payload_and_download():
     assert body["events"] == ["MESSAGES_UPSERT"] and body["enabled"] is True
     assert body["headers"] == {"x-webhook-secret": "s3cret"}
     assert await a.download_media("3EB0A3") == (b"hi", "audio/ogg")
+
+
+def _with(msg: dict, **key) -> dict:
+    ev = fixture("text")
+    ev["data"]["message"] = msg
+    ev["data"]["key"].update(key)
+    return ev
+
+
+def test_lid_uses_real_number_alternates():
+    a = adapter()
+    for alt in (
+        {"remoteJidAlt": "5511977776666@s.whatsapp.net"},
+        {"senderPn": "5511977776666@s.whatsapp.net"},
+    ):
+        m = a.parse_event(_with({"conversation": "oi"}, remoteJid="1234@lid", **alt))
+        assert m is not None and m.external_user_id == "5511977776666"
+    assert a.parse_event(_with({"conversation": "oi"}, remoteJid="1234@lid")) is None
+
+
+def test_unwraps_ephemeral_viewonce_document():
+    a = adapter()
+    eph = {"ephemeralMessage": {"message": {"extendedTextMessage": {"text": "gastei 9"}}}}
+    assert a.parse_event(_with(eph)).text == "gastei 9"
+    vo = {"viewOnceMessage": {"message": {"imageMessage": {"caption": "nota 5"}}}}
+    m = a.parse_event(_with(vo))
+    assert (m.media_kind, m.text) == ("image", "nota 5")
+    aud = {
+        "ephemeralMessage": {"message": {"viewOnceMessageV2": {"message": {"audioMessage": {}}}}}
+    }
+    assert a.parse_event(_with(aud)).media_kind == "audio"
+    doc = {"documentWithCaptionMessage": {"message": {"extendedTextMessage": {"text": "oi"}}}}
+    assert a.parse_event(_with(doc)).text == "oi"
+
+
+def test_unsupported_logs_type_only(caplog):
+    caplog.set_level("INFO")
+    ev = _with({"contactMessage": {"displayName": "SECRETNAME"}})
+    ev["data"]["messageType"] = "contactMessage"
+    assert adapter().parse_event(ev) is None
+    assert "type=contactMessage" in caplog.text
+    assert "SECRETNAME" not in caplog.text and "5511988887777" not in caplog.text

@@ -168,7 +168,8 @@ async def test_evolution_webhook_secret_and_ingest(client, session, enqueued, ev
     assert (await client.post(url, json=body)).status_code == 401
     r = await client.post(url, json=body, headers={"x-webhook-secret": "s3cret"})
     assert r.status_code == 200
-    r = await client.post(url + "?token=s3cret", json=body)  # duplicata: segue 200, uma linha só
+    assert (await client.post(url + "?token=s3cret", json=body)).status_code == 401  # sem query
+    r = await client.post(url, json=body, headers={"x-webhook-secret": "s3cret"})  # duplicata
     assert r.status_code == 200 and await count(session) == 1
     row = await session.scalar(select(InboundMessage))
     assert (row.channel, row.external_user_id, row.text) == (
