@@ -192,7 +192,7 @@ async def resume(t: Turn, text: str) -> str | None:
     descartado e ela segue como mensagem nova). Quem vai gravar consome o estado antes
     (`take`): se outra resposta já o consumiu, esta recebe ALREADY_HANDLED."""
     state = await get_state(t.session, t.user_id, t.channel, t.now)
-    if state is None:
+    if state is None or state.kind == "reminder":  # contexto do "paguei", não é pergunta
         return None
     kind, data, reply = state.kind, dict(state.data), answer(text)
 

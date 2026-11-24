@@ -1,11 +1,13 @@
 import difflib
 import re
+from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.assistant.flows.common import ask, remaining_of
 from app.assistant.flows.payment import choose_account
 from app.assistant.intents import ParsedIntent
+from app.assistant.models import ConversationState
 from app.assistant.replies import NO_ACCOUNT, ZERO, options_text
 from app.assistant.turn import Draft, Pay, Turn
 from app.core.money import format_brl
@@ -38,12 +40,32 @@ def mentions(text: str, p: ParsedIntent, description: str) -> bool:
     return any(difflib.get_close_matches(w, words, n=1, cutoff=0.8) for w in said - _GENERIC)
 
 
+async def take_reminded(t: Turn) -> UUID | None:
+    """Conta do último lembrete (24 h, qualquer canal); consome o contexto."""
+    row = await t.session.scalar(
+        delete(ConversationState)
+        .where(
+            ConversationState.user_id == t.user_id, ConversationState.kind == "reminder",
+            ConversationState.expires_at > t.now,
+        )
+        .returning(ConversationState.data)
+    )  # fmt: skip
+    await t.session.commit()
+    return UUID(row["last_reminded_bill_id"]) if row else None
+
+
 async def start(t: Turn, p: ParsedIntent, text: str = "") -> str:
-    """ponytail: sem contexto de lembrete (M5, que pagará direto); 0 -> aviso, 1 -> quita se o
+    """ponytail: 0 -> aviso, 1 -> quita se o
     texto cita a conta, senão pergunta; várias -> lista."""
     if p.amount_cents is not None and p.amount_cents <= 0:
         return ZERO
     items = await pending(t)
+    if items and (remembered := await take_reminded(t)) is not None:
+        for b, _ in items:
+            if b.id == remembered:  # acabou de ser lembrada: paga direto
+                return await run(t, Draft(action="pay", p=p, space_id=b.space_id, bill_id=b.id))
+    if len(items) > 1 and "fatura" in fold(text):
+        items = [i for i in items if i[0].invoice_id] or items
     if not items:
         return "Não encontrei contas em aberto."
     if len(items) == 1:
