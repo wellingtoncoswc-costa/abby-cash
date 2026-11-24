@@ -4,7 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
 
 // Cookie de refresh tem path=/auth: a API precisa estar na mesma origem (proxy em dev, Nginx em prod).
-const API = ['/auth', '/spaces', '/accounts', '/cards', '/invoices', '/bills', '/goals', '/channels', '/privacy', '/health']
+// regex ancorada: '/me' não pode capturar a rota '/metas' da SPA
+const API = ['/auth', '/spaces', '/accounts', '/cards', '/invoices', '/bills', '/goals', '/channels', '/privacy', '/health', '/categories', '/transactions', '/attachments', '/admin'].map((p) => `^${p}(?:/|$)`).concat('^/me(?:/|$)')
 const target = process.env.API_URL ?? 'http://localhost:8000'
 
 export default defineConfig({
@@ -29,7 +30,7 @@ export default defineConfig({
         ],
       },
       // a API nunca é cacheada pelo service worker (dados financeiros e tokens)
-      workbox: { navigateFallbackDenylist: API.map((p) => new RegExp(`^${p}`)) },
+      workbox: { navigateFallbackDenylist: API.map((p) => new RegExp(p)) },
     }),
   ],
   server: { proxy: Object.fromEntries(API.map((p) => [p, { target, changeOrigin: false }])) },

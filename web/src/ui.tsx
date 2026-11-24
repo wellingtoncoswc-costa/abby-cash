@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { api, ApiError } from './api/client'
 import { useSpace } from './space'
-import type { Account } from './api/types'
+import type { Account, Category, Me } from './api/types'
 
 const MSG: Record<string, string> = {
   invalid_credentials: 'E-mail ou senha incorretos.',
@@ -15,6 +15,9 @@ const MSG: Record<string, string> = {
   not_found: 'Não encontrado.',
   invalid_code: 'Código inválido.',
   totp_already_enabled: 'O 2FA já está ativo.',
+  invalid_amount: 'Valor inválido.',
+  admin_only: 'Apenas administradores.',
+  invalid_setting: 'Configuração inválida.',
 }
 export const errText = (e: unknown) =>
   e instanceof ApiError ? (MSG[e.detail] ?? `Não foi possível concluir (${e.detail}).`) : 'Falha de conexão.'
@@ -83,4 +86,57 @@ export const AccountSelect = ({ value, onChange, accounts }: { value: string; on
   </select>
 )
 
-export const catName = (id: string | null) => (id ? `Categoria #${id.slice(0, 4)}` : 'Sem categoria')
+export const useMe = () => useGet<Me>('/me')
+
+export function useCategories() {
+  const { spaceId } = useSpace()
+  const q = useGet<Category[]>(`/spaces/${spaceId}/categories`)
+  return { ...q, data: q.data ?? [] }
+}
+
+/** id -> nome da categoria do espaço ativo ("Sem categoria" se vazio/desconhecido). */
+export function useCatName() {
+  const { data } = useCategories()
+  return (id: string | null) => (id ? (data.find((c) => c.id === id)?.name ?? 'Outra categoria') : 'Sem categoria')
+}
+
+export const CategorySelect = ({ value, onChange, label = 'Categoria' }: { value: string; onChange: (v: string) => void; label?: string }) => {
+  const { data } = useCategories()
+  return (
+    <Field label={label}>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Sem categoria</option>
+        {data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+    </Field>
+  )
+}
+
+export const br = (d: string) => d.split('-').reverse().join('/')
+
+type EF = { k: string; label: string; v: string; type?: string; options?: [string, string][] }
+/** Editar/excluir inline: campos em texto; o chamador converte em `save`. */
+export function EditBox({ fields, save, remove, what }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string }) {
+  const [open, setOpen] = useState(false)
+  const [v, setV] = useState(() => Object.fromEntries(fields.map((f) => [f.k, f.v])))
+  const sv = useSend(() => save(v), () => setOpen(false))
+  const del = useSend(remove)
+  if (!open) return <button type="button" className="mt-1 mr-3 underline" onClick={() => { setV(Object.fromEntries(fields.map((f) => [f.k, f.v]))); setOpen(true) }}>Editar {what}</button>
+  return (
+    <form className="mt-2 rounded-md bg-slate-50 p-2 dark:bg-slate-900" onSubmit={(e) => { e.preventDefault(); sv.mutate() }}>
+      {fields.map((f) => <Field key={f.k} label={f.label}>
+        {f.options ? <select value={v[f.k]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })}>{f.options.map(([o, l]) => <option key={o} value={o}>{l}</option>)}</select>
+          : <input type={f.type} value={v[f.k]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} />}
+      </Field>)}
+      <Err e={sv.error ?? del.error} />
+      <div className="flex gap-2">
+        <Btn type="submit" disabled={sv.isPending}>Salvar alterações</Btn>
+        <Btn type="button" className="bg-slate-600 hover:bg-slate-700" onClick={() => setOpen(false)}>Cancelar</Btn>
+        <Btn type="button" className="bg-red-700 hover:bg-red-800" disabled={del.isPending} onClick={() => { if (confirm(`Excluir ${what}?`)) del.mutate() }}>Excluir</Btn>
+      </div>
+    </form>
+  )
+}
+
+/** Centavos -> "1234,56" (campo de edição). */
+export const centsText = (c: number) => `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)},${String(Math.abs(c) % 100).padStart(2, '0')}`

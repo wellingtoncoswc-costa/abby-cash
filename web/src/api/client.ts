@@ -78,3 +78,14 @@ export async function download(path: string, filename: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+/** Lista com o total (X-Total-Count) para paginação. */
+export async function apiPage<T>(path: string): Promise<{ items: T[]; total: number }> {
+  const r = await raw('GET', path)
+  return { items: (await r.json()) as T[], total: Number(r.headers.get('X-Total-Count') ?? 0) }
+}
+
+/** Baixa um arquivo autenticado como blob (o chamador cria/revoga a URL). */
+export async function fetchBlob(path: string): Promise<Blob> {
+  return (await raw('GET', path)).blob()
+}
