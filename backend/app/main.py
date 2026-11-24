@@ -19,6 +19,7 @@ from app.api import (
     me,
     pockets,
     privacy,
+    reports,
     spaces,
     transactions,
     webhooks,
@@ -38,6 +39,7 @@ app.include_router(transactions.router)
 app.include_router(cards.router)
 app.include_router(bills.router)
 app.include_router(budgets.router)
+app.include_router(reports.router)
 app.include_router(goals.router)
 app.include_router(pockets.router)
 app.include_router(loans.router)

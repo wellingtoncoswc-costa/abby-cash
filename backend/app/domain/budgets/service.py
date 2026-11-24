@@ -5,7 +5,7 @@ from typing import Any, Literal, NamedTuple
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,12 @@ def _bounds(month: date) -> tuple[date, date]:
     return start, add_months(start, 1)
 
 
+# data efetiva (competência): compra no cartão vale o vencimento da fatura; o resto, a própria data
+EFFECTIVE_ON = case(
+    (Transaction.card_id.is_not(None), Invoice.due_on), else_=Transaction.occurred_on
+)
+
+
 async def month_spending(
     session: AsyncSession, space_id: UUID, month: date, category_id: UUID | None = None
 ) -> int:
@@ -47,23 +53,16 @@ async def month_spending(
     start, end = _bounds(month)
     t = Transaction
     by_cat = [] if category_id is None else [t.category_id == category_id]
-    total = func.coalesce(func.sum(t.amount_cents), 0)
-    cash = await session.scalar(
-        select(total).where(
-            t.space_id == space_id, t.type == "expense", t.card_id.is_(None),
-            t.occurred_on >= start, t.occurred_on < end, *by_cat,
-        )
-    )  # fmt: skip
-    card = await session.scalar(
-        select(total)
+    total = await session.scalar(
+        select(func.coalesce(func.sum(t.amount_cents), 0))
         .select_from(t)
-        .join(Invoice, Invoice.id == t.invoice_id)
+        .outerjoin(Invoice, Invoice.id == t.invoice_id)
         .where(
-            t.space_id == space_id, t.type == "expense", t.card_id.is_not(None),
-            Invoice.due_on >= start, Invoice.due_on < end, *by_cat,
+            t.space_id == space_id, t.type == "expense",
+            EFFECTIVE_ON >= start, EFFECTIVE_ON < end, *by_cat,
         )
     )  # fmt: skip
-    return int(cash or 0) + int(card or 0)
+    return int(total or 0)
 
 
 async def set_budget(
