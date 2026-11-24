@@ -10,6 +10,8 @@ import { Pockets } from './pages/pockets'
 import { Loans } from './pages/loans'
 import { Categories } from './pages/categories'
 import { Admin, Channels, Settings, Spaces } from './pages/settings'
+import { Reports } from './pages/reports'
+import { parseFilters } from './lib/reports'
 import { Transactions } from './pages/transactions'
 
 const root = createRootRoute({ component: () => <AuthProvider><Outlet /></AuthProvider> })
@@ -23,6 +25,7 @@ const tree = root.addChildren([
   layout.addChildren([
     page('/', Dashboard), page('/onboarding', Onboarding), page('/lancamentos', Transactions),
     page('/contas', Billing), page('/cartoes', Cards), page('/metas', Goals), page('/teto', Budget), page('/caixinhas', Pockets), page('/financiamentos', Loans),
+    createRoute({ getParentRoute: () => layout, path: '/analises', component: Reports, validateSearch: parseFilters }),
     page('/espacos', Spaces), page('/categorias', Categories), page('/admin', Admin), page('/canais', Channels), page('/config', Settings), page('/invite/$token', Invite),
   ]),
 ])

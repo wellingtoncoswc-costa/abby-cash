@@ -23,7 +23,7 @@ export function Receipt({ id }: { id: string }) {
   return url ? <img src={url} alt="Comprovante" className="mt-2 max-h-96 rounded-md" /> : <p>Carregando comprovante…</p>
 }
 
-function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
+export function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
   const cats = useCategories()
   const locked = !!(t.card_id || t.installment_group_id) // valor e data mexem na fatura: só pelo chat/recriando
   const init: Record<string, string> = { amount: centsText(t.amount_cents), description: t.description, merchant: t.merchant ?? '', occurred_on: t.occurred_on, category_id: t.category_id ?? '' }
