@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dates import add_months
 from app.domain.accounts.access import use_account
 from app.domain.accounts.statement import Statement, build_statement
-from app.domain.audit import audit
+from app.domain.audit import audit, snap
 from app.domain.bills.models import Bill
 from app.domain.bills.status import invoice_paid, refresh_status
 from app.domain.cards.billing import (
@@ -21,7 +21,7 @@ from app.domain.cards.billing import (
 )
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.errors import DomainError
-from app.domain.spaces.access import is_member, require_member
+from app.domain.spaces.access import is_member, require_member, require_owner
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.rules import check_common
 
@@ -209,6 +209,8 @@ async def update_card(
 ) -> CreditCard:
     """fields: só as chaves enviadas. Mudar fechamento/vencimento não move compras já lançadas."""
     card = await visible_card(session, actor_id, card_id)
+    await require_owner(session, actor_id, card.space_id)
+    before = snap(card, fields)
     for k in ("closing_day", "due_day"):
         if k in fields and not 1 <= fields[k] <= 31:
             raise DomainError("invalid_day")
@@ -219,7 +221,8 @@ async def update_card(
     for k, v in fields.items():
         setattr(card, k, v)
     audit(session, actor_id, "card.update", "card", card.id,
-          {"space_id": str(card.space_id), "fields": sorted(fields)})  # fmt: skip
+          {"space_id": str(card.space_id), "before": before,
+           "after": snap(card, fields)})  # fmt: skip
     await session.commit()
     return card
 
@@ -227,8 +230,7 @@ async def update_card(
 async def delete_card(session: AsyncSession, *, actor_id: UUID, card_id: UUID) -> None:
     """Só o dono do espaço; recusa cartão com faturas/compras (sem arquivar)."""
     card = await visible_card(session, actor_id, card_id)
-    if (await require_member(session, actor_id, card.space_id)).role != "owner":
-        raise HTTPException(status_code=403, detail="owner_only")
+    await require_owner(session, actor_id, card.space_id)
     used = await session.scalar(
         select(
             exists().where(Invoice.card_id == card.id)

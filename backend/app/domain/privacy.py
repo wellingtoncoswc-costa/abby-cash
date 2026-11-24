@@ -157,9 +157,7 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
     await session.execute(delete(Budget).where(Budget.space_id == space_id))
     await session.execute(delete(Goal).where(Goal.space_id == space_id))
     await session.execute(delete(BillReminderSent).where(BillReminderSent.bill_id.in_(bills)))
-    await session.execute(
-        delete(BillRecurrenceSkip).where(BillRecurrenceSkip.space_id == space_id)
-    )
+    await session.execute(delete(BillRecurrenceSkip).where(BillRecurrenceSkip.space_id == space_id))
     await session.execute(delete(Bill).where(Bill.space_id == space_id))
     await session.execute(delete(Invoice).where(Invoice.card_id.in_(cards)))
     await session.execute(delete(CreditCard).where(CreditCard.space_id == space_id))

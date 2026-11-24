@@ -110,7 +110,5 @@ async def patch(
 
 
 @router.delete("/bills/{bill_id}", status_code=204)
-async def delete(
-    bill_id: UUID, user: CurrentUser, session: Session, series: bool = False
-) -> None:
+async def delete(bill_id: UUID, user: CurrentUser, session: Session, series: bool = False) -> None:
     await delete_bill(session, actor_id=user.id, bill_id=bill_id, series=series)

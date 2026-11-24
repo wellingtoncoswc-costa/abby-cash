@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeRouter } from '../router'
 
@@ -129,4 +129,14 @@ test('menu Admin só para administradores', async () => {
   routes['/me'] = () => J({ id: 'u1', name: 'Ana', email: 'a@x.com', tz: 'x', default_space_id: SP, preferred_channel: null, reminder_time: '09:00:00', weekly_digest: false, is_admin: true, totp_enabled: false })
   go('/')
   expect(await screen.findByRole('link', { name: 'Admin' })).toBeInTheDocument()
+})
+
+test('edição de contas: só o dono vê o botão', async () => {
+  go('/onboarding')
+  expect(await screen.findByRole('button', { name: 'Editar conta' })).toBeInTheDocument()
+  cleanup()
+  routes[`/spaces/${SP}/members`] = () => J([{ user_id: 'u1', name: 'Ana', role: 'member', joined_at: '2026-11-01T00:00:00Z' }])
+  go('/onboarding')
+  await screen.findByText('Nubank', { exact: false })
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Editar conta' })).toBeNull())
 })

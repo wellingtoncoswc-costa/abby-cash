@@ -4,12 +4,13 @@ import { api, ApiError } from '../api/client'
 import type { S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Btn, Card, EditBox, Err, Field, centsText, monthKey, useAccounts, useSend } from '../ui'
+import { Btn, Card, EditBox, Err, Field, centsText, monthKey, useAccounts, useIsOwner, useSend } from '../ui'
 import { CardForm } from './billing'
 import { BudgetForm } from './plan'
 import { LinkChannel } from './settings'
 
 export function Onboarding() {
+  const owner = useIsOwner()
   const { spaceId } = useSpace()
   const accounts = useAccounts()
   const [a, setA] = useState({ type: 'checking', name: '', balance: '' })
@@ -30,7 +31,7 @@ export function Onboarding() {
       <Card title="1. Contas">
         <ul className="mb-2">{accounts.data.map((x) => (
           <li key={x.id}>{x.name} · {formatBRL(x.initial_balance_cents)}
-            <EditBox what="conta" fields={[{ k: 'name', label: `Nome da conta ${x.name}`, v: x.name }, { k: 'bal', label: `Saldo inicial (R$) de ${x.name}`, v: centsText(x.initial_balance_cents) }]}
+            <EditBox what="conta" canEdit={owner} fields={[{ k: 'name', label: `Nome da conta ${x.name}`, v: x.name }, { k: 'bal', label: `Saldo inicial (R$) de ${x.name}`, v: centsText(x.initial_balance_cents) }]}
               save={(v) => { const b = parseBRL(v.bal); return b === null ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/accounts/${x.id}`, { name: v.name, initial_balance_cents: b } satisfies S['AccountPatch']) }}
               remove={() => api('DELETE', `/accounts/${x.id}`)} />
           </li>

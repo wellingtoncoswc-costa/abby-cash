@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { api, ApiError } from './api/client'
 import { useSpace } from './space'
-import type { Account, Category, Me } from './api/types'
+import type { Account, Category, Me, Member } from './api/types'
 
 const MSG: Record<string, string> = {
   invalid_credentials: 'E-mail ou senha incorretos.',
@@ -88,6 +88,14 @@ export const AccountSelect = ({ value, onChange, accounts }: { value: string; on
 
 export const useMe = () => useGet<Me>('/me')
 
+/** Dono do espaço atual? Edição estrutural (contas, cartões, metas) é só dele; o dado vem do /members. */
+export function useIsOwner(): boolean {
+  const { spaceId } = useSpace()
+  const me = useMe()
+  const members = useGet<Member[]>(`/spaces/${spaceId}/members`)
+  return !!me.data && !!members.data?.some((m) => m.user_id === me.data!.id && m.role === 'owner')
+}
+
 export function useCategories() {
   const { spaceId } = useSpace()
   const q = useGet<Category[]>(`/spaces/${spaceId}/categories`)
@@ -116,11 +124,12 @@ export const br = (d: string) => d.split('-').reverse().join('/')
 
 type EF = { k: string; label: string; v: string; type?: string; options?: [string, string][] }
 /** Editar/excluir inline: campos em texto; o chamador converte em `save`. */
-export function EditBox({ fields, save, remove, what }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string }) {
+export function EditBox({ fields, save, remove, what, canEdit = true }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string; canEdit?: boolean }) {
   const [open, setOpen] = useState(false)
   const [v, setV] = useState(() => Object.fromEntries(fields.map((f) => [f.k, f.v])))
   const sv = useSend(() => save(v), () => setOpen(false))
   const del = useSend(remove)
+  if (!canEdit) return null
   if (!open) return <button type="button" className="mt-1 mr-3 underline" onClick={() => { setV(Object.fromEntries(fields.map((f) => [f.k, f.v]))); setOpen(true) }}>Editar {what}</button>
   return (
     <form className="mt-2 rounded-md bg-slate-50 p-2 dark:bg-slate-900" onSubmit={(e) => { e.preventDefault(); sv.mutate() }}>

@@ -32,3 +32,12 @@ def audit(
             actor_id=actor_id, action=action, entity=entity, entity_id=entity_id, data=data or {}
         )
     )
+
+
+def snap(obj: Any, keys: Any) -> dict[str, Any]:
+    """Valores atuais de `keys` para o audit: só int/None/texto curto."""
+    out: dict[str, Any] = {}
+    for k in keys:
+        v = getattr(obj, k)
+        out[k] = v if v is None or isinstance(v, int) else str(v)[:40]
+    return out

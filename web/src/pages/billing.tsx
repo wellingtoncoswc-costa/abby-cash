@@ -3,7 +3,7 @@ import { api, ApiError } from '../api/client'
 import type { Bill, Card as CardT, Invoice, S, Statement } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useIsOwner, useSend } from '../ui'
 
 /** Formulário de pagamento: conta de origem obrigatória; valor vazio = o que falta (só contas). */
 function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultCents?: number; requireAmount?: boolean }) {
@@ -79,6 +79,7 @@ function InvoiceView({ id }: { id: string }) {
 }
 
 export function Cards() {
+  const owner = useIsOwner()
   const { spaceId } = useSpace()
   const cards = useGet<CardT[]>('/cards')
   const mine = (cards.data ?? []).filter((c) => c.space_id === spaceId)
@@ -100,7 +101,7 @@ export function Cards() {
           <Field label="Cartão"><select value={sel} onChange={(e) => { setSel(e.target.value); setInvId(null) }}><option value="">Selecione…</option>{mine.map((c) => <option key={c.id} value={c.id}>{c.name} (fecha {c.closing_day}, vence {c.due_day})</option>)}</select></Field>
         )}
         {sel && mine.find((c) => c.id === sel) && (() => { const c = mine.find((x) => x.id === sel)!; return (
-          <EditBox key={c.id} what="cartão" fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
+          <EditBox key={c.id} what="cartão" canEdit={owner} fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
             save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
             remove={() => api('DELETE', `/cards/${c.id}`).then(() => setSel(''))} />) })()}
         {(invoices.data ?? []).map((i) => (

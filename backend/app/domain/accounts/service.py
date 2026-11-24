@@ -1,18 +1,17 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlalchemy import exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.money import MAX_CENTS
 from app.domain.accounts.access import use_account, visible_account
 from app.domain.accounts.models import Account
-from app.domain.audit import audit
+from app.domain.audit import audit, snap
 from app.domain.cards.models import CreditCard
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
-from app.domain.spaces.access import require_member
+from app.domain.spaces.access import require_member, require_owner
 from app.domain.spaces.models import SpaceMember
 from app.domain.transactions.models import Transaction
 
@@ -61,6 +60,8 @@ async def update_account(
 ) -> Account:
     """fields: só as chaves enviadas (name, initial_balance_cents)."""
     acc = await visible_account(session, actor_id, account_id)
+    await require_owner(session, actor_id, acc.space_id)
+    before = snap(acc, fields)
     if "name" in fields:
         acc.name = fields["name"]
     if "initial_balance_cents" in fields:
@@ -68,7 +69,8 @@ async def update_account(
             raise DomainError("amount_too_large")
         acc.initial_balance_cents = fields["initial_balance_cents"]
     audit(session, actor_id, "account.update", "account", acc.id,
-          {"space_id": str(acc.space_id), "fields": sorted(fields)})  # fmt: skip
+          {"space_id": str(acc.space_id), "before": before,
+           "after": snap(acc, fields)})  # fmt: skip
     await session.commit()
     return acc
 
@@ -76,8 +78,7 @@ async def update_account(
 async def delete_account(session: AsyncSession, *, actor_id: UUID, account_id: UUID) -> None:
     """Só o dono do espaço; recusa conta com lançamentos, cartão ou meta ligados (sem arquivar)."""
     acc = await visible_account(session, actor_id, account_id)
-    if (await require_member(session, actor_id, acc.space_id)).role != "owner":
-        raise HTTPException(status_code=403, detail="owner_only")
+    await require_owner(session, actor_id, acc.space_id)
     used = await session.scalar(
         select(
             exists().where(

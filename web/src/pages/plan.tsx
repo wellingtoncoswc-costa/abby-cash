@@ -3,7 +3,7 @@ import { api, ApiError } from '../api/client'
 import type { Budget as BudgetT, Goal, S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, centsText, monthKey, today, useAccounts, useCatName, useGet, useSend } from '../ui'
+import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, centsText, monthKey, today, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
 
 export function BudgetForm({ month }: { month: string }) {
   const { spaceId } = useSpace()
@@ -67,6 +67,7 @@ function GoalActions({ g }: { g: Goal }) {
 }
 
 export function Goals() {
+  const owner = useIsOwner()
   const { spaceId } = useSpace()
   const goals = useGet<Goal[]>(`/spaces/${spaceId}/goals`)
   const [f, setF] = useState({ name: '', target: '', deadline: '' })
@@ -95,6 +96,7 @@ export function Goals() {
           <GoalActions g={g} />
           <EditBox
             what="meta"
+            canEdit={owner}
             fields={[{ k: 'name', label: 'Nome da meta', v: g.name }, { k: 'target', label: 'Valor alvo (R$) da meta', v: centsText(g.target_cents) }, { k: 'deadline', label: 'Prazo da meta', v: g.deadline ?? '', type: 'date' }]}
             save={(v) => { const t = parseBRL(v.target); return t ? api('PATCH', `/goals/${g.id}`, { name: v.name, target_cents: t, deadline: v.deadline || null } satisfies S['GoalPatch']) : Promise.reject(new ApiError(422, 'invalid_amount')) }}
             remove={() => api('DELETE', `/goals/${g.id}`)}

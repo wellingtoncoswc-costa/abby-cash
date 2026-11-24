@@ -179,9 +179,14 @@ async def test_account_card_edit_delete(client, session):
     ha, hb, hx = auth(a), auth(b), auth(await make_user(session, "x@x.com"))
     sp = str(fam.id)
     acc = await make_account(session, fam.id, name="Velha")
-    r = await client.patch(
-        f"/accounts/{acc.id}", headers=hb, json={"name": "Nova", "initial_balance_cents": 500}
+    body = {"name": "Nova", "initial_balance_cents": 500}
+    assert (await client.patch(f"/accounts/{acc.id}", headers=hb, json=body)).status_code == 403
+    r = await client.patch(f"/accounts/{acc.id}", headers=ha, json=body)
+    audit_row = await session.scalar(
+        select(AuditLog).where(AuditLog.action == "account.update", AuditLog.entity_id == acc.id)
     )
+    assert audit_row.data["before"] == {"name": "Velha", "initial_balance_cents": 0}
+    assert audit_row.data["after"] == {"name": "Nova", "initial_balance_cents": 500}
     assert (r.json()["name"], r.json()["initial_balance_cents"]) == ("Nova", 500)
     assert (
         await client.patch(f"/accounts/{acc.id}", headers=hx, json={"name": "H"})
@@ -194,15 +199,15 @@ async def test_account_card_edit_delete(client, session):
     assert (r.status_code, r.json()) == (422, {"detail": "account_in_use"})
     assert (await client.delete(f"/accounts/{acc.id}", headers=ha)).status_code == 204
     card = await make_card(session, a, fam.id)
-    r = await client.patch(
-        f"/cards/{card.id}", headers=hb, json={"name": "Master", "due_day": 5, "limit_cents": 9000}
-    )
+    cbody = {"name": "Master", "due_day": 5, "limit_cents": 9000}
+    assert (await client.patch(f"/cards/{card.id}", headers=hb, json=cbody)).status_code == 403
+    r = await client.patch(f"/cards/{card.id}", headers=ha, json=cbody)
     assert (r.json()["name"], r.json()["due_day"], r.json()["limit_cents"]) == ("Master", 5, 9000)
-    assert (await client.patch(f"/cards/{card.id}", headers=hb, json={"limit_cents": None})).json()[
+    assert (await client.patch(f"/cards/{card.id}", headers=ha, json={"limit_cents": None})).json()[
         "limit_cents"
     ] is None
     assert (
-        await client.patch(f"/cards/{card.id}", headers=hb, json={"due_day": 40})
+        await client.patch(f"/cards/{card.id}", headers=ha, json={"due_day": 40})
     ).status_code == 422
     assert (
         await client.patch(f"/cards/{card.id}", headers=hx, json={"name": "H"})
