@@ -31,7 +31,7 @@ def _isolate_test_infra() -> None:
     asyncio.run(_create())
     os.environ["DATABASE_URL"] = url.render_as_string(hide_password=False)
     os.environ["REDIS_URL"] = (
-        make_url(get_settings().REDIS_URL).set(database="15").render_as_string(hide_password=False)
+        make_url(get_settings().REDIS_URL).set(database=os.environ.get("TEST_REDIS_DB", "15")).render_as_string(hide_password=False)
     )
     get_settings.cache_clear()
     assert get_settings().DATABASE_URL.rsplit("/", 1)[-1].endswith("_test")
