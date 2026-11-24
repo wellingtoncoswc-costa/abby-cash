@@ -15,8 +15,11 @@ from app.ai.usage import over_budget, record_ai_usage
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
 from app.assistant.flows import (
     analysis,
+    create,
     edit,
     extras,
+    guided,
+    installments,
     launch,
     pay,
     pockets,
@@ -90,7 +93,7 @@ _POCKET = {"guardar_caixinha", "resgatar_caixinha"}
 _NEEDS_AMOUNT = _LAUNCH | _POCKET | {
     "corrigir", "pagar_conta", "nova_conta_a_pagar", "aporte_meta", "transferir_contas",
 }  # fmt: skip
-_WRITES = _POCKET | {
+_WRITES = _POCKET | create.INTENTS | {
     "corrigir", "apagar", "pagar_conta", "nova_conta_a_pagar", "aporte_meta", "transferir_contas",
 }  # fmt: skip
 _INCOME_VERBS = re.compile(r"\s*(recebi|ganhei|entrou|caiu)\b")
@@ -245,6 +248,11 @@ async def resume(t: Turn, text: str) -> str | None:
         if reply == "sim":
             return await edit.confirm_delete(t, UUID(data["tx_id"]))
         return "Ok, não apaguei." if reply == "nao" else None
+    if kind == guided.KIND:  # conversa guiada (criar caixinha/financiamento, baixar parcela)
+        if not await take():
+            return ALREADY_HANDLED
+        flow = installments if data["g"]["flow"] == "settle" else create
+        return str(await flow.step(t, data["g"], text, reply))
     try:
         d = Draft.model_validate(data["draft"])
     except (KeyError, ValueError):  # estado velho/malformado não pode travar a conversa
@@ -327,9 +335,6 @@ async def fresh(t: Turn, text: str) -> str:
         await t.session.execute(update(User).where(User.id == t.user_id).values(weekly_digest=on))
         await t.session.commit()
         return DIGEST_ON if on else DIGEST_OFF
-    if pockets.is_create_request(text):
-        t.intent = "ajuda"
-        return pockets.CREATE_ON_PANEL
     h = extract_hints(text, t.today)
     if h.bad_date:
         return BAD_DATE
@@ -337,8 +342,10 @@ async def fresh(t: Turn, text: str) -> str:
     if space_id is None:
         return error or NOT_UNDERSTOOD
     p, warn = await interpret(t, text, h, space_id)
+    p = create.rescue(text, p, warn)  # "criar caixinha" com a IA fora/indecisa segue guiado
     if p is None:
         return NOT_UNDERSTOOD
+    p = installments.refine(text, p)
     t.intent = p.intent
     if p.confidence < launch.CONFIDENCE_MIN and p.intent in _WRITES:
         return NOT_UNDERSTOOD  # (lancar_* pergunta "Posso lançar?" em launch.run)
@@ -361,6 +368,10 @@ async def fresh(t: Turn, text: str) -> str:
             return await pockets.guardar_resgatar(t, p, space_id)
         case "transferir_contas":
             return await transfer.start(t, p, space_id)
+        case "criar_caixinha" | "criar_financiamento":
+            return await create.start(t, p, space_id, text)
+        case "baixar_parcela":
+            return await installments.start(t, p, space_id)
         case "consultar_caixinhas":
             return await pockets.caixinhas(t, space_id)
         case "consultar_financiamentos":

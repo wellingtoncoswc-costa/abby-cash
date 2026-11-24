@@ -3,6 +3,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from app.assistant import links
+from app.assistant.flows.pockets import no_pocket
 from app.domain.loans.service import create_loan
 from app.domain.pockets.models import PocketMovement
 from app.domain.pockets.service import create_pocket, deposit
@@ -43,9 +44,7 @@ async def test_single_pocket_without_name_is_used(ana, session, parser):
 
 async def test_no_pocket_points_to_panel(ana, parser):
     parser.add(intent("guardar_caixinha", amount_cents=10_000, pocket_hint="reserva"))
-    assert await ana.say("guardei 100 na reserva") == (
-        "Você ainda não tem caixinhas. Crie uma no painel web (Caixinhas)."
-    )
+    assert await ana.say("guardei 100 na reserva") == no_pocket()
 
 
 async def test_ambiguous_or_missing_name_asks_by_number(ana, session, parser):
@@ -167,16 +166,17 @@ async def test_paguei_financiamento_pays_the_open_installment(ana, session, pars
     assert paid == "paid"
 
 
-async def test_create_goes_to_the_panel_and_help_lists_commands(ana, parser):
-    for text in ("quero criar uma caixinha", "cadastrar financiamento do carro"):
-        reply = await ana.say(text)
-        assert reply.startswith("Caixinhas e financiamentos são criados no painel")
-        assert links.caixinhas() in reply and links.financiamentos() in reply
+async def test_create_starts_the_guided_flow_and_help_lists_commands(ana, parser):
+    assert await ana.say("quero criar uma caixinha") == "Qual o nome da caixinha?"
+    await ana.say("cancelar")
+    assert (await ana.say("cadastrar financiamento do carro")).startswith("Qual o nome do financ")
+    await ana.say("cancelar")
     help_ = await ana.say("ajuda")
     for needle in ("caixinhas", "guardei 200 na reserva", "tirei 100 da viagem",
-                   "paguei o financiamento do carro", "financiamentos"):  # fmt: skip
+                   "paguei o financiamento do carro", "financiamentos",
+                   "criar caixinha", "paguei a parcela 12"):  # fmt: skip
         assert needle in help_
-    assert parser.calls == []
+    assert "painel web" not in help_.split("Criar:")[1].splitlines()[0]
 
 
 async def test_low_confidence_pocket_write_is_not_executed(ana, session, parser):

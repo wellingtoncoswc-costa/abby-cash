@@ -28,7 +28,13 @@ uma conta cadastrada para outra: "transferi 300 do Nubank para o Itaú", "passa 
 pra Y", "move 500 do Itaú pro Nubank", "mandei 1000 da poupança pra corrente"), \
 resumo_periodo (visão geral do período: "resumo do mês", "como tô esse mês?", "resumão da \
 semana", "comparar com o mês passado"), maiores_gastos (ranking das maiores despesas: "maiores \
-gastos do mês", "no que mais gastei", "onde mais gastei"), consultar_gastos, consultar_teto, \
+gastos do mês", "no que mais gastei", "onde mais gastei"), \
+criar_caixinha (CRIAR uma caixinha nova: "criar caixinha reserva de emergência a 120% do CDI \
+na conta nubank", "nova caixinha viagem"), criar_financiamento (CADASTRAR um financiamento ou \
+consórcio novo: "novo financiamento do carro, 48 parcelas de 1.890 começando 10/12, já paguei \
+17", "cadastrar consórcio do imóvel"), baixar_parcela (marcar UMA parcela, ou todas até a N, de um \
+financiamento/consórcio como paga: "paguei a parcela 12 do financiamento do carro", "já paguei \
+até a 17 do consórcio"), consultar_gastos, consultar_teto, \
 consultar_saldo, consultar_faturas, ajuda ou desconhecido. Se o nome citado for de uma caixinha \
 da lista, é caixinha; se for de uma meta, é aporte_meta.
 - amount_cents: valor TOTAL em centavos, inteiro. "45" = 4500; "1.234,56" = 123456; \
@@ -46,6 +52,19 @@ inverta; null para o lado que a mensagem não citar.
 - Mover dinheiro entre contas (transferir_contas) não é guardar em caixinha (guardar_caixinha), \
 nem aporte em meta (aporte_meta), nem pagar fatura/conta (pagar_conta): "guardei 200 na reserva" e \
 "paguei a fatura do nubank" NÃO são transferência.
+- Guardar dinheiro numa caixinha EXISTENTE ("guardei 200 na reserva") é guardar_caixinha, nunca \
+criar_caixinha; "meus financiamentos" é consultar_financiamentos. "paguei a parcela 12 do \
+financiamento do carro" (com número de parcela) é baixar_parcela; "paguei o financiamento do \
+carro" (sem número) continua pagar_conta.
+- criar_caixinha/criar_financiamento: new_name é só o nome ("reserva de emergência", "carro"), sem \
+as palavras caixinha/financiamento/consórcio; cdi_bp é o % do CDI x 100 ("120%" = 12000, \
+"102,5%" = 10250); account_hint é a conta da caixinha. Em criar_financiamento: loan_kind \
+financing ou consortium; amount_cents é o valor de CADA parcela; loan_installments é o total de \
+parcelas (1 a 480, NÃO use installments); first_due_on é o 1º vencimento (ISO); paid_installments \
+é quantas já foram pagas antes do cadastro ("já paguei 17" = 17). Só preencha o que a mensagem \
+disser.
+- baixar_parcela: installment_number é o nº da parcela (ou até qual, com through true: "até a \
+17"); pocket_hint é o nome do financiamento/consórcio; account_hint a conta, se citada.
 - private: true só se a mensagem tiver #pessoal.
 - goal_hint: nome (ou parte) da meta. pocket_hint: nome (ou parte) da caixinha, ou do \
 financiamento em consultar_financiamentos; sem a palavra "caixinha"; null se não citou.
