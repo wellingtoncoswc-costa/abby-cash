@@ -1,0 +1,54 @@
+name: abby-cash
+# Rodar com: docker compose --env-file .env -f infra/docker-compose.prod.yml ...
+# (--env-file alimenta a interpolação de ${POSTGRES_PASSWORD}).
+# Esqueleto: o M8 completa (proxy, volumes, backups). Sem portas públicas.
+services:
+  api:
+    build: ../backend
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
+      REDIS_URL: redis://redis:6379/0
+      ENV: prod
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
+  worker:
+    build: ../backend
+    command: arq app.worker.WorkerSettings
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
+      REDIS_URL: redis://redis:6379/0
+      ENV: prod
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
+  postgres:
+    image: postgres:16
+    # sem env_file: o postgres não deve receber JWT_SECRET, chaves de API etc.
+    environment: {POSTGRES_USER: abby, POSTGRES_DB: abby, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abby -d abby"]
+      interval: 5s
+      retries: 10
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
+  redis:
+    image: redis:7
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10}
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
+networks:
+  abby-cash-net:
+volumes:
+  pgdata:

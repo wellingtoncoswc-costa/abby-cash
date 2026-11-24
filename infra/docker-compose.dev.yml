@@ -1,0 +1,38 @@
+name: abby-cash-dev
+services:
+  postgres:
+    image: postgres:16
+    environment: {POSTGRES_USER: abby, POSTGRES_PASSWORD: abby, POSTGRES_DB: abby}
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U abby"], interval: 3s, retries: 20}
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+  api:
+    build: ../backend
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://abby:abby@postgres:5432/abby
+      REDIS_URL: redis://redis:6379/0
+    ports: ["8000:8000"]
+    volumes: [../backend:/app, /app/.venv]
+    depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
+  worker:
+    build: ../backend
+    command: arq app.worker.WorkerSettings
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://abby:abby@postgres:5432/abby
+      REDIS_URL: redis://redis:6379/0
+    volumes: [../backend:/app, /app/.venv]
+    depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
+  web:
+    image: node:22
+    working_dir: /web
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports: ["5173:5173"]
+    volumes: [../web:/web, /web/node_modules]
+volumes:
+  pgdata:

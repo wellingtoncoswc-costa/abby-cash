@@ -239,14 +239,14 @@ Seletor de espaço no topo (Pessoal / Família).
 - **Aportes em metas**: são **transferências** da conta de origem para a meta (conta da meta, se houver). Reduzem o saldo da conta de origem, **não contam no teto**. Retirada é a transferência inversa. A fórmula de saldo considera transferências.
 - **Um espaço familiar por usuário** na v1 (além do pessoal). O esquema permite vários no futuro.
 - **Somente conversas 1:1** com o bot na v1 (sem grupos).
-- Interpretação de texto e leitura de comprovante: modelo Claude via SDK oficial `anthropic` (padrão `claude-opus-5-5`, configurável por variável de ambiente), com saída estruturada. Transcrição de áudio: interface própria (Claude não transcreve áudio).
+- Interpretação de texto e leitura de comprovante: modelo da **OpenAI** via SDK oficial `openai` (padrão `gpt-4.1`, configurável por `AI_MODEL`), com saída estruturada (Structured Outputs/Pydantic) e visão para comprovantes. Transcrição de áudio: interface própria, Whisper auto-hospedado. *(Atualizado em 2026-11-23: o dono trocou o provedor de Anthropic para OpenAI; chave em `OPENAI_API_KEY`, nunca no git.)*
 
 ## 14. Respostas do dono (2026-11-23)
 1. **Cartões e contas compartilháveis (opção a).** Toda conta/cartão pertence a um espaço "dono" (`accounts.space_id`), mas um lançamento pode usar conta/cartão de outro espaço **desde que o autor seja membro do espaço dono da conta**. Visibilidade:
    - o lançamento é visível para os membros do espaço do **lançamento** (`transactions.space_id`);
    - quem vê a conta/fatura (membros do espaço dono da conta) vê todos os itens dos espaços de que também é membro; itens de espaços dos quais não é membro aparecem **agregados** como "Outros lançamentos (privados) — R$ X", para que o total da fatura/saldo feche sem revelar detalhes;
    - o teto de cada espaço só considera lançamentos daquele espaço.
-2. **IA e servidor.** O servidor é o mesmo que roda o `abby-chat` (reaproveitar Nginx e certificados; não quebrar o abby-chat). **Transcrição de áudio com Whisper auto-hospedado** (faster-whisper, CPU, int8, modelo `small` por padrão, idioma pt, configurável) em container próprio `stt`. Interpretação de texto e leitura de comprovante: Claude (decisão do builder; o dono não vetou provedor em nuvem). Registrar consumo de IA por espaço.
+2. **IA e servidor.** O servidor é o mesmo que roda o `abby-chat` (reaproveitar Nginx e certificados; não quebrar o abby-chat). **Transcrição de áudio com Whisper auto-hospedado** (faster-whisper, CPU, int8, modelo `small` por padrão, idioma pt, configurável) em container próprio `stt`. Interpretação de texto e leitura de comprovante: **OpenAI** (decisão do dono, 2026-11-23). Registrar consumo de IA por espaço.
 3. **Cadastro somente por convite** nesta fase. Um usuário administrador (o dono, criado por comando de CLI) gera convites de cadastro; convites de espaço familiar continuam como descrito.
 4. **API oficial do WhatsApp fica para depois**: apenas a interface `ChannelAdapter` e um esqueleto `meta_cloud.py` que lança `NotImplementedError`.
 5. **Backups fora do servidor no Google Drive**, via `rclone` (remote configurado pelo dono no servidor).
