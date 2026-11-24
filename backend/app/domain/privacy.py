@@ -11,6 +11,7 @@ from app.ai.models import AiUsage
 from app.assistant.models import ConversationState
 from app.core.serialize import row
 from app.domain.accounts.models import Account
+from app.domain.attachments import Attachment, remove_files
 from app.domain.audit import AuditLog, audit
 from app.domain.bills.models import Bill, BillReminderSent
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
@@ -106,8 +107,9 @@ def _without(v: Any, needle: str) -> Any:
     return v
 
 
-async def _purge_space(session: AsyncSession, space_id: Any) -> None:
-    """Apaga o espaço e tudo que é dele, na ordem das chaves estrangeiras."""
+async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
+    """Apaga o espaço e tudo que é dele, na ordem das chaves estrangeiras. Devolve os caminhos dos
+    anexos (os arquivos saem do disco só depois do commit)."""
     accs = select(Account.id).where(Account.space_id == space_id)
     cards = select(CreditCard.id).where(CreditCard.space_id == space_id)
     bills = select(Bill.id).where(Bill.space_id == space_id)
@@ -144,6 +146,10 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> None:
         inv = await session.get(Invoice, inv_id)
         if inv is not None:
             await sync_invoice_bill(session, inv)  # total + status da conta espelho
+    files = list(
+        await session.scalars(select(Attachment.path).where(Attachment.space_id == space_id))
+    )
+    await session.execute(delete(Attachment).where(Attachment.space_id == space_id))
     await session.execute(delete(SpaceMember).where(SpaceMember.space_id == space_id))
     await session.execute(delete(BudgetAlertSent).where(BudgetAlertSent.space_id == space_id))
     budgets = select(Budget.id).where(Budget.space_id == space_id)
@@ -160,6 +166,7 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> None:
     await session.execute(delete(Category).where(Category.space_id == space_id))
     await session.execute(delete(SpaceInvite).where(SpaceInvite.space_id == space_id))
     await session.execute(delete(Space).where(Space.id == space_id))
+    return files
 
 
 async def delete_account(session: AsyncSession, user: User) -> None:
@@ -182,8 +189,9 @@ async def delete_account(session: AsyncSession, user: User) -> None:
         .where(or_(User.id == uid, User.default_space_id.in_(owned)))
         .values(default_space_id=None)
     )
+    files: list[str] = []
     for sid in owned:
-        await _purge_space(session, sid)
+        files += await _purge_space(session, sid)
     # espaços de que é só membro: os lançamentos ficam, sem autor ("Usuário removido")
     await session.execute(
         update(Transaction).where(Transaction.created_by == uid).values(created_by=None)
@@ -232,3 +240,4 @@ async def delete_account(session: AsyncSession, user: User) -> None:
         r.data = _without(r.data, needle)
     audit(session, None, "privacy.delete_account", "user", None)  # nem o UUID: só o fato
     await session.commit()
+    remove_files(files)

@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from starlette.requests import Request
 
-from app.channels.base import InboundMessage
+from app.channels.base import InboundMessage, MediaTooLarge
 from app.channels.telegram import ChannelError
 
 log = logging.getLogger(__name__)
@@ -148,5 +148,8 @@ class EvolutionAdapter:
     async def send_text(self, external_user_id: str, text: str) -> None:
         await self.client.send_text(external_user_id, text)
 
-    async def download_media(self, media_ref: str) -> tuple[bytes, str]:
-        return await self.client.get_base64(media_ref)  # M6 usa
+    async def download_media(self, media_ref: str, max_bytes: int) -> tuple[bytes, str]:
+        data, mime = await self.client.get_base64(media_ref)
+        if len(data) > max_bytes:  # ponytail: o endpoint é base64, não dá para checar antes
+            raise MediaTooLarge
+        return data, mime

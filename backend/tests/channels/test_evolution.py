@@ -117,7 +117,7 @@ async def test_set_webhook_payload_and_download():
     body = json.loads(seen[0].content)["webhook"]
     assert body["events"] == ["MESSAGES_UPSERT"] and body["enabled"] is True
     assert body["headers"] == {"x-webhook-secret": "s3cret"}
-    assert await a.download_media("3EB0A3") == (b"hi", "audio/ogg")
+    assert await a.download_media("3EB0A3", 10**6) == (b"hi", "audio/ogg")
 
 
 def _with(msg: dict, **key) -> dict:

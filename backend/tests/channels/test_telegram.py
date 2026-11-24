@@ -112,7 +112,7 @@ async def test_download_media_resolves_file_path_and_mime():
         assert r.url.path == "/file/botT0KEN/voice/f1.oga"
         return httpx.Response(200, content=b"AUDIO")
 
-    assert await adapter(handler).download_media("AwAC") == (b"AUDIO", "audio/ogg")
+    assert await adapter(handler).download_media("AwAC", 10**6) == (b"AUDIO", "audio/ogg")
 
 
 async def test_bot_username_uses_env_then_get_me(monkeypatch):
@@ -163,3 +163,16 @@ async def test_httpx_info_logs_never_contain_token(caplog):
     a = adapter(lambda r: httpx.Response(200, json={"ok": True, "result": []}))
     await a.get_updates(None)
     assert "T0KEN" not in caplog.text
+
+
+async def test_download_media_refuses_oversize_before_downloading():
+    def handler(r: httpx.Request) -> httpx.Response:
+        assert r.url.path.endswith("/getFile")  # nunca chega a baixar o arquivo
+        return httpx.Response(
+            200, json={"ok": True, "result": {"file_path": "a.oga", "file_size": 99}}
+        )
+
+    from app.channels.base import MediaTooLarge
+
+    with pytest.raises(MediaTooLarge):
+        await adapter(handler).download_media("AwAC", 50)

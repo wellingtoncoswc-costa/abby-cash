@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from starlette.requests import Request
 
-from app.channels.base import InboundMessage
+from app.channels.base import InboundMessage, MediaTooLarge
 from app.core.config import get_settings
 
 # httpx loga a URL completa em INFO, e a URL da Bot API contém o token
@@ -102,14 +102,18 @@ class TelegramAdapter:
     async def send_text(self, external_user_id: str, text: str) -> None:
         await self._call("sendMessage", chat_id=int(external_user_id), text=text[:4096])
 
-    async def download_media(self, media_ref: str) -> tuple[bytes, str]:
+    async def download_media(self, media_ref: str, max_bytes: int) -> tuple[bytes, str]:
         info = await self._call("getFile", file_id=media_ref)
+        if int(info.get("file_size") or 0) > max_bytes:  # antes de baixar
+            raise MediaTooLarge
         path = info["file_path"]
         try:
             r = await self._client.get(f"{API}/file/bot{self._token}/{path}")
             r.raise_for_status()
         except httpx.HTTPError as e:
             raise ChannelError(f"telegram download failed ({type(e).__name__})") from None
+        if len(r.content) > max_bytes:
+            raise MediaTooLarge
         mime = _MIME.get(os.path.splitext(path)[1].lower(), "application/octet-stream")
         return r.content, mime
 
