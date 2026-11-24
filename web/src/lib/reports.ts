@@ -56,6 +56,14 @@ export function reportQuery(f: Filters, r: { start: string; end: string }): stri
   return q.toString()
 }
 
+/** Query da lista de detalhe (GET /transactions): `none` vira `uncategorized`, datas efetivas (bate com os gráficos). */
+export function listQuery(f: Filters, r: { start: string; end: string }): string {
+  const q = new URLSearchParams(reportQuery({ ...f, category_id: f.category_id === 'none' ? undefined : f.category_id }, r))
+  if (f.category_id === 'none') q.set('uncategorized', 'true')
+  q.set('effective', 'true')
+  return q.toString()
+}
+
 /** Variação % inteira (arredondada, meio longe de zero) de prev para cur; null se prev == 0. Só inteiros. */
 export function pctChange(cur: number, prev: number): number | null {
   if (prev === 0) return null

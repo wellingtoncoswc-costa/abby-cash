@@ -6,7 +6,7 @@ import { Area, AreaChart, Bar, CartesianGrid, Cell, ComposedChart, Line, Pie, Pi
 import { api } from '../api/client'
 import type { OverviewOut, ReportTotals, Tx } from '../api/types'
 import { useCountUp } from '../anim'
-import { downloadCsv, type Filters, monthRange, parseFilters, PERIODS, pctChange, reportQuery, resolveRange, toCsv, wholeMonth } from '../lib/reports'
+import { downloadCsv, type Filters, listQuery, monthRange, parseFilters, PERIODS, pctChange, reportQuery, resolveRange, toCsv, wholeMonth } from '../lib/reports'
 import { formatBRL } from '../lib/money'
 import { useSpace } from '../space'
 import { br, Err, today, useAccounts, useCategories, useCatName, useGet } from '../ui'
@@ -112,7 +112,7 @@ export function Reports() {
           )}
         </div>
       )}
-      <Detalhe qs={qs} range={range} spaceId={spaceId} />
+      <Detalhe qs={listQuery(f, range)} range={range} spaceId={spaceId} />
     </>
   )
 }
@@ -373,7 +373,7 @@ function Maiores({ d, className }: { d: OverviewOut; className?: string }) {
 
 const STEP = 30
 function Detalhe({ qs, range, spaceId }: { qs: string; range: { start: string; end: string }; spaceId: string }) {
-  const list = useGet<Tx[]>(`/spaces/${spaceId}/transactions?${qs}&limit=1000`)
+  const list = useGet<Tx[]>(`/spaces/${spaceId}/transactions?${qs}&limit=1000`)  // qs = listQuery(): transferências saem no filtro abaixo
   const catName = useCatName()
   const [text, setText] = useState('')
   const [ord, setOrd] = useState<'data' | 'valor'>('data')
@@ -381,7 +381,7 @@ function Detalhe({ qs, range, spaceId }: { qs: string; range: { start: string; e
   const [sel, setSel] = useState<Tx | null>(null)
   const rows = useMemo(() => {
     const t = text.trim().toLowerCase()
-    const r = (list.data ?? []).filter((x) => !t || `${x.description} ${x.merchant ?? ''}`.toLowerCase().includes(t))
+    const r = (list.data ?? []).filter((x) => x.type !== 'transfer').filter((x) => !t || `${x.description} ${x.merchant ?? ''}`.toLowerCase().includes(t))
     return r.sort((a, b) => (ord === 'valor' ? b.amount_cents - a.amount_cents : b.occurred_on.localeCompare(a.occurred_on)))
   }, [list.data, text, ord])
   const total = rows.reduce((s, x) => s + (x.type === 'income' ? x.amount_cents : x.type === 'expense' ? -x.amount_cents : 0), 0)

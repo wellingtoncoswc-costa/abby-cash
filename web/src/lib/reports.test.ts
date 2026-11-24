@@ -1,5 +1,5 @@
 import type { Tx } from '../api/types'
-import { csvCell, monthRange, parseFilters, pctChange, reportQuery, resolveRange, toCsv, wholeMonth } from './reports'
+import { csvCell, listQuery, monthRange, parseFilters, pctChange, reportQuery, resolveRange, toCsv, wholeMonth } from './reports'
 
 test('pctChange: inteiros, arredondamento e divisão por zero', () => {
   expect(pctChange(150, 100)).toBe(50)
@@ -62,4 +62,10 @@ test('toCsv: separador ;, vírgula decimal, valores grandes sem float', () => {
   expect(a).toBe('02/11/2026;Despesa;"\'=HYPERLINK(""x"")";"Padaria; Pão";Sem categoria;-1234,56')
   expect(b).toBe('02/11/2026;Receita;Salário;;Sem categoria;0,05')
   expect(c.endsWith(';-1000000000000,01')).toBe(true)
+})
+
+test('listQuery: sem categoria vira uncategorized e usa data efetiva', () => {
+  const r = { start: '2026-11-01', end: '2026-11-30' }
+  expect(listQuery({ category_id: 'none', account_id: 'a1' }, r)).toBe('start=2026-11-01&end=2026-11-30&account_id=a1&uncategorized=true&effective=true')
+  expect(listQuery({ category_id: 'c1' }, r)).toBe('start=2026-11-01&end=2026-11-30&category_id=c1&effective=true')
 })
