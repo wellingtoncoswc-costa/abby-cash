@@ -2,7 +2,11 @@ import type { components } from './schema'
 
 export type S = components['schemas']
 export type Space = S['SpaceOut']
-export type Account = S['AccountOut']
+// `institution`: chave do catálogo src/banks.ts (backend novo; schema.d.ts ainda não regenerado).
+type Inst = { institution?: string | null }
+export type Account = S['AccountOut'] & Inst
+export type AccountIn = S['AccountIn'] & Inst
+export type AccountPatch = S['AccountPatch'] & Inst
 export type Card = S['CardOut']
 export type Invoice = S['InvoiceOut']
 export type Tx = S['TransactionOut']

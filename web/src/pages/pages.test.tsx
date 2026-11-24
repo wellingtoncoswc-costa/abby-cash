@@ -9,7 +9,7 @@ const J = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status
 const routes: Record<string, (init: RequestInit) => Response> = {
   '/auth/refresh': () => J({ access_token: 't' }),
   '/spaces': () => J([{ id: SP, type: 'personal', name: 'x' }]),
-  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000 }]),
+  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank' }]),
   [`/spaces/${SP}/bills`]: () => J([{ id: 'b1', space_id: SP, kind: 'bill', description: 'Aluguel', amount_cents: 150000, due_on: '2026-12-05', status: 'open', invoice_id: null }]),
   [`/spaces/${SP}/goals`]: () => J([]),
   '/channels': () => J([]),
@@ -65,6 +65,24 @@ test('onboarding mostra código e link t.me', async () => {
   const box = await screen.findByRole('status')
   expect(within(box).getByText('123456')).toBeInTheDocument()
   expect(within(box).getByRole('link')).toHaveAttribute('href', 'https://t.me/abby_bot?start=123456')
+})
+
+test('onboarding: ícone na lista e banco enviado ao criar/editar conta', async () => {
+  routes[`/spaces/${SP}/accounts`] = () => J({ id: 'a2' }, 201)
+  routes['/accounts/a1'] = () => J({})
+  go('/onboarding')
+  await screen.findByRole('button', { name: 'Editar conta' })
+  expect(document.querySelector('[data-bank="nubank"]')).not.toBeNull()
+  await userEvent.type(screen.getByLabelText('Nome da conta'), 'Salário')
+  await userEvent.selectOptions(screen.getAllByLabelText('Banco')[0], 'itau')
+  await userEvent.click(screen.getByRole('button', { name: 'Adicionar conta' }))
+  const post = calls.find(([u]) => u === `/spaces/${SP}/accounts`)!
+  expect(JSON.parse(post[1].body as string).institution).toBe('itau')
+  await userEvent.click(screen.getByRole('button', { name: 'Editar conta' }))
+  await userEvent.selectOptions(screen.getByLabelText('Banco de Nubank'), '')
+  await userEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+  const patch = calls.find(([u]) => u === '/accounts/a1')!
+  expect(JSON.parse(patch[1].body as string).institution).toBeNull()
 })
 
 test('categorias aparecem pelo nome', async () => {
