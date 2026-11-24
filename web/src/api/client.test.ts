@@ -23,7 +23,7 @@ test('refresh em paralelo é compartilhado', async () => {
   let refreshes = 0
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     if (url === '/auth/refresh') { refreshes++; return json(200, { access_token: 't2' }) }
-    return (init.headers as Record<string, string>)?.Authorization === 'Bearer t2' ? json(200, []) : json(401)
+    return (init.headers as Record<string, string>)?.Authorization === 'Bearer t2' ? json(200, []) : json(401, { detail: 'invalid_token' })
   })
   await Promise.all([api('GET', '/a'), api('GET', '/b')])
   expect(refreshes).toBe(1)
@@ -32,7 +32,7 @@ test('refresh em paralelo é compartilhado', async () => {
 test('refresh falho -> logout e erro 401', async () => {
   const out = vi.fn()
   setOnLogout(out)
-  vi.stubGlobal('fetch', async () => json(401, { detail: 'invalid_refresh' }))
+  vi.stubGlobal('fetch', async () => json(401, { detail: 'invalid_token' }))
   await expect(api('GET', '/accounts')).rejects.toBeInstanceOf(ApiError)
   expect(out).toHaveBeenCalled()
   expect(hasToken()).toBe(false)
@@ -42,4 +42,20 @@ test('nunca grava token em localStorage', async () => {
   vi.stubGlobal('fetch', async () => json(200, { access_token: 'secret' }))
   await login('a@b.c', 'x')
   expect(JSON.stringify({ ...localStorage })).not.toContain('secret')
+})
+
+test('senha errada em DELETE /privacy/account: erro na página, sem refresh nem logout', async () => {
+  const out = vi.fn()
+  setOnLogout(out)
+  const urls: string[] = []
+  vi.stubGlobal('fetch', async (url: string) => {
+    urls.push(url)
+    if (url === '/auth/login') return json(200, { access_token: 't' })
+    return json(401, { detail: 'invalid_credentials' })
+  })
+  await login('a@b.c', 'x')
+  await expect(api('DELETE', '/privacy/account', { password: 'no' })).rejects.toMatchObject({ status: 401, detail: 'invalid_credentials' })
+  expect(urls).not.toContain('/auth/refresh')
+  expect(out).not.toHaveBeenCalled()
+  expect(hasToken()).toBe(true)
 })

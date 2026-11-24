@@ -36,11 +36,18 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   return fetch(path, { method, headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body) })
 }
 
+/** 401 do token de acesso (não erro de credencial como invalid_credentials/totp_required). */
+async function expiredAccess(r: Response): Promise<boolean> {
+  const j = (await r.clone().json().catch(() => null)) as { detail?: unknown } | null
+  return j?.detail === 'invalid_token' || j?.detail === 'not_authenticated'
+}
+
 async function raw(method: string, path: string, body?: unknown, retry = true): Promise<Response> {
+  const bearer = token !== null
   let r = await send(method, path, body)
-  if (r.status === 401 && retry && path !== '/auth/login') {
+  if (r.status === 401 && retry && bearer && (await expiredAccess(r))) {
     if (await refresh()) r = await send(method, path, body)
-    if (r.status === 401) { token = null; onLogout() }
+    if (r.status === 401 && (await expiredAccess(r))) { token = null; onLogout() }
   }
   if (!r.ok) {
     const j = (await r.json().catch(() => null)) as { detail?: unknown } | null
