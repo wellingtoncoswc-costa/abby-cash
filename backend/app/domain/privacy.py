@@ -12,7 +12,7 @@ from app.assistant.models import ConversationState
 from app.core.serialize import row
 from app.domain.accounts.models import Account
 from app.domain.audit import AuditLog, audit
-from app.domain.bills.models import Bill
+from app.domain.bills.models import Bill, BillReminderSent
 from app.domain.budgets.models import Budget, BudgetAlertSent, BudgetCategory
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.cards.service import sync_invoice_bill
@@ -150,6 +150,7 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> None:
     await session.execute(delete(BudgetCategory).where(BudgetCategory.budget_id.in_(budgets)))
     await session.execute(delete(Budget).where(Budget.space_id == space_id))
     await session.execute(delete(Goal).where(Goal.space_id == space_id))
+    await session.execute(delete(BillReminderSent).where(BillReminderSent.bill_id.in_(bills)))
     await session.execute(delete(Bill).where(Bill.space_id == space_id))
     await session.execute(delete(Invoice).where(Invoice.card_id.in_(cards)))
     await session.execute(delete(CreditCard).where(CreditCard.space_id == space_id))
@@ -190,6 +191,7 @@ async def delete_account(session: AsyncSession, user: User) -> None:
     await session.execute(
         update(Bill).where(Bill.responsible_user_id == uid).values(responsible_user_id=None)
     )
+    await session.execute(delete(BillReminderSent).where(BillReminderSent.user_id == uid))
     await session.execute(delete(SpaceMember).where(SpaceMember.user_id == uid))
     await session.execute(delete(SpaceInvite).where(SpaceInvite.created_by == uid))
     await session.execute(

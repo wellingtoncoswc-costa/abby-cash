@@ -32,6 +32,8 @@ async def create_bill(
     )  # fmt: skip
     session.add(bill)
     await session.flush()
+    if recurrence:
+        bill.recurrence_id = bill.id
     audit(
         session,
         actor_id,
