@@ -75,8 +75,25 @@ WhatsApp/Evolution: defina `EVOLUTION_INSTANCE=abby-cash` no `.env` e suba a sta
 (WhatsApp › Aparelhos conectados). Alternativa por linha de comando: `python -m app.cli evolution-set-webhook`.
 URLs: `https://abbycash.abbysystems.com.br/webhooks/telegram` e `.../webhooks/whatsapp_evolution`. Cookie de refresh tem `Path=/auth`: web e API na mesma origem (já é).
 
+## 5.1 Atualizações: reinstalar o conf do Nginx quando a lista de rotas mudar
+O `conf.d/abby-cash.conf` instalado no host **não** se atualiza com o `git pull`. Sempre que um deploy trouxer rota nova da API
+(um prefixo novo em `infra/nginx/abby-cash.conf`, ex. `pockets|loans|cdi`), reinstale o conf; sem isso o prefixo novo cai na SPA
+(200 em HTML) e a tela correspondente falha. Confira antes do deploy: `git diff <tag-anterior> -- infra/nginx/`.
+```bash
+diff /etc/nginx/conf.d/abby-cash.conf infra/nginx/abby-cash.conf      # só diferenças esperadas (a lista de rotas)
+nginx -T > /tmp/nginx-antes.txt                                       # (sudo) estado de antes
+cp /etc/nginx/conf.d/abby-cash.conf /tmp/abby-cash.bak
+cp infra/nginx/abby-cash.conf /etc/nginx/conf.d/abby-cash.conf        # (sudo)
+nginx -t || cp /tmp/abby-cash.bak /etc/nginx/conf.d/abby-cash.conf    # falhou: restaura e para
+nginx -T > /tmp/nginx-depois.txt; diff /tmp/nginx-antes.txt /tmp/nginx-depois.txt   # REVISAR antes do reload
+systemctl reload nginx                                                # (sudo) só depois de revisar
+```
+Teste pós-deploy (por trás do Nginx, sem login): cada prefixo novo deve dar **401 em JSON**, não 200 HTML:
+`curl -s -o /dev/null -w '%{http_code} %{content_type}\n' https://abbycash.abbysystems.com.br/<prefixo>/x`.
+O `/health` sozinho não prova isso.
+
 ## 6. Aceite
-`/health` com `status: ok` e `worker: true`; abby-chat respondendo; mensagem de teste no Telegram vira lançamento;
+`/health` com `status: ok` e `worker: true`; rotas novas da API respondem 401 JSON por trás do Nginx (5.1); abby-chat respondendo; mensagem de teste no Telegram vira lançamento;
 backup manual: `docker compose ... exec backup /backup/backup.sh` (depois, ver `infra/backup/restore.md` e testar a restauração).
 **Cópia fora do servidor é fortemente recomendada (obrigatória antes de confiar nos backups):** o volume local morre com o host.
 Configure `BACKUP_RCLONE_REMOTE` (ex.: `gdrive:abby-cash-backups`) e o remoto uma vez:
