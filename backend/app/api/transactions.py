@@ -57,12 +57,18 @@ async def list_(
     space_id: UUID, user: CurrentUser, session: Session, response: Response,
     start: date | None = None, end: date | None = None, category_id: UUID | None = None,
     account_id: UUID | None = None, card_id: UUID | None = None, created_by: UUID | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    type: Literal["expense", "income", "transfer"] | None = None, merchant: str | None = None,
+    uncategorized: bool = False, effective: bool = False,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[dict[str, Any]]:  # fmt: skip
-    """Total (sem paginação) no cabeçalho X-Total-Count; o corpo segue sendo a lista."""
+    """Total (sem paginação) no cabeçalho X-Total-Count; o corpo segue sendo a lista.
+
+    `effective=true`: start/end/ordem pela data de competência (cartão = vencimento da fatura),
+    a mesma das Análises. `merchant` é o rótulo ("Sem estabelecimento" = vazio)."""
     f: dict[str, Any] = dict(start=start, end=end, category_id=category_id, account_id=account_id,
-             card_id=card_id, created_by=created_by)  # fmt: skip
+             card_id=card_id, created_by=created_by, type=type, merchant=merchant,
+             uncategorized=uncategorized, effective=effective)  # fmt: skip
     txs = await list_transactions(
         session, viewer_id=user.id, space_id=space_id, limit=limit, offset=offset, **f
     )
