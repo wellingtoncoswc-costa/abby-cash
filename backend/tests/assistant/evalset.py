@@ -22,7 +22,7 @@ from app.core.text import fold
 from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 
 EVAL_PATH = Path(__file__).with_name("eval_cases.yaml")
-_FUZZY = {"description"}
+_FUZZY = {"description", "new_name"}
 _HINTS = {
     "account_hint": "accounts",
     "to_account_hint": "accounts",
@@ -76,7 +76,7 @@ def mismatches(expect: dict[str, Any], got: ParsedIntent, ctx: SpaceContext) -> 
     out = []
     for key, want in expect.items():
         have = resolved_category(ctx, got) if key == "category_name" else getattr(got, key)
-        if key == "occurred_on":
+        if key in ("occurred_on", "first_due_on"):
             want = date.fromisoformat(str(want))
         if key == "category_name":
             ok = fold(str(have or "")) == fold(str(want))
