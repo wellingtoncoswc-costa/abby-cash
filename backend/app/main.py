@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.api import (
     accounts,
     admin,
+    attachments,
     auth,
     bills,
     budgets,
@@ -34,6 +35,7 @@ app.include_router(goals.router)
 app.include_router(categories.router)
 app.include_router(me.router)
 app.include_router(admin.router)
+app.include_router(attachments.router)
 app.include_router(channel_links.router)
 app.include_router(privacy.router)
 app.include_router(webhooks.router)
