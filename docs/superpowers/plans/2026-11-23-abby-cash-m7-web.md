@@ -28,4 +28,6 @@ Tipos: `web/src/api/schema.d.ts` gerado do OpenAPI do FastAPI (`npm run gen:api`
 - Cookie de refresh é `Secure`: em dev só funciona em `localhost` (ou HTTPS).
 
 ## Não feito / pendências
-Atualizado ao final do marco (ver relatório).
+- Categorias (tela e nomes), editar/excluir lançamentos e anexos, filtros por cartão/autor, papéis de membros, edição das configurações: dependem das lacunas acima.
+- Compra no cartão (parcelada) não tem formulário na web; só criação de cartão, listagem de faturas e pagamento.
+- Teste de ícones/instalação do PWA só verificado pelo build (manifest + sw gerados), não em dispositivo.
