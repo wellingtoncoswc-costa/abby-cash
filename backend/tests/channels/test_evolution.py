@@ -7,7 +7,7 @@ import pytest
 from starlette.requests import Request
 
 from app.channels.base import MediaTooLarge
-from app.channels.evolution import EvolutionAdapter, EvolutionClient
+from app.channels.evolution import EvolutionAdapter, EvolutionClient, InstanceNotFound
 from app.channels.telegram import ChannelError
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "evolution"
@@ -167,3 +167,29 @@ async def test_download_media_bounds_response_while_reading():
     big = httpx.Response(200, json={"base64": "A" * 20_000, "mimetype": "audio/ogg"})
     with pytest.raises(MediaTooLarge):
         await adapter(lambda r: big).download_media("3EB0A3", 100)
+
+
+async def test_instance_qr_and_logout_calls():
+    seen = []
+
+    def handler(r: httpx.Request) -> httpx.Response:
+        seen.append((r.method, r.url.path, r.headers["apikey"]))
+        if r.url.path == "/instance/create":
+            body = json.loads(r.content)
+            assert body["instanceName"] == "abby" and body["integration"] == "WHATSAPP-BAILEYS"
+            return httpx.Response(201, json={"qrcode": {"base64": "data:image/png;base64,QQ"}})
+        if r.url.path == "/instance/connect/abby":
+            return httpx.Response(200, json={"base64": "data:image/png;base64,ZZ", "code": "c"})
+        if r.url.path == "/instance/connectionState/abby":
+            return httpx.Response(404, json={"error": "Not Found"})
+        return httpx.Response(200, json={"status": "SUCCESS"})
+
+    c = adapter(handler).client
+    assert await c.create_instance() == "data:image/png;base64,QQ"
+    assert await c.connect_qr() == "data:image/png;base64,ZZ"
+    await c.logout()
+    with pytest.raises(InstanceNotFound):
+        await c.connection_state()
+    assert seen[0] == ("POST", "/instance/create", "K3Y")
+    assert seen[2] == ("DELETE", "/instance/logout/abby", "K3Y")
+    assert EvolutionClient._qr({"base64": "not-a-data-url"}) is None

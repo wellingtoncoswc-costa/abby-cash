@@ -140,3 +140,18 @@ test('edição de contas: só o dono vê o botão', async () => {
   await screen.findByText('Nubank', { exact: false })
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Editar conta' })).toBeNull())
 })
+
+test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
+  routes['/me'] = () => J({ id: 'u1', name: 'Ana', email: 'a@x.com', tz: 'x', default_space_id: SP, preferred_channel: null, reminder_time: '09:00:00', weekly_digest: false, is_admin: true, totp_enabled: false })
+  routes['/admin/whatsapp'] = () => J({ state: 'none', qr: null })
+  routes['/admin/whatsapp/qr'] = () => J({ state: 'connecting', qr: 'data:image/png;base64,AAAA' })
+  go('/admin')
+  expect(await screen.findByText('não configurado')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Conectar número (QR)' }))
+  const img = await screen.findByAltText('QR code para parear o WhatsApp')
+  expect(img).toHaveAttribute('src', 'data:image/png;base64,AAAA')
+  routes['/admin/whatsapp'] = () => J({ state: 'open', qr: null })
+  await userEvent.click(screen.getByRole('button', { name: 'Gerar novo QR' }))
+  expect(await screen.findByRole('button', { name: 'Desconectar número' })).toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByAltText('QR code para parear o WhatsApp')).toBeNull())
+})

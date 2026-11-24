@@ -13,6 +13,7 @@ services:
       ENV: prod
       STORAGE_DIR: /data/storage
       PUBLIC_BASE_URL: https://abbycash.abbysystems.com.br
+      EVOLUTION_WEBHOOK_URL: http://api:8000/webhooks/whatsapp_evolution  # a Evolution alcança a api pela evolution-bridge
       HSTS: "true"
       TRUSTED_PROXIES: 172.29.77.1/32  # SÓ o gateway fixo de abby-cash-net (o Nginx do host chega por ele)
     ports: ["127.0.0.1:18000:8000"]

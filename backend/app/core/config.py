@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     EVOLUTION_URL: str = ""
     EVOLUTION_API_KEY: str = ""
     EVOLUTION_INSTANCE: str = ""
+    EVOLUTION_WEBHOOK_URL: str = (
+        ""  # opcional: URL interna (prod: http://api:8000/webhooks/whatsapp_evolution)
+    )
     EVOLUTION_WEBHOOK_SECRET: str = ""
     STORAGE_DIR: str = "./storage"
     PUBLIC_BASE_URL: str = "http://localhost:8000"

@@ -73,7 +73,11 @@ async def _evolution_set_webhook(url: str | None) -> None:
         raise SystemExit("EVOLUTION_URL, EVOLUTION_API_KEY and EVOLUTION_INSTANCE must be set")
     if not re.fullmatch(r"[A-Za-z0-9_-]{16,256}", s.EVOLUTION_WEBHOOK_SECRET):
         raise SystemExit("EVOLUTION_WEBHOOK_SECRET must be 16-256 chars of [A-Za-z0-9_-]")
-    target = url or f"{s.PUBLIC_BASE_URL.rstrip('/')}/webhooks/whatsapp_evolution"
+    target = (
+        url
+        or s.EVOLUTION_WEBHOOK_URL
+        or f"{s.PUBLIC_BASE_URL.rstrip('/')}/webhooks/whatsapp_evolution"
+    )
     if not target.startswith(("https://", "http://")):
         raise SystemExit("the webhook URL must be http(s)")
     # a Evolution chama de dentro da rede do Compose: http://api:8000/... vale

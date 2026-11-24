@@ -26,6 +26,10 @@ _WRAPPERS = (
 )
 
 
+class InstanceNotFound(ChannelError):
+    """A instância ainda não existe na Evolution (404)."""
+
+
 class EvolutionClient:
     """API REST da Evolution v2. A chave só vai no header `apikey`; erros nunca levam URL/chave."""
 
@@ -35,14 +39,18 @@ class EvolutionClient:
         self._url, self._key, self._instance = url.rstrip("/"), api_key, instance
         self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
 
-    async def _call(self, method: str, path: str, **payload: Any) -> Any:
+    async def _call(self, method: str, path: str, *, bare: bool = False, **payload: Any) -> Any:
+        url = f"{self._url}/{path}" if bare else f"{self._url}/{path}/{self._instance}"
         try:
             r = await self._client.request(
-                method, f"{self._url}/{path}/{self._instance}",
-                headers={"apikey": self._key}, json=payload or None,
-            )  # fmt: skip
+                method, url, headers={"apikey": self._key}, json=payload or None
+            )
             r.raise_for_status()
             return r.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise InstanceNotFound(f"evolution {path} not found") from None
+            raise ChannelError(f"evolution {path} failed ({type(e).__name__})") from None
         except (httpx.HTTPError, ValueError) as e:
             raise ChannelError(f"evolution {path} failed ({type(e).__name__})") from None
 
@@ -55,6 +63,27 @@ class EvolutionClient:
             return str(data["instance"]["state"])
         except (KeyError, TypeError):
             raise ChannelError("evolution connectionState bad response") from None
+
+    @staticmethod
+    def _qr(data: Any) -> str | None:
+        """Data URL do QR (None se a Evolution não devolveu: ex. já conectado)."""
+        qr = data.get("qrcode", data) if isinstance(data, dict) else None
+        b64 = qr.get("base64") if isinstance(qr, dict) else None
+        return b64 if isinstance(b64, str) and b64.startswith("data:image/") else None
+
+    async def create_instance(self) -> str | None:
+        """Cria a instância (403 se já existe) e devolve o QR da criação."""
+        data = await self._call(
+            "POST", "instance/create", bare=True,
+            instanceName=self._instance, qrcode=True, integration="WHATSAPP-BAILEYS",
+        )  # fmt: skip
+        return self._qr(data)
+
+    async def connect_qr(self) -> str | None:
+        return self._qr(await self._call("GET", "instance/connect"))
+
+    async def logout(self) -> None:
+        await self._call("DELETE", "instance/logout")
 
     async def set_webhook(self, url: str, secret: str) -> None:
         await self._call(
