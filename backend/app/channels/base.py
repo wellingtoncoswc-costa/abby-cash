@@ -16,6 +16,10 @@ class InboundMessage:
     received_at: datetime
 
 
+class MediaTooLarge(Exception):
+    pass
+
+
 class ChannelAdapter(Protocol):
     name: str
 
@@ -25,4 +29,6 @@ class ChannelAdapter(Protocol):
 
     async def send_text(self, external_user_id: str, text: str) -> None: ...
 
-    async def download_media(self, media_ref: str) -> tuple[bytes, str]: ...  # (bytes, mime)
+    async def download_media(
+        self, media_ref: str, max_bytes: int
+    ) -> tuple[bytes, str]: ...  # (bytes, mime); MediaTooLarge se passar do teto

@@ -1,11 +1,13 @@
 import difflib
 import re
+from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.assistant.flows.common import ask, remaining_of
 from app.assistant.flows.payment import choose_account
 from app.assistant.intents import ParsedIntent
+from app.assistant.models import ConversationState
 from app.assistant.replies import NO_ACCOUNT, ZERO, options_text
 from app.assistant.turn import Draft, Pay, Turn
 from app.core.money import format_brl
@@ -38,19 +40,52 @@ def mentions(text: str, p: ParsedIntent, description: str) -> bool:
     return any(difflib.get_close_matches(w, words, n=1, cutoff=0.8) for w in said - _GENERIC)
 
 
+async def take_reminded(t: Turn) -> set[UUID]:
+    """Contas do último round de lembretes (24 h, qualquer canal); consome o contexto."""
+    row = await t.session.scalar(
+        delete(ConversationState)
+        .where(
+            ConversationState.user_id == t.user_id, ConversationState.kind == "reminder",
+            ConversationState.expires_at > t.now,
+        )
+        .returning(ConversationState.data)
+    )  # fmt: skip
+    await t.session.commit()
+    return {UUID(i) for i in row["last_reminded_bill_ids"]} if row else set()
+
+
+async def _go(t: Turn, p: ParsedIntent, bill: Bill, rem: int) -> str:
+    """Paga direto; se o valor dito difere do valor da conta manual, confirma antes."""
+    d = Draft(action="pay", p=p, space_id=bill.space_id, bill_id=bill.id)
+    if p.amount_cents is not None and bill.invoice_id is None and p.amount_cents != rem:
+        question = f"Pagar {bill.description} {format_brl(p.amount_cents)}? Responda sim ou não"
+        return await ask(t, d, "confirm", question)
+    return await run(t, d)
+
+
 async def start(t: Turn, p: ParsedIntent, text: str = "") -> str:
-    """ponytail: sem contexto de lembrete (M5, que pagará direto); 0 -> aviso, 1 -> quita se o
-    texto cita a conta, senão pergunta; várias -> lista."""
+    """ponytail: 0 -> aviso; 1 -> quita se o texto cita a conta, senão pergunta; várias -> lista.
+    Lembretes recentes são candidatas, mas uma conta citada no texto sempre vence."""
     if p.amount_cents is not None and p.amount_cents <= 0:
         return ZERO
     items = await pending(t)
+    reminded = await take_reminded(t) if items else set()
+    named = [i for i in items if mentions(text, p, i[0].description)]
+    if reminded and not named:
+        items = [i for i in items if i[0].id in reminded] or items
+        if len(items) == 1:
+            return await _go(t, p, *items[0])
+    elif named and reminded:
+        items = named
+    if len(items) > 1 and "fatura" in fold(text):
+        items = [i for i in items if i[0].invoice_id] or items
     if not items:
         return "Não encontrei contas em aberto."
     if len(items) == 1:
         bill, rem = items[0]
-        d = Draft(action="pay", p=p, space_id=bill.space_id, bill_id=bill.id)
         if mentions(text, p, bill.description):
-            return await run(t, d)
+            return await _go(t, p, bill, rem)
+        d = Draft(action="pay", p=p, space_id=bill.space_id, bill_id=bill.id)
         question = f"Pagar {bill.description} {format_brl(rem)}? Responda sim ou não"
         return await ask(t, d, "confirm", question)
     options = [

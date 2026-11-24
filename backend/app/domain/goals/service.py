@@ -1,18 +1,19 @@
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, select
+from sqlalchemy import case, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.dates import local_today
 from app.domain.accounts.access import use_account
-from app.domain.audit import audit
+from app.domain.audit import audit, snap
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
-from app.domain.spaces.access import require_member
+from app.domain.spaces.access import require_member, require_owner
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.rules import check_common
 
@@ -158,3 +159,38 @@ async def goal_progress(
         elapsed = min(max((today - goal.created_on).days, 0), total_days)
         expected = goal.target_cents * elapsed // total_days
     return GoalProgress(saved, goal.target_cents, -(-remaining // months_left), saved < expected)
+
+
+async def update_goal(
+    session: AsyncSession, *, actor_id: UUID, goal_id: UUID, fields: dict[str, Any]
+) -> Goal:
+    """fields: só as chaves enviadas (name, target_cents, deadline)."""
+    goal = await visible_goal(session, actor_id, goal_id)
+    await require_owner(session, actor_id, goal.space_id)
+    before = snap(goal, fields)
+    if "target_cents" in fields:
+        await check_common(
+            session, actor_id=actor_id, space_id=goal.space_id, type="transfer",
+            amount_cents=fields["target_cents"], category_id=None, occurred_on=goal.created_on,
+        )  # fmt: skip
+    for k, v in fields.items():
+        setattr(goal, k, v)
+    audit(session, actor_id, "goal.update", "goal", goal.id,
+          {"space_id": str(goal.space_id), "before": before,
+           "after": snap(goal, fields)})  # fmt: skip
+    await session.commit()
+    return goal
+
+
+async def delete_goal(session: AsyncSession, *, actor_id: UUID, goal_id: UUID) -> None:
+    """Só meta zerada e sem histórico de aportes/retiradas (retire o saldo antes)."""
+    goal = await visible_goal(session, actor_id, goal_id)
+    await require_owner(session, actor_id, goal.space_id)
+    await session.refresh(goal, with_for_update=True)
+    if await goal_saved(session, goal.id) != 0:
+        raise DomainError("goal_has_balance")
+    if await session.scalar(select(exists().where(Transaction.goal_id == goal.id))):
+        raise DomainError("goal_has_history")
+    audit(session, actor_id, "goal.delete", "goal", goal.id, {"space_id": str(goal.space_id)})
+    await session.delete(goal)
+    await session.commit()

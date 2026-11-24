@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents
+from app.api.schemas import BudgetOut, Cents
 from app.domain.budgets.service import budget_overview, set_budget
 
 router = APIRouter(tags=["budgets"])
@@ -32,7 +32,7 @@ def _month(value: str) -> date:
         raise HTTPException(status_code=422, detail="invalid_month") from None
 
 
-@router.put("/spaces/{space_id}/budgets/{month}")
+@router.put("/spaces/{space_id}/budgets/{month}", response_model=BudgetOut)
 async def put_budget(
     space_id: UUID, month: str, body: BudgetIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -44,7 +44,7 @@ async def put_budget(
     return await budget_overview(session, viewer_id=user.id, space_id=space_id, month=m)
 
 
-@router.get("/spaces/{space_id}/budgets/{month}")
+@router.get("/spaces/{space_id}/budgets/{month}", response_model=BudgetOut)
 async def get_budget(
     space_id: UUID, month: str, user: CurrentUser, session: Session
 ) -> dict[str, Any]:

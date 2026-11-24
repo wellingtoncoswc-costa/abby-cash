@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Time, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.crypto import EncryptedStr
 from app.core.db import Base
 
 
@@ -16,7 +17,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     tz: Mapped[str] = mapped_column(String(64), default="America/Sao_Paulo")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_secret: Mapped[str | None] = mapped_column(EncryptedStr())
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     preferred_channel: Mapped[str | None] = mapped_column(String(32))
     default_space_id: Mapped[UUID | None] = mapped_column(

@@ -4,6 +4,7 @@ from app.core.config import get_settings
 
 redis = Redis.from_url(get_settings().REDIS_URL, decode_responses=True)
 
+HEARTBEAT_KEY = "worker:heartbeat"
 
 _INCR_TTL = """
 local n = redis.call('INCR', KEYS[1])

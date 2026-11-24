@@ -11,8 +11,9 @@ from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.usage import over_budget, record_ai_usage
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.flows import edit, extras, launch, pay, query
+from app.assistant.flows import edit, extras, launch, pay, query, receipt
 from app.assistant.flows.common import already_done
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
@@ -22,28 +23,35 @@ from app.assistant.replies import (
     ALREADY,
     ALREADY_HANDLED,
     BAD_DATE,
+    DIGEST_OFF,
+    DIGEST_ON,
     HELP,
-    MEDIA,
     NO_FAMILY,
     NOT_UNDERSTOOD,
+    OVER_BUDGET,
+    OVER_BUDGET_MEDIA,
+    RATE_LIMITED,
     ZERO,
     domain_error_text,
     http_error_text,
 )
-from app.assistant.shortcuts import answer, try_shortcut
+from app.assistant.shortcuts import answer, digest_toggle, try_shortcut
 from app.assistant.state import clear_state, get_state
 from app.assistant.turn import Draft, Turn
+from app.channels.base import MediaTooLarge
 from app.channels.registry import get_adapter
 from app.core.config import get_settings
 from app.core.dates import to_local_date
 from app.core.db import SessionLocal, engine
 from app.core.money import format_brl
-from app.core.redis import redis
+from app.core.redis import incr_ttl, redis
 from app.core.text import fold
+from app.domain.attachments import MAX_BYTES, discard_draft_attachment
 from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
 from app.domain.errors import DomainError
 from app.domain.spaces.models import Space, SpaceMember
+from app.domain.users.models import User
 
 STALE = timedelta(minutes=5)
 log = logging.getLogger(__name__)
@@ -62,6 +70,8 @@ INVALID_CODE = "Código inválido ou expirado. Gere um novo no painel web (Canai
 TOO_MANY = "Muitas tentativas. Tente de novo em 1 hora."
 UNLINKED = _UNLINKED.format(chat="Telegram")
 UNLINKED_TTL_S = 86400
+AUDIO_FAIL = "Não consegui ouvir o áudio, pode escrever?"
+TOO_BIG = receipt.TOO_BIG
 FAILED = "Tive um problema ao processar sua mensagem. Tente de novo em instantes."
 
 _CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?([0-9]{6})", re.ASCII | re.IGNORECASE)
@@ -189,15 +199,19 @@ async def resume(t: Turn, text: str) -> str | None:
     descartado e ela segue como mensagem nova). Quem vai gravar consome o estado antes
     (`take`): se outra resposta já o consumiu, esta recebe ALREADY_HANDLED."""
     state = await get_state(t.session, t.user_id, t.channel, t.now)
-    if state is None:
+    if state is None or state.kind == "reminder":  # contexto do "paguei", não é pergunta
         return None
     kind, data, reply = state.kind, dict(state.data), answer(text)
 
     async def take() -> bool:
         return await clear_state(t.session, t.user_id, t.channel)
 
-    if reply == "cancelar":
+    async def drop() -> None:  # rascunho abandonado: some o estado e a imagem do comprovante
         await take()
+        await discard_draft_attachment(t.session, data)
+
+    if reply == "cancelar":
+        await drop()
         return "Ok, cancelei."
     if kind == "correct":
         fields = edit.parse_correction(text, t.today)
@@ -213,19 +227,28 @@ async def resume(t: Turn, text: str) -> str | None:
     try:
         d = Draft.model_validate(data["draft"])
     except (KeyError, ValueError):  # estado velho/malformado não pode travar a conversa
-        await take()
+        await drop()
         return None
     if kind == "amount":
         amount = parse_bare_amount(text)
         if amount is None:
             if ZERO_OR_NEG.fullmatch(text.strip()):  # parece valor, mas é zero/negativo
                 return ZERO + " Quanto foi?"
-            await take()
+            await drop()
             return None
         d.p.amount_cents = amount
+    elif kind == "receipt":
+        if reply == "nao":
+            await drop()
+            return "Ok, não lancei."
+        out = await receipt.step(t, d, text, reply)
+        if out is not receipt.GO:
+            if out is None:
+                await drop()
+            return str(out) if out is not None else None
     elif kind == "confirm":
         if reply != "sim":
-            await take()
+            await drop()
             return "Ok, não lancei." if reply == "nao" else None
         d.confirmed = True
     else:  # payment | pick_bill
@@ -233,7 +256,7 @@ async def resume(t: Turn, text: str) -> str | None:
         if picked is None:
             if re.fullmatch(r"\d{1,2}", text.strip()):
                 return "Responda com um dos números da lista."
-            await take()
+            await drop()
             return None
         d.options = []
         if kind == "pick_bill":
@@ -252,6 +275,8 @@ async def interpret(
     shortcut = try_shortcut(re.sub(r"#\w+", " ", text))  # "#pessoal gastos" também é atalho
     if shortcut is not None:
         return shortcut, None
+    if await over_budget(t.session, space_id):
+        return fallback_launch(text, h), OVER_BUDGET
     try:
         if t.parser is None:
             raise RuntimeError("no parser configured")
@@ -273,6 +298,12 @@ async def interpret(
 
 
 async def fresh(t: Turn, text: str) -> str:
+    on = digest_toggle(text)
+    if on is not None:
+        t.intent = "ajuda"  # ponytail: sem intent própria; só o log do turno
+        await t.session.execute(update(User).where(User.id == t.user_id).values(weekly_digest=on))
+        await t.session.commit()
+        return DIGEST_ON if on else DIGEST_OFF
     h = extract_hints(text, t.today)
     if h.bad_date:
         return BAD_DATE
@@ -324,21 +355,64 @@ async def handle(session: AsyncSession, ctx: dict[str, Any], row: InboundMessage
     user = await find_user_by_link(session, row.channel, row.external_user_id)
     if user is None:
         return await unlinked(session, row.channel, row.external_user_id, row.text or "")
+    n = await incr_ttl(f"msgrate:{user.id}", 3600)
+    if n > get_settings().MSG_RATE_PER_HOUR:  # sem LLM; avisa só 1x
+        row.user_id = user.id
+        return RATE_LIMITED if n == get_settings().MSG_RATE_PER_HOUR + 1 else None
     row.user_id = user.id
     await session.commit()  # id durável: um rollback adiante não pode deixar a linha sem dono
-    if row.media_kind is not None:  # áudio e foto entram no M6; a legenda não grava nada
-        return MEDIA
-    text = (row.text or "").strip()
-    if not text:
-        return None
     t = Turn(
         session=session, user_id=user.id, tz=user.tz, default_space_id=user.default_space_id,
         channel=row.channel, message_id=row.external_message_id, now=row.received_at,
         today=to_local_date(row.received_at, user.tz), parser=ctx.get("parser"),
     )  # fmt: skip
+    prefix, text = "", (row.text or "").strip()
+    if row.media_kind == "image":  # a legenda só serve para #pessoal/#familia
+        h = extract_hints(text, t.today)
+        space_id, error = await target_space(t, h)
+        if space_id is None:
+            return error or NOT_UNDERSTOOD
+        if await over_budget(session, space_id):
+            return OVER_BUDGET_MEDIA
+        return await receipt.start(t, row, ctx.get("receipt_reader"), space_id, h.private)
+    if row.media_kind == "audio":
+        heard, failure = await transcribe(t, row, ctx.get("transcriber"))
+        if heard is None:
+            return failure
+        text = heard
+        prefix = f'🎙️ "{shorten(text)}"\n'
+    if not text:
+        return None
     reply = await converse(t, text)
     row.result = {"intent": t.intent}
-    return reply
+    return prefix + reply
+
+
+async def transcribe(
+    t: Turn, row: InboundMessage, transcriber: Any
+) -> tuple[str | None, str | None]:
+    """Áudio -> (texto, None) ou (None, resposta de falha). O texto nunca é logado."""
+    space_id, _ = await target_space(t, extract_hints("", t.today))
+    if space_id is not None and await over_budget(t.session, space_id, stt=True):
+        return None, OVER_BUDGET_MEDIA
+    try:
+        data, mime = await get_adapter(row.channel).download_media(row.media_ref or "", MAX_BYTES)
+        heard = await transcriber.transcribe(data, mime)
+    except MediaTooLarge:
+        return None, TOO_BIG
+    except Exception as e:
+        log.warning("audio failed (%s)", type(e).__name__)
+        return None, AUDIO_FAIL
+    if not heard.text:
+        return None, AUDIO_FAIL
+    if space_id is not None:
+        await record_ai_usage(space_id, "stt", seconds=heard.duration_s)
+    return str(heard.text), None
+
+
+def shorten(text: str, limit: int = 120) -> str:
+    one = " ".join(text.split())
+    return one if len(one) <= limit else one[: limit - 1] + "…"
 
 
 def _where(e: BaseException) -> str:

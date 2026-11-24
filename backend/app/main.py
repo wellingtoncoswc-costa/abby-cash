@@ -1,25 +1,34 @@
+import time
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import (
     accounts,
+    admin,
+    attachments,
     auth,
     bills,
     budgets,
     cards,
+    categories,
     channel_links,
     goals,
+    me,
     privacy,
     spaces,
     transactions,
     webhooks,
 )
+from app.core.config import get_settings
 from app.core.db import engine
-from app.core.redis import redis
+from app.core.http import install
+from app.core.redis import HEARTBEAT_KEY, redis
 from app.domain.errors import DomainError
 
 app = FastAPI(title="Abby Cash")
+install(app)
 app.include_router(auth.router)
 app.include_router(spaces.router)
 app.include_router(accounts.router)
@@ -28,6 +37,10 @@ app.include_router(cards.router)
 app.include_router(bills.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
+app.include_router(categories.router)
+app.include_router(me.router)
+app.include_router(admin.router)
+app.include_router(attachments.router)
 app.include_router(channel_links.router)
 app.include_router(privacy.router)
 app.include_router(webhooks.router)
@@ -50,4 +63,17 @@ async def health() -> dict[str, object]:
         redis_ok = bool(await redis.ping())
     except Exception:
         redis_ok = False
-    return {"status": "ok" if db and redis_ok else "degraded", "db": db, "redis": redis_ok}
+    age: int | None = None
+    try:
+        beat = await redis.get(HEARTBEAT_KEY)
+        age = round(time.time() - float(beat)) if beat else None
+    except Exception:
+        pass
+    worker = age is not None and age <= get_settings().HEARTBEAT_STALE_S
+    return {
+        "status": "ok" if db and redis_ok and worker else "degraded",
+        "db": db,
+        "redis": redis_ok,
+        "worker": worker,
+        "worker_last_seen_s": age,
+    }

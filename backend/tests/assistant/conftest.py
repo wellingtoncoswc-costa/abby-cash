@@ -26,6 +26,7 @@ class Chat:
             session, user, adapter, parser, ext,
         )  # fmt: skip
         self.n = 0
+        self.extra: dict = {}  # transcriber / receipt_reader do worker
 
     async def say(self, text: str, *, ts=TS, media_kind: str | None = None) -> str:
         self.n += 1
@@ -33,7 +34,7 @@ class Chat:
             self.session, text, ext=self.ext, msg_id=self.n, ts=ts, media_kind=media_kind
         )
         before = len(self.adapter.sent)
-        await process_inbound({"parser": self.parser}, str(iid))
+        await process_inbound({"parser": self.parser, **self.extra}, str(iid))
         return "\n".join(t for e, t in self.adapter.sent[before:] if e == self.ext)
 
 

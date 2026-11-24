@@ -30,6 +30,7 @@ class Draft(BaseModel):
     warn: str | None = None
     confirmed: bool = False
     private: bool = False
+    attachment_id: UUID | None = None  # comprovante (M6)
 
 
 @dataclass

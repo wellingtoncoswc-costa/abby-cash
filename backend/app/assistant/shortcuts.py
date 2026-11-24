@@ -44,6 +44,14 @@ def try_shortcut(text: str) -> ParsedIntent | None:
     return _COMMANDS[s].model_copy() if s in _COMMANDS else None
 
 
+_DIGEST = {"resumo semanal on": True, "resumo semanal off": False}
+
+
+def digest_toggle(text: str) -> bool | None:
+    """'resumo semanal on/off': True liga, False desliga, None = não é o comando."""
+    return _DIGEST.get(_clean(text))
+
+
 def answer(text: str) -> Literal["sim", "nao", "cancelar"] | None:
     """Resposta curta a uma pergunta pendente."""
     s = _clean(text)

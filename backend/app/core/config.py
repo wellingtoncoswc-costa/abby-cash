@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _ENV_FILE = Path(__file__).resolve().parents[3] / ".env"  # raiz do repo; ausente é tolerado
 
 
+def _need_secret(name: str, value: str) -> None:
+    if len(value) < 16 or "change-me" in value:
+        raise ValueError(f"{name} must be 16+ chars and not a placeholder in prod")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
@@ -29,6 +34,14 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = "./storage"
     PUBLIC_BASE_URL: str = "http://localhost:8000"
     DEFAULT_TZ: str = "America/Sao_Paulo"
+    TOTP_ENC_KEY: str = ""  # chave Fernet (urlsafe base64 de 32 bytes); obrigatória em prod
+    TRUSTED_PROXIES: str = ""  # CIDRs separados por vírgula; só deles se aceita X-Forwarded-For
+    HSTS: bool = False  # ligar só atrás de TLS
+    WEBHOOK_RATE_PER_MIN: int = 600  # teto generoso por IP
+    HEARTBEAT_STALE_S: int = 90
+    MSG_RATE_PER_HOUR: int = 60  # mensagens por usuário/hora (teto de abuso/custo)
+    AI_DAILY_TOKEN_BUDGET: int = 200_000  # tokens de IA por espaço nas últimas 24h
+    STT_DAILY_SECONDS: int = 1800  # segundos de áudio por espaço nas últimas 24h
 
     @model_validator(mode="after")
     def _reject_default_secret_in_prod(self) -> "Settings":
@@ -36,6 +49,13 @@ class Settings(BaseSettings):
             raise ValueError("JWT_SECRET must be set in prod")
         if self.ENV == "prod" and len(self.JWT_SECRET) < 32:
             raise ValueError("JWT_SECRET must be at least 32 chars in prod")
+        if self.ENV == "prod" and not self.TOTP_ENC_KEY:
+            raise ValueError("TOTP_ENC_KEY must be set in prod")
+        if self.ENV == "prod":
+            _need_secret("TELEGRAM_WEBHOOK_SECRET", self.TELEGRAM_WEBHOOK_SECRET)
+            if self.EVOLUTION_URL:
+                _need_secret("EVOLUTION_WEBHOOK_SECRET", self.EVOLUTION_WEBHOOK_SECRET)
+                _need_secret("EVOLUTION_API_KEY", self.EVOLUTION_API_KEY)
         return self
 
 

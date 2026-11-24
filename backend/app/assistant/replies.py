@@ -17,9 +17,6 @@ MONTHS = [
 ]  # fmt: skip
 
 NOT_UNDERSTOOD = "Não entendi. Tente: gastei 45 mercado — ou mande 'ajuda'."
-MEDIA = (
-    "Ainda não entendo áudio nem foto, por enquanto só texto. Mande assim: gastei 45 no mercado."
-)
 HELP = (
     "Eu lanço seus gastos pelo chat. Exemplos:\n"
     "• gastei 45 no mercado\n"
@@ -29,8 +26,11 @@ HELP = (
     "• #pessoal presente 150 (só você vê)\n"
     "Consultas: saldo · teto · faturas · quanto gastei esse mês\n"
     "Ajustes: corrigir · apagar último\n"
-    "Contas: paguei · guardei 500 na viagem"
+    "Contas: paguei · guardei 500 na viagem\n"
+    "Resumo semanal: resumo semanal on · resumo semanal off"
 )
+DIGEST_ON = "✅ Resumo semanal ligado: domingo às 20h."
+DIGEST_OFF = "Resumo semanal desligado."
 AI_DOWN = "⚠️ A IA está indisponível agora; lancei do jeito simples (categoria Outros)."
 CORRECT_PROMPT = (
     "O que está errado? Responda como: valor 50 · categoria Lazer · descrição cinema · "
@@ -150,3 +150,13 @@ async def tx_line(
     if private:
         parts.append("🔒 pessoal")
     return "✅ " + " · ".join(parts) + ('\nResponda "corrigir" se errei.' if hint else "")
+
+
+RATE_LIMITED = "Muitas mensagens por hora. Respire um pouco e continue mais tarde. 🙂"
+OVER_BUDGET = (
+    "Atingi o limite diário de IA deste espaço; lancei do jeito simples. "
+    "Comandos como 'saldo' e 'ajuda' seguem funcionando."
+)
+OVER_BUDGET_MEDIA = (
+    "Atingi o limite diário de IA (fotos e áudios) deste espaço. Tente amanhã ou escreva."
+)

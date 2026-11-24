@@ -3,14 +3,14 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dates import add_months
 from app.domain.accounts.access import use_account
 from app.domain.accounts.statement import Statement, build_statement
-from app.domain.audit import audit
+from app.domain.audit import audit, snap
 from app.domain.bills.models import Bill
 from app.domain.bills.status import invoice_paid, refresh_status
 from app.domain.cards.billing import (
@@ -21,7 +21,7 @@ from app.domain.cards.billing import (
 )
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.errors import DomainError
-from app.domain.spaces.access import is_member, require_member
+from app.domain.spaces.access import is_member, require_member, require_owner
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.rules import check_common
 
@@ -202,3 +202,43 @@ async def invoice_statement(session: AsyncSession, viewer_id: UUID, invoice_id: 
         .order_by(Transaction.occurred_on, Transaction.created_at)
     )
     return await build_statement(session, viewer_id, [(t, t.amount_cents) for t in txs])
+
+
+async def update_card(
+    session: AsyncSession, *, actor_id: UUID, card_id: UUID, fields: dict[str, Any]
+) -> CreditCard:
+    """fields: só as chaves enviadas. Mudar fechamento/vencimento não move compras já lançadas."""
+    card = await visible_card(session, actor_id, card_id)
+    await require_owner(session, actor_id, card.space_id)
+    before = snap(card, fields)
+    for k in ("closing_day", "due_day"):
+        if k in fields and not 1 <= fields[k] <= 31:
+            raise DomainError("invalid_day")
+    if fields.get("limit_cents") is not None and fields["limit_cents"] <= 0:
+        raise DomainError("amount_must_be_positive")
+    if fields.get("payment_account_id") is not None:
+        await use_account(session, actor_id, fields["payment_account_id"])
+    for k, v in fields.items():
+        setattr(card, k, v)
+    audit(session, actor_id, "card.update", "card", card.id,
+          {"space_id": str(card.space_id), "before": before,
+           "after": snap(card, fields)})  # fmt: skip
+    await session.commit()
+    return card
+
+
+async def delete_card(session: AsyncSession, *, actor_id: UUID, card_id: UUID) -> None:
+    """Só o dono do espaço; recusa cartão com faturas/compras (sem arquivar)."""
+    card = await visible_card(session, actor_id, card_id)
+    await require_owner(session, actor_id, card.space_id)
+    used = await session.scalar(
+        select(
+            exists().where(Invoice.card_id == card.id)
+            | exists().where(Transaction.card_id == card.id)
+        )
+    )
+    if used:
+        raise DomainError("card_in_use")
+    audit(session, actor_id, "card.delete", "card", card.id, {"space_id": str(card.space_id)})
+    await session.delete(card)
+    await session.commit()

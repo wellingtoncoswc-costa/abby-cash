@@ -1,37 +1,61 @@
 name: abby-cash
 # Rodar com: docker compose --env-file .env -f infra/docker-compose.prod.yml ...
 # (--env-file alimenta a interpolação de ${POSTGRES_PASSWORD}).
-# Esqueleto: o M8 completa (proxy, volumes, backups). Sem portas públicas.
+# Portas: só api (127.0.0.1:18000) e web (127.0.0.1:18081), para o Nginx do host. Nada público.
 services:
   api:
+    image: "${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-api:${ABBY_TAG:?defina ABBY_TAG}"
     build: ../backend
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD}@redis:6379/0
       ENV: prod
-    networks: [abby-cash-net]
+      STORAGE_DIR: /data/storage
+      PUBLIC_BASE_URL: https://abbycash.abbysystems.com.br
+      HSTS: "true"
+      TRUSTED_PROXIES: 172.29.77.1/32  # SÓ o gateway fixo de abby-cash-net (o Nginx do host chega por ele)
+    ports: ["127.0.0.1:18000:8000"]
+    volumes: [storage:/data/storage]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [abby-cash-net, evolution-bridge]
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
-      redis: {condition: service_started}
+      redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
   worker:
+    image: "${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-api:${ABBY_TAG:?defina ABBY_TAG}"
     build: ../backend
     command: arq app.worker.WorkerSettings
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://abby:${POSTGRES_PASSWORD}@postgres:5432/abby
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD}@redis:6379/0
       ENV: prod
-    networks: [abby-cash-net]
+      STORAGE_DIR: /data/storage
+    volumes: [storage:/data/storage]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [abby-cash-net, evolution-bridge]
     restart: unless-stopped
     depends_on:
       postgres: {condition: service_healthy}
-      redis: {condition: service_started}
+      redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
   postgres:
-    image: postgres:16
+    image: postgres:16.6
     # sem env_file: o postgres não deve receber JWT_SECRET, chaves de API etc.
     environment: {POSTGRES_USER: abby, POSTGRES_DB: abby, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"}
     volumes: [pgdata:/var/lib/postgresql/data]
@@ -43,13 +67,19 @@ services:
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "1", memory: 512M}}}
   redis:
-    image: redis:7
-    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10}
+    image: redis:7.4-alpine
+    # senha obrigatória: o Redis do app guarda filas/estado; nada além de api/worker o alcança
+    environment: {REDIS_PASSWORD: "${REDIS_PASSWORD:?defina REDIS_PASSWORD}"}
+    command: ["sh", "-c", 'exec redis-server --requirepass "$$REDIS_PASSWORD"']
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      retries: 10
     networks: [abby-cash-net]
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
-  # WhatsApp (Evolution API v2): sem porta pública; só api/worker falam com ela pela rede interna;
-  # o banco e o Redis dela ficam em `evolution-net`, que só a Evolution enxerga.
+  # WhatsApp (Evolution API v2): sem porta pública. `evolution-bridge` é compartilhada SÓ com api/worker;
+  # o banco e o Redis dela ficam em `evolution-net`. A Evolution não resolve nem alcança o Redis/Postgres do app.
   # Banco e Redis PRÓPRIOS (a Evolution guarda a sessão do WhatsApp; não misturar com os do app).
   evolution:
     image: evoapicloud/evolution-api:v2.3.7  # fixada (imagem oficial atual; atendai/* não é mais publicada); não usar latest
@@ -62,14 +92,14 @@ services:
       CACHE_REDIS_URI: redis://evolution-redis:6379/6
       CACHE_LOCAL_ENABLED: "false"
     volumes: [evolution_instances:/evolution/instances]
-    networks: [abby-cash-net, evolution-net]
+    networks: [evolution-net, evolution-bridge]  # NÃO entra em abby-cash-net (sem acesso ao Redis/Postgres do app)
     restart: unless-stopped
     depends_on:
       evolution-db: {condition: service_healthy}
       evolution-redis: {condition: service_started}
     deploy: {resources: {limits: {cpus: "1", memory: 768M}}}
   evolution-db:
-    image: postgres:16
+    image: postgres:16.6
     environment:
       {POSTGRES_USER: evolution, POSTGRES_DB: evolution, POSTGRES_PASSWORD: "${EVOLUTION_DB_PASSWORD:?defina EVOLUTION_DB_PASSWORD}"}
     volumes: [evolution_pgdata:/var/lib/postgresql/data]
@@ -81,14 +111,70 @@ services:
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "0.5", memory: 256M}}}
   evolution-redis:
-    image: redis:7
+    image: redis:7.4-alpine
     networks: [evolution-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
+  # STT (faster-whisper): só rede interna; limites para não competir com o abby-chat.
+  stt:
+    image: "${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-stt:${ABBY_TAG:?defina ABBY_TAG}"
+    build: ../stt
+    environment: {STT_MODEL: "${STT_MODEL:-small}"}
+    volumes: [stt_models:/models]
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "2", memory: 2G}}}
+  # Web (build estático + fallback de SPA); o Nginx do host faz o proxy de `/` para cá.
+  web:
+    image: "${ABBY_REGISTRY:-ghcr.io/abby-cash}/abby-cash-web:${ABBY_TAG:?defina ABBY_TAG}"
+    build: {context: ../web, dockerfile: ../infra/web.Dockerfile}
+    ports: ["127.0.0.1:18081:8080"]
+    healthcheck: {test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"], interval: 30s, retries: 3}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]  # nginx-unprivileged: pid e caches em /tmp
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.25", memory: 64M}}}
+  # Backup diário 03:00 (America/Sao_Paulo): dump + anexos criptografados com age (chave pública).
+  # Sem .env inteiro: só o que o backup usa. Envio ao Drive (rclone) é opcional (BACKUP_RCLONE_REMOTE).
+  backup:
+    build: ./backup
+    environment:
+      PGHOST: postgres
+      PGUSER: abby
+      PGDATABASE: abby
+      PGPASSWORD: "${POSTGRES_PASSWORD}"
+      STORAGE_DIR: /data/storage
+      BACKUP_DIR: /backups
+      BACKUP_AGE_RECIPIENT: "${BACKUP_AGE_RECIPIENT:-}"  # vazio: backup.sh falha e alerta (obrigatória)
+      BACKUP_RCLONE_REMOTE: "${BACKUP_RCLONE_REMOTE:-}"
+      BACKUP_ADMIN_CHAT_ID: "${BACKUP_ADMIN_CHAT_ID:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      RCLONE_CONFIG: /config/rclone/rclone.conf  # criar: docker compose run --rm --entrypoint rclone backup config
+    volumes: [storage:/data/storage:ro, backups:/backups, rclone_conf:/config/rclone]
+    # roda como root (crond), mas sem capabilities; DAC_READ_SEARCH lê anexos do uid 10001 (modo 0600)
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp, /run, /etc/crontabs]
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [abby-cash-net]
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
 networks:
   abby-cash-net:
+    ipam: {config: [{subnet: 172.29.77.0/24, gateway: 172.29.77.1}]}  # fixa p/ TRUSTED_PROXIES (/32 do gateway); troque os dois se colidir
   evolution-net:
+  evolution-bridge:  # só api, worker e evolution
 volumes:
+  storage:
+  backups:
+  stt_models:
+  rclone_conf:
   pgdata:
   evolution_pgdata:
   evolution_instances:

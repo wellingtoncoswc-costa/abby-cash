@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from app.api import webhooks
-from app.assistant.replies import MEDIA, NOT_UNDERSTOOD
+from app.assistant.replies import NOT_UNDERSTOOD
 from app.domain.accounts.service import set_default_account
 from app.domain.budgets.service import set_budget
 from app.domain.channels.models import InboundMessage
@@ -334,12 +334,6 @@ async def test_without_a_configured_parser_the_fallback_is_used(ana, session):
     await ana.say("gastei 45 no mercado")
     reply = await ana.say("sim")
     assert reply.startswith("⚠️ A IA está indisponível")
-
-
-async def test_media_message_gets_polite_reply(ana, parser, session):
-    assert await ana.say("", media_kind="audio") == MEDIA
-    assert await ana.say("farmácia 87,40", media_kind="image") == MEDIA  # legenda não grava
-    assert await txs(session) == [] and parser.calls == []
 
 
 async def test_unknown_goes_to_not_understood_and_help_lists_examples(ana, parser):

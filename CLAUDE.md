@@ -44,3 +44,9 @@ Prod: `docker compose --env-file .env -f infra/docker-compose.prod.yml up -d` (o
 - Vínculo: código de 6 dígitos (10 min, 1 vivo por usuário, limites por remetente e global). `docs/api_keys/` e `.env` nunca vão para o git.
 - Avaliação real do modelo (manual, gasta API): `cd backend && uv run python scripts/run_eval.py`.
 - `purge-inbound` apaga mensagens antigas; o texto é zerado quando a mensagem termina.
+
+## Produção (M8)
+- Deploy: `infra/deploy.md` (domínio `abbycash.abbysystems.com.br`, Nginx do host com server novo `infra/nginx/abby-cash.conf`; web e API na mesma origem). Nunca mexer no `abby-chat`/outros contêineres.
+- Logs JSON com `request_id`; nunca logar texto de mensagem, tokens ou PII. IP do cliente só via `app.core.http.client_ip` (`TRUSTED_PROXIES`).
+- `/health` expõe `worker` (heartbeat no Redis); `TOTP_ENC_KEY` (Fernet) cifra `users.totp_secret`; obrigatória em prod.
+- Backup: `infra/backup/` (age + retenção 7/4/6, rclone opcional por `BACKUP_RCLONE_REMOTE`); teste: `bash infra/backup/test_backup.sh`. Restauração: `infra/backup/restore.md`.
