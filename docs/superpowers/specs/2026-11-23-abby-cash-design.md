@@ -255,3 +255,6 @@ Seletor de espaço no topo (Pessoal / Família).
    - pagamento de **fatura** → **transferência** da conta escolhida para o cartão (não conta no teto, pois as compras já contaram); pagamento parcial permitido, o restante fica em aberto;
    - "paguei" pelo chat usa a conta padrão do usuário e permite sobrescrever ("paguei no dinheiro", "paguei pela conta Itaú"); a confirmação mostra a conta debitada;
    - a carteira é uma conta do tipo `wallet` criada automaticamente em cada espaço pessoal.
+
+## 15. Identidade visual (2026-11-24)
+O Abby Cash usa a **mesma logomarca e o mesmo visual da família Abby**, tomando como referência o abby-map (ADR 0050 daquele repositório): o "a" de traço contínuo com ponto de luz, a paleta Névoa/Tinta/Vidro/Luz, tema claro por padrão com escuro opcional, fonte Onest e wordmark `abby` em minúsculas, aqui acompanhado do rótulo `cash`. Detalhes, tokens e arquivos: `docs/design/identidade-visual.md` e `docs/design/logomarca.md`. O visual antigo do abby-chat (azul-marinho escuro, ícone de raio) não é referência.

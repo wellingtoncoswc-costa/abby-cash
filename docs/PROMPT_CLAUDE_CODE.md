@@ -10,14 +10,15 @@ Você vai implementar o Abby Cash v1 do zero neste repositório. Ele é um assis
 ## Documentos que mandam
 1. Spec: docs/superpowers/specs/2026-11-23-abby-cash-design.md. Em caso de conflito, as seções 13 e 14 prevalecem.
 2. Plano: docs/superpowers/plans/2026-11-23-abby-cash-v1.md. Ele tem os marcos M1–M8, as interfaces, os testes obrigatórios e o aceite.
-Leia os dois inteiros antes de qualquer código. As "Restrições globais" e o "Foco de revisão" do plano valem para todas as tarefas. Não renomeie as interfaces do plano. Se precisar mudar alguma, atualize o plano no mesmo commit e me avise.
+3. Identidade visual: docs/design/identidade-visual.md e docs/design/logomarca.md. O abby cash tem a MESMA logomarca e o MESMO visual da família Abby (referência: abby-map). Copie os tokens e os arquivos de marca literalmente, sem reinterpretar cores, fonte ou logo. Nunca use hex fixo em componente, só tokens.
+Leia os três inteiros antes de qualquer código. As "Restrições globais" e o "Foco de revisão" do plano valem para todas as tarefas. Não renomeie as interfaces do plano. Se precisar mudar alguma, atualize o plano no mesmo commit e me avise.
 
 ## Como trabalhar
 - Use os skills do superpowers, se estiverem instalados (se não estiverem, siga o mesmo processo manualmente):
   - para cada marco, primeiro detalhe as tarefas em passos TDD com superpowers:writing-plans, salvando em docs/superpowers/plans/2026-11-23-abby-cash-mN-<nome>.md;
   - depois execute com superpowers:subagent-driven-development (um subagente implementa e outro revisa cada tarefa);
   - antes de declarar algo pronto, use superpowers:verification-before-completion.
-- Economia de tokens com o ponytail: use o ponytail (já instalado no meu Claude Code) em TUDO, ou seja, na leitura da spec e do plano, no planejamento de cada marco, na implementação, nos subagentes, nos testes, nos code reviews e nos relatórios. Passe a mesma instrução para todo subagente que você criar. A economia nunca pode pular etapas obrigatórias: TDD, testes, code review e verificação continuam integrais. Se o ponytail não estiver disponível nesta sessão, pare e me avise antes de começar.
+- Economia de tokens com o ponytail: invoque a skill `ponytail:ponytail` (já instalada no meu Claude Code) e use-a em TUDO, inclusive antes de escrever ou alterar qualquer código, mesmo em edições pontuais. Isso vale na leitura da spec e do plano, no planejamento de cada marco, na implementação, nos subagentes, nos testes, nos code reviews e nos relatórios. Passe a mesma instrução para todo subagente que você criar. A economia nunca pode pular etapas obrigatórias: TDD, testes, code review e verificação continuam integrais. Se o ponytail não estiver disponível nesta sessão, pare e me avise antes de começar.
 - Code review obrigatório, em três momentos:
   1. ao fim de cada tarefa, o revisor do subagent-driven-development precisa aprovar antes da próxima tarefa;
   2. ao fim de cada marco, antes de abrir o PR, rode `/code-review high` no diff do branch do marco contra `main`, corrija os achados confirmados, rode os testes de novo e repita até não sobrar nada importante;
