@@ -37,6 +37,7 @@ async def test_disconnect_alert_once(env):
     for _ in range(3):
         await check_evolution_connection({})
     assert len(tg.sent) == 1 and tg.sent[0][0] == "999" and "close" in tg.sent[0][1]
+    assert await redis.ttl(DOWN_KEY) == -1  # entregue: incidente fixado
     evo.state = "open"  # voltou: fecha o incidente
     await check_evolution_connection({})
     assert await redis.get(DOWN_KEY) is None
@@ -54,3 +55,15 @@ async def test_connected_or_unconfigured_sends_nothing(env, monkeypatch):
     evo.state = "close"
     await check_evolution_connection({})
     assert tg.sent == []
+
+
+async def test_no_admin_reached_does_not_pin_incident(env):
+    tg, evo = env
+
+    async def boom(*a):
+        raise RuntimeError("x")
+
+    tg.send_text = boom  # ninguém recebe
+    await check_evolution_connection({})
+    ttl = await redis.ttl(DOWN_KEY)
+    assert 0 < ttl <= 3600  # expira: o próximo ciclo avisa de novo

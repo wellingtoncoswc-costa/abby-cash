@@ -27,10 +27,12 @@ async def check_evolution_connection(ctx: dict[str, Any] | None = None) -> None:
     if state == "open":
         await redis.delete(DOWN_KEY)
         return
-    if not await redis.set(DOWN_KEY, state, nx=True):
-        return  # incidente já avisado
+    if not await redis.set(DOWN_KEY, state, nx=True, ex=3600):
+        return  # incidente já avisado (ou aguardando nova tentativa)
     async with SessionLocal() as s:
         admins = list(await s.scalars(select(User.id).where(User.is_admin)))
-    for uid in admins:
-        await notify_user(uid, DOWN.format(state=state), prefer="telegram")
+    sent = [await notify_user(uid, DOWN.format(state=state), prefer="telegram") for uid in admins]
+    if any(sent):
+        await redis.persist(DOWN_KEY)  # avisou alguém: vale até a instância voltar
+    # senão a chave expira em 1h e o próximo ciclo tenta avisar de novo
     log.warning("evolution disconnected (%s)", state)
