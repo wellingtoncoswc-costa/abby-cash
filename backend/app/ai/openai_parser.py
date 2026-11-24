@@ -6,6 +6,7 @@ from app.ai.usage import record_ai_usage
 from app.assistant.context import SpaceContext
 from app.assistant.intents import ParsedIntent
 from app.core.config import get_settings
+from app.core.text import restore_accents
 
 MAX_TEXT_CHARS = 2000
 END_MARK = "<<<FIM>>>"
@@ -171,4 +172,10 @@ class OpenAIIntentParser:
         parsed: ParsedIntent = message.parsed
         if parsed.occurred_on is not None and abs((parsed.occurred_on - ctx.today).days) > 5 * 366:
             raise IntentParseError("date_out_of_range")
+        for f in (
+            "description",
+            "merchant",
+            "new_name",
+        ):  # texto livre sem acento -> trecho original
+            setattr(parsed, f, restore_accents(getattr(parsed, f), text))
         return parsed
