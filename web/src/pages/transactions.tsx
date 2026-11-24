@@ -4,7 +4,7 @@ import { api, ApiError, apiPage, fetchBlob } from '../api/client'
 import type { Card as CardT, Member, S, Tx } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, centsText, today, useAccounts, useCategories, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
 import { TxList } from './dashboard'
 
 const PAGE = 20
@@ -23,7 +23,28 @@ export function Receipt({ id }: { id: string }) {
   return url ? <img src={url} alt="Comprovante" className="mt-2 max-h-96 rounded-md" /> : <p>Carregando comprovante…</p>
 }
 
+function TransferDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
+  const { data, label } = useAllAccounts()
+  const name = (id: string | null) => { const a = data.find((x) => x.id === id); return a ? label(a) : 'Conta' }
+  const del = useSend(() => api('DELETE', `/transactions/${t.id}`), onClose)
+  return (
+    <Card title="Detalhes da transferência">
+      <p>Transferência · {name(t.account_id)} → {name(t.counter_account_id)} · {formatBRL(t.amount_cents)} · {br(t.occurred_on)}</p>
+      {t.description && <p>{t.description}</p>}
+      <p className="text-sm">Transferências não podem ser editadas. Exclua e lance de novo para corrigir.</p>
+      <Err e={del.error} />
+      <Btn type="button" className="mt-2 bg-destructive hover:bg-destructive/90" disabled={del.isPending} onClick={() => { if (confirm('Excluir transferência?')) del.mutate() }}>Excluir transferência</Btn>
+      <button type="button" className="mt-2 ml-3 underline" onClick={onClose}>Fechar</button>
+    </Card>
+  )
+}
+
 export function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
+  if (t.type === 'transfer') return <TransferDetail t={t} onClose={onClose} />
+  return <ExpenseDetail t={t} onClose={onClose} />
+}
+
+function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
   const cats = useCategories()
   const locked = !!(t.card_id || t.installment_group_id) // valor e data mexem na fatura: só pelo chat/recriando
   const init: Record<string, string> = { amount: centsText(t.amount_cents), description: t.description, merchant: t.merchant ?? '', occurred_on: t.occurred_on, category_id: t.category_id ?? '' }
@@ -59,6 +80,38 @@ export function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
       {t.installment_group_id && <p className="text-sm">Excluir apaga todas as parcelas.</p>}
       {t.attachment_id && <Receipt id={t.attachment_id} />}
       <button type="button" className="mt-2 block underline" onClick={onClose}>Fechar</button>
+    </Card>
+  )
+}
+
+function TransferForm() {
+  const { data: accounts, label } = useAllAccounts()
+  const [f, setF] = useState({ from: '', to: '', amount: '', description: '', occurred_on: today() })
+  const src = accounts.find((a) => a.id === f.from)
+  const cents = parseBRL(f.amount)
+  const over = !!src && src.pockets_cents > 0 && !!cents && cents > src.available_cents // sem caixinhas o saldo pode ficar negativo
+  const send = useSend(
+    () => api('POST', `/spaces/${src!.space_id}/transactions`, { type: 'transfer', amount_cents: cents!, description: f.description, account_id: f.from, counter_account_id: f.to, occurred_on: f.occurred_on } satisfies S['TransactionIn']),
+    () => setF({ ...f, amount: '', description: '' }),
+  )
+  const opts = (skip: string) => accounts.filter((a) => a.id !== skip).map((a) => <option key={a.id} value={a.id}>{label(a)}</option>)
+  return (
+    <Card title="Transferir entre contas">
+      {accounts.length < 2 ? <p>Cadastre pelo menos duas contas para transferir.</p> : (
+        <form onSubmit={(e) => { e.preventDefault(); send.reset(); if (cents && !over) send.mutate() }}>
+          <Field label="Conta de origem"><select required value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, to: f.to === e.target.value ? '' : f.to })}><option value="">Selecione…</option>{opts('')}</select></Field>
+          {src && <p className="mb-3 text-sm">Disponível na origem: {formatBRL(src.available_cents)}</p>}
+          <Field label="Conta de destino"><select required value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })}><option value="">Selecione…</option>{opts(f.from)}</select></Field>
+          <Field label="Valor da transferência (R$)"><input inputMode="decimal" required placeholder="300,00" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+          <Field label="Data da transferência"><input type="date" required value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+          <Field label="Descrição da transferência (opcional)"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+          {f.amount && !cents && <p role="alert" className="text-sm text-destructive">Valor inválido.</p>}
+          {over && <p role="alert" className="text-sm text-destructive">Valor maior que o disponível ({formatBRL(src!.available_cents)}); o resto está em caixinhas.</p>}
+          <Err e={send.error} />
+          <Btn type="submit" disabled={send.isPending || !cents || !f.from || !f.to || over}>Transferir</Btn>
+          {send.isSuccess && <p role="status" className="mt-2">Transferido.</p>}
+        </form>
+      )}
     </Card>
   )
 }
@@ -134,6 +187,7 @@ export function Transactions() {
           <Btn type="submit" disabled={create.isPending || !cents}>Salvar</Btn>
         </form>
       </Card>
+      <TransferForm />
       <PurchaseForm />
       <Card title="Filtros">
         <div className="grid grid-cols-2 gap-2">
