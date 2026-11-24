@@ -11,6 +11,7 @@ from app.domain.accounts.models import Account
 from app.domain.audit import audit
 from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 from app.domain.categories.models import Category
+from app.domain.errors import DomainError
 from app.domain.spaces.access import require_member
 from app.domain.spaces.models import Space, SpaceInvite, SpaceMember
 from app.domain.users.models import User
@@ -120,13 +121,7 @@ async def accept_space_invite(session: AsyncSession, *, token: str, user_id: UUI
     return space_id
 
 
-async def remove_member(
-    session: AsyncSession, *, actor_id: UUID, space_id: UUID, user_id: UUID
-) -> None:
-    await _require_owner(session, actor_id, space_id)
-    space = await session.get(Space, space_id)
-    if space is None or user_id == space.owner_id:
-        raise ValueError("cannot_remove_owner")
+async def _drop_member(session: AsyncSession, space_id: UUID, user_id: UUID) -> int:
     res = await session.execute(
         delete(SpaceMember).where(SpaceMember.space_id == space_id, SpaceMember.user_id == user_id)
     )
@@ -135,10 +130,45 @@ async def remove_member(
         user.default_space_id = await session.scalar(
             select(Space.id).where(Space.owner_id == user_id, Space.type == "personal")
         )
-    if res.rowcount:  # type: ignore[attr-defined]
+    return res.rowcount  # type: ignore[attr-defined,no-any-return]
+
+
+async def remove_member(
+    session: AsyncSession, *, actor_id: UUID, space_id: UUID, user_id: UUID
+) -> None:
+    await _require_owner(session, actor_id, space_id)
+    space = await session.get(Space, space_id)
+    if space is None or user_id == space.owner_id:
+        raise ValueError("cannot_remove_owner")
+    removed = await _drop_member(session, space_id, user_id)
+    if removed:
         audit(
             session, actor_id, "space.remove_member", "space", space_id, {"user_id": str(user_id)}
         )
     await session.commit()
-    if res.rowcount == 0:  # type: ignore[attr-defined]
+    if not removed:
         raise HTTPException(status_code=404, detail="not_found")
+
+
+async def leave_space(session: AsyncSession, *, user_id: UUID, space_id: UUID) -> None:
+    """O membro sai por conta própria. O dono não sai (apagar o espaço não existe na v1)."""
+    member = await require_member(session, user_id, space_id)
+    if member.role == "owner":
+        raise DomainError("owner_cannot_leave")
+    await _drop_member(session, space_id, user_id)
+    audit(session, user_id, "space.leave", "space", space_id)
+    await session.commit()
+
+
+async def list_members(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID
+) -> list[tuple[SpaceMember, str]]:
+    """Só nome (nunca e-mail), papel e data de entrada."""
+    await require_member(session, viewer_id, space_id)
+    rows = await session.execute(
+        select(SpaceMember, User.name)
+        .join(User, User.id == SpaceMember.user_id)
+        .where(SpaceMember.space_id == space_id)
+        .order_by(SpaceMember.joined_at, User.name)
+    )
+    return [(m, n) for m, n in rows]

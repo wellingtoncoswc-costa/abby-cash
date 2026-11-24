@@ -31,6 +31,7 @@ class SpaceMember(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
     role: Mapped[str] = mapped_column(String(16))  # owner | member
     default_account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"))
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SpaceInvite(Base):
