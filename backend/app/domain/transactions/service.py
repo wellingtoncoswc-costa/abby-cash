@@ -57,11 +57,18 @@ async def create_transaction(
     )  # fmt: skip
     if account_id is None:
         raise DomainError("account_required")
-    await use_account(session, actor_id, account_id)
+    source = await use_account(session, actor_id, account_id)
     if type == "transfer":
         if counter_account_id is None or counter_account_id == account_id:
             raise DomainError("invalid_transfer")
         await use_account(session, actor_id, counter_account_id)
+        from app.domain.pockets.service import account_pockets_cents  # evita import circular
+
+        await session.refresh(source, with_for_update=True)  # serializa saídas da mesma conta
+        if (pockets := await account_pockets_cents(session, account_id)) > 0 and (
+            amount_cents > await account_balance(session, account_id) - pockets
+        ):  # só com dinheiro em caixinhas; sem elas o saldo pode ficar negativo
+            raise HTTPException(status_code=409, detail="insufficient_available")
     elif counter_account_id is not None:
         raise DomainError("invalid_transfer")
     tx = Transaction(
