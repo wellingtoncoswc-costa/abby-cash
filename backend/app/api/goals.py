@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents
+from app.api.schemas import Cents, GoalOut, GoalProgressOut, TransactionOut
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.goals.models import Goal
@@ -15,7 +15,9 @@ from app.domain.goals.service import (
     GoalProgress,
     contribute,
     create_goal,
+    delete_goal,
     goal_progress,
+    update_goal,
     visible_goal,
     withdraw,
 )
@@ -52,7 +54,7 @@ def _progress(p: GoalProgress) -> dict[str, Any]:
     }  # fmt: skip
 
 
-@router.post("/spaces/{space_id}/goals", status_code=201)
+@router.post("/spaces/{space_id}/goals", status_code=201, response_model=GoalOut)
 async def create(
     space_id: UUID, body: GoalIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -64,7 +66,7 @@ async def create(
     return row(goal)
 
 
-@router.get("/spaces/{space_id}/goals")
+@router.get("/spaces/{space_id}/goals", response_model=list[GoalProgressOut])
 async def list_goals(space_id: UUID, user: CurrentUser, session: Session) -> list[dict[str, Any]]:
     await require_member(session, user.id, space_id)
     goals = await session.scalars(
@@ -75,13 +77,13 @@ async def list_goals(space_id: UUID, user: CurrentUser, session: Session) -> lis
             for g in goals]  # fmt: skip
 
 
-@router.get("/goals/{goal_id}")
+@router.get("/goals/{goal_id}", response_model=GoalProgressOut)
 async def get_goal(goal_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
     goal = await visible_goal(session, user.id, goal_id)
     return row(goal) | _progress(await goal_progress(session, goal.id, today=local_today(user.tz)))
 
 
-@router.post("/goals/{goal_id}/contributions", status_code=201)
+@router.post("/goals/{goal_id}/contributions", status_code=201, response_model=TransactionOut)
 async def add_contribution(
     goal_id: UUID, body: ContributionIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -92,7 +94,7 @@ async def add_contribution(
     return row(tx)
 
 
-@router.post("/goals/{goal_id}/withdrawals", status_code=201)
+@router.post("/goals/{goal_id}/withdrawals", status_code=201, response_model=TransactionOut)
 async def add_withdrawal(
     goal_id: UUID, body: WithdrawalIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -101,3 +103,26 @@ async def add_withdrawal(
         amount_cents=body.amount_cents, on=body.occurred_on or local_today(user.tz),
     )  # fmt: skip
     return row(tx)
+
+
+class GoalPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    target_cents: Cents | None = None
+    deadline: date | None = None  # null remove o prazo
+
+
+@router.patch("/goals/{goal_id}", response_model=GoalProgressOut)
+async def patch(
+    goal_id: UUID, body: GoalPatch, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    fields = body.model_dump(exclude_unset=True)
+    for k in ("name", "target_cents"):
+        if k in fields and fields[k] is None:
+            del fields[k]
+    goal = await update_goal(session, actor_id=user.id, goal_id=goal_id, fields=fields)
+    return row(goal) | _progress(await goal_progress(session, goal.id, today=local_today(user.tz)))
+
+
+@router.delete("/goals/{goal_id}", status_code=204)
+async def delete(goal_id: UUID, user: CurrentUser, session: Session) -> None:
+    await delete_goal(session, actor_id=user.id, goal_id=goal_id)

@@ -1,10 +1,11 @@
 import re
 import unicodedata
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.access import use_account
@@ -95,12 +96,10 @@ async def account_balance(session: AsyncSession, account_id: UUID) -> int:
     return acc.initial_balance_cents + sum(signed(t, account_id) for t in rows)
 
 
-async def list_transactions(
-    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, start: date | None = None,
-    end: date | None = None, category_id: UUID | None = None, account_id: UUID | None = None,
-    limit: int = 100, offset: int = 0,
-) -> list[Transaction]:  # fmt: skip
-    await require_member(session, viewer_id, space_id)
+def _filtered(
+    space_id: UUID, start: date | None, end: date | None, category_id: UUID | None,
+    account_id: UUID | None, card_id: UUID | None, created_by: UUID | None,
+) -> Select[Any]:  # fmt: skip
     q = select(Transaction).where(Transaction.space_id == space_id)
     if start is not None:
         q = q.where(Transaction.occurred_on >= start)
@@ -108,12 +107,37 @@ async def list_transactions(
         q = q.where(Transaction.occurred_on <= end)
     if category_id is not None:
         q = q.where(Transaction.category_id == category_id)
+    if card_id is not None:
+        q = q.where(Transaction.card_id == card_id)
+    if created_by is not None:
+        q = q.where(Transaction.created_by == created_by)
     if account_id is not None:
         q = q.where(
             or_(Transaction.account_id == account_id, Transaction.counter_account_id == account_id)
         )
-    q = q.order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
-    return list(await session.scalars(q.limit(limit).offset(offset)))
+    return q
+
+
+async def list_transactions(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, start: date | None = None,
+    end: date | None = None, category_id: UUID | None = None, account_id: UUID | None = None,
+    card_id: UUID | None = None, created_by: UUID | None = None, limit: int = 100,
+    offset: int = 0,
+) -> list[Transaction]:  # fmt: skip
+    await require_member(session, viewer_id, space_id)
+    q = _filtered(space_id, start, end, category_id, account_id, card_id, created_by)
+    page = q.order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
+    return list(await session.scalars(page.limit(limit).offset(offset)))
+
+
+async def count_transactions(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, start: date | None = None,
+    end: date | None = None, category_id: UUID | None = None, account_id: UUID | None = None,
+    card_id: UUID | None = None, created_by: UUID | None = None,
+) -> int:  # fmt: skip
+    await require_member(session, viewer_id, space_id)
+    q = _filtered(space_id, start, end, category_id, account_id, card_id, created_by)
+    return int(await session.scalar(select(func.count()).select_from(q.subquery())) or 0)
 
 
 async def _target(

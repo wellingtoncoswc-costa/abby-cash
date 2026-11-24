@@ -8,11 +8,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import SignedCents
+from app.api.schemas import AccountDetailOut, AccountOut, SignedCents
 from app.core.serialize import row
 from app.domain.accounts.access import visible_account
 from app.domain.accounts.models import Account
-from app.domain.accounts.service import create_account, set_default_account
+from app.domain.accounts.service import (
+    create_account,
+    delete_account,
+    set_default_account,
+    update_account,
+)
 from app.domain.accounts.statement import account_statement
 from app.domain.errors import DomainError
 from app.domain.spaces.models import SpaceMember
@@ -27,11 +32,16 @@ class AccountIn(BaseModel):
     initial_balance_cents: SignedCents = 0
 
 
+class AccountPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    initial_balance_cents: SignedCents | None = None
+
+
 class DefaultAccountIn(BaseModel):
     account_id: UUID
 
 
-@router.post("/spaces/{space_id}/accounts", status_code=201)
+@router.post("/spaces/{space_id}/accounts", status_code=201, response_model=AccountOut)
 async def create(
     space_id: UUID, body: AccountIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -42,7 +52,7 @@ async def create(
     return row(acc)
 
 
-@router.get("/accounts")
+@router.get("/accounts", response_model=list[AccountOut])
 async def list_accounts(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
     """Contas de todos os espaços de que o usuário é membro (inclui as compartilháveis)."""
     rows = await session.scalars(
@@ -54,10 +64,25 @@ async def list_accounts(user: CurrentUser, session: Session) -> list[dict[str, A
     return [row(a) for a in rows]
 
 
-@router.get("/accounts/{account_id}")
+@router.get("/accounts/{account_id}", response_model=AccountDetailOut)
 async def get_account(account_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
     acc = await visible_account(session, user.id, account_id)
     return row(acc) | {"balance_cents": await account_balance(session, acc.id)}
+
+
+@router.patch("/accounts/{account_id}", response_model=AccountOut)
+async def patch(
+    account_id: UUID, body: AccountPatch, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    fields = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    return row(
+        await update_account(session, actor_id=user.id, account_id=account_id, fields=fields)
+    )
+
+
+@router.delete("/accounts/{account_id}", status_code=204)
+async def delete(account_id: UUID, user: CurrentUser, session: Session) -> None:
+    await delete_account(session, actor_id=user.id, account_id=account_id)
 
 
 @router.put("/spaces/{space_id}/default-account", status_code=204)
