@@ -120,7 +120,9 @@ async def test_transactions_patch_delete_filters(client, session):
     assert purchase.status_code == 201
     r = await client.get(f"/spaces/{sp}/transactions?limit=2", headers=ha)
     assert len(r.json()) == 2 and r.headers["x-total-count"] == "5"
-    assert (await client.get(f"/spaces/{sp}/transactions?limit=1001", headers=ha)).status_code == 422
+    assert (
+        await client.get(f"/spaces/{sp}/transactions?limit=1001", headers=ha)
+    ).status_code == 422
     r = await client.get(f"/spaces/{sp}/transactions?created_by={b.id}", headers=ha)
     assert [t["id"] for t in r.json()] == [t2["id"]] and r.headers["x-total-count"] == "1"
     r = await client.get(f"/spaces/{sp}/transactions?card_id={card.id}", headers=ha)
