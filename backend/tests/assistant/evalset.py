@@ -12,6 +12,8 @@ from app.assistant.context import (
     CtxCard,
     CtxCategory,
     CtxGoal,
+    CtxLoan,
+    CtxPocket,
     SpaceContext,
 )
 from app.assistant.intents import ParsedIntent
@@ -21,7 +23,12 @@ from app.domain.categories.defaults import DEFAULT_EXPENSE, DEFAULT_INCOME
 
 EVAL_PATH = Path(__file__).with_name("eval_cases.yaml")
 _FUZZY = {"description"}
-_HINTS = {"account_hint": "accounts", "card_hint": "cards", "goal_hint": "goals"}
+_HINTS = {
+    "account_hint": "accounts",
+    "card_hint": "cards",
+    "goal_hint": "goals",
+    "pocket_hint": "pockets",
+}
 
 
 def load_cases() -> tuple[date, list[dict[str, Any]]]:
@@ -43,6 +50,8 @@ def eval_context(today: date) -> SpaceContext:
         ],
         cards=[CtxCard(uuid4(), "Nubank", space), CtxCard(uuid4(), "Visa", space)],
         goals=[CtxGoal(uuid4(), "Viagem"), CtxGoal(uuid4(), "Carro")],
+        pockets=[CtxPocket(uuid4(), "Reserva"), CtxPocket(uuid4(), "Viagem")],
+        loans=[CtxLoan(uuid4(), "Carro"), CtxLoan(uuid4(), "Casa")],
         rules=[("padaria pao quente", "Alimentação")],
         default_account_id=None,
         today=today,

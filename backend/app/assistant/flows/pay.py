@@ -77,6 +77,12 @@ async def start(t: Turn, p: ParsedIntent, text: str = "") -> str:
             return await _go(t, p, *items[0])
     elif named and reminded:
         items = named
+    if (
+        len(named) > 1
+        and (loan := named[0][0].loan_id)
+        and all(b.loan_id == loan for b, _ in named)
+    ):
+        items = named[:1]  # parcelas do mesmo financiamento: quita a mais antiga em aberto
     if len(items) > 1 and "fatura" in fold(text):
         items = [i for i in items if i[0].invoice_id] or items
     if not items:

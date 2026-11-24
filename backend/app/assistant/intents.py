@@ -8,7 +8,8 @@ from app.core.text import clean_text
 Intent = Literal[
     "lancar_despesa", "lancar_receita", "lancar_parcelado", "corrigir", "apagar", "pagar_conta",
     "nova_conta_a_pagar", "aporte_meta", "consultar_gastos", "consultar_teto", "consultar_saldo",
-    "consultar_faturas", "ajuda", "desconhecido",
+    "consultar_faturas", "guardar_caixinha", "resgatar_caixinha", "consultar_caixinhas",
+    "consultar_financiamentos", "ajuda", "desconhecido",
 ]  # fmt: skip
 Period = Literal["hoje", "ontem", "semana", "mes", "mes_passado"]
 
@@ -29,6 +30,7 @@ class ParsedIntent(BaseModel):
     occurred_on: date | None = None
     private: bool | None = None  # #pessoal
     goal_hint: str | None = None
+    pocket_hint: str | None = None  # nome (ou parte) da caixinha OU do financiamento/consórcio
     period: Period | None = None
     choice: int | None = None  # número escolhido numa lista
 
@@ -65,7 +67,7 @@ class ParsedIntent(BaseModel):
     def _long_text(cls, v: str | None) -> str | None:
         return None if v is None else clean_text(v, 200)
 
-    @field_validator("account_hint", "card_hint", "goal_hint")
+    @field_validator("account_hint", "card_hint", "goal_hint", "pocket_hint")
     @classmethod
     def _hint(cls, v: str | None) -> str | None:
         return None if v is None else clean_text(v, 100)
