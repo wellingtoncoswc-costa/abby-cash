@@ -52,6 +52,7 @@ def _set_cookie(resp: Response, raw: str) -> None:
     )  # fmt: skip
 
 
+# ponytail: duplica app.core.redis.incr_ttl (que é atômico); migrar após revisar a semântica do auth
 async def _count(key: str) -> int:
     await redis.set(key, 0, ex=FAIL_TTL, nx=True)  # TTL garantido antes do INCR
     return int(await redis.incr(key))

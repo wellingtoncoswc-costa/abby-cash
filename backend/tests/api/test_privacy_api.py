@@ -21,7 +21,7 @@ from app.domain.spaces.models import Space, SpaceMember
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.service import create_transaction, list_transactions
 from app.domain.users.models import User
-from tests.factories import PWD, auth, make_account, make_card, make_family, make_user
+from tests.factories import PWD, auth, category_id, make_account, make_card, make_family, make_user
 
 D = date(2026, 11, 10)
 
@@ -414,3 +414,82 @@ async def test_correct_password_refused_by_domain_is_never_rate_limited(client, 
     for _ in range(32):  # > MAX_IP_FAILS: senha certa não conta nem por usuário nem por IP
         assert (await _delete(client, a)).status_code == 422
     assert (await _delete(client, a, "senha errada aqui")).status_code == 401  # falha ainda conta
+
+
+async def test_delete_account_removes_channel_links_and_inbound_messages(client, session):
+    from app.domain.channels.models import ChannelLink, InboundMessage
+    from tests.factories import make_inbound, make_link
+
+    ana = await make_user(session, "ana@x.com")
+    await make_link(session, ana)
+    iid = await make_inbound(session, "gastei 45 no mercado")
+    row = await session.get(InboundMessage, iid)
+    row.user_id = ana.id
+    await session.commit()
+    assert (await _delete(client, ana)).status_code == 204
+    assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
+    assert await session.scalar(select(func.count()).select_from(InboundMessage)) == 0
+
+
+async def test_delete_account_cleans_channel_data(session):
+    from app.domain.channels.models import ChannelLink, InboundMessage
+    from app.domain.privacy import delete_account
+    from tests.factories import make_inbound
+
+    a = await make_user(session, "a@x.com")
+    session.add(ChannelLink(user_id=a.id, channel="telegram", external_user_id="1"))
+    iid = await make_inbound(session, "oi")
+    (await session.get(InboundMessage, iid)).user_id = a.id
+    await session.commit()
+    await delete_account(session, a)
+    assert await session.scalar(select(func.count()).select_from(ChannelLink)) == 0
+    assert await session.scalar(select(func.count()).select_from(InboundMessage)) == 0
+
+
+async def test_delete_account_removes_category_rules_and_ai_usage(client, session):
+    from app.ai.models import AiUsage
+    from app.domain.categories.models import CategoryRule
+
+    ana = await make_user(session, "ana@x.com")
+    sp = ana.default_space_id
+    session.add(CategoryRule(
+        space_id=sp, merchant_norm="padaria", category_id=await category_id(session, sp)
+    ))  # fmt: skip
+    session.add(AiUsage(space_id=sp, kind="intent", input_tokens=10, output_tokens=2))
+    await session.commit()
+    assert (await _delete(client, ana)).status_code == 204
+    assert await session.scalar(select(func.count()).select_from(CategoryRule)) == 0
+    assert await session.scalar(select(func.count()).select_from(AiUsage)) == 0
+
+
+async def test_delete_account_removes_conversation_state(client, session):
+    from datetime import UTC, datetime, timedelta
+
+    from app.assistant.models import ConversationState
+
+    ana = await make_user(session, "ana@x.com")
+    session.add(
+        ConversationState(
+            user_id=ana.id, channel="telegram", kind="amount", data={},
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )  # fmt: skip
+    await session.commit()
+    assert (await _delete(client, ana)).status_code == 204
+    assert await session.scalar(select(func.count()).select_from(ConversationState)) == 0
+
+
+async def test_delete_account_removes_inbound_by_external_id_even_without_user_id(session):
+    from app.domain.channels.models import InboundMessage
+    from app.domain.privacy import delete_account
+    from tests.factories import make_inbound, make_link
+
+    a = await make_user(session, "a@x.com")
+    b = await make_user(session, "b@x.com")
+    await make_link(session, a, "111")
+    await make_link(session, b, "222")
+    mine = await make_inbound(session, "segredo", ext="111", msg_id=1)  # user_id NULL
+    theirs = await make_inbound(session, "outro", ext="222", msg_id=2)
+    await delete_account(session, a)
+    ids = list(await session.scalars(select(InboundMessage.id)))
+    assert ids == [theirs] and mine not in ids

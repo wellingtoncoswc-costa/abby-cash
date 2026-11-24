@@ -75,7 +75,7 @@ async def goal_saved(session: AsyncSession, goal_id: UUID) -> int:
 
 async def contribute(
     session: AsyncSession, *, actor_id: UUID, goal_id: UUID, from_account_id: UUID,
-    amount_cents: int, on: date,
+    amount_cents: int, on: date, origin: str = "web", source_message_id: str | None = None,
 ) -> Transaction:  # fmt: skip
     goal = await visible_goal(session, actor_id, goal_id)
     await check_common(
@@ -87,7 +87,7 @@ async def contribute(
         space_id=goal.space_id, type="transfer", amount_cents=amount_cents, occurred_on=on,
         description=f"Aporte: {goal.name}", account_id=from_account_id, goal_id=goal.id,
         goal_direction="in",
-        created_by=actor_id, origin="web",
+        created_by=actor_id, origin=origin, source_message_id=source_message_id,
     )  # fmt: skip
     session.add(tx)
     await session.flush()

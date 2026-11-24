@@ -18,7 +18,8 @@ from app.domain.transactions.rules import check_common
 
 async def pay_bill(
     session: AsyncSession, *, actor_id: UUID, bill_id: UUID, account_id: UUID | None,
-    paid_on: date, amount_cents: int | None = None,
+    paid_on: date, amount_cents: int | None = None, origin: str = "web",
+    source_message_id: str | None = None,
 ) -> Transaction:  # fmt: skip
     """Quita (ou paga parte de) uma conta a pagar: despesa na conta de origem, que é obrigatória."""
     if account_id is None:
@@ -42,7 +43,8 @@ async def pay_bill(
     tx = Transaction(
         space_id=bill.space_id, type="expense", amount_cents=amount, occurred_on=paid_on,
         description=bill.description, category_id=bill.category_id, account_id=account_id,
-        bill_id=bill.id, created_by=actor_id, origin="web",
+        bill_id=bill.id, created_by=actor_id, origin=origin,
+        source_message_id=source_message_id,
     )  # fmt: skip
     session.add(tx)
     await session.flush()
@@ -61,7 +63,7 @@ async def pay_bill(
 
 async def pay_invoice(
     session: AsyncSession, *, actor_id: UUID, invoice_id: UUID, account_id: UUID | None,
-    paid_on: date, amount_cents: int,
+    paid_on: date, amount_cents: int, origin: str = "web", source_message_id: str | None = None,
 ) -> Transaction:  # fmt: skip
     """Transferência conta -> cartão (não é despesa). Parcial permitido; o resto fica em aberto."""
     if account_id is None:
@@ -84,7 +86,8 @@ async def pay_invoice(
         space_id=acc.space_id,  # espaço da conta de origem: não expõe a conta a outros membros
         type="transfer", amount_cents=amount_cents, occurred_on=paid_on,
         description=f"Pagamento da fatura {card.name}", account_id=acc.id, card_id=card.id,
-        invoice_id=inv.id, bill_id=bill.id, created_by=actor_id, origin="web",
+        invoice_id=inv.id, bill_id=bill.id, created_by=actor_id, origin=origin,
+        source_message_id=source_message_id,
     )  # fmt: skip
     session.add(tx)
     await session.flush()

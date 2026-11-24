@@ -13,3 +13,9 @@ def test_settings_reads_given_env_file(tmp_path: Path):
     f.write_text("STT_MODEL=tiny\n")
     assert Settings(_env_file=f).STT_MODEL == "tiny"  # type: ignore[call-arg]
     assert Settings(_env_file=tmp_path / "missing").STT_MODEL  # ausente é tolerado  # type: ignore[call-arg]
+
+
+def test_m3_settings_defaults(tmp_path: Path):
+    s = Settings(_env_file=tmp_path / "missing")  # type: ignore[call-arg]
+    assert s.TELEGRAM_BOT_USERNAME == ""
+    assert s.AI_TIMEOUT_S == 10.0
