@@ -17,6 +17,8 @@ const MSG: Record<string, string> = {
   totp_already_enabled: 'O 2FA já está ativo.',
   invalid_amount: 'Valor inválido.',
   admin_only: 'Apenas administradores.',
+  insufficient_available: 'Valor maior que o disponível na conta (saldo menos o que está nas caixinhas).',
+  insufficient_balance: 'Valor maior que o saldo da caixinha.',
   invalid_setting: 'Configuração inválida.',
 }
 export const errText = (e: unknown) =>
