@@ -47,6 +47,13 @@ class PocketMovement(Base):
             unique=True,
             postgresql_where=text("kind = 'accrual'"),
         ),
+        Index(  # idempotência do chat: uma mensagem de entrada move uma vez só
+            "uq_pocket_movements_origin_source_message",
+            "origin",
+            "source_message_id",
+            unique=True,
+            postgresql_where=text("source_message_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -55,6 +62,8 @@ class PocketMovement(Base):
     amount_cents: Mapped[int] = mapped_column(BigInteger)
     occurred_on: Mapped[date] = mapped_column(Date)
     ref_date: Mapped[date | None] = mapped_column(Date)  # accrual: dia do CDI
+    origin: Mapped[str] = mapped_column(String(32), default="web", server_default="web")
+    source_message_id: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
