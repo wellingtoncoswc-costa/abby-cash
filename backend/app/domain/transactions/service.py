@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.access import use_account
 from app.domain.accounts.models import Account
+from app.domain.attachments import delete_unreferenced, remove_files
 from app.domain.audit import audit
 from app.domain.errors import DomainError
 from app.domain.spaces.access import require_member
@@ -239,6 +240,7 @@ async def delete_transaction(
     goal_ids = {t.goal_id for t in victims if t.goal_id is not None}
     for goal_id in goal_ids:
         await session.get(Goal, goal_id, with_for_update=True)  # serializa com retiradas
+    attachment_ids = {t.attachment_id for t in victims if t.attachment_id is not None}
     for t in victims:
         await session.delete(t)
     await session.flush()
@@ -259,5 +261,7 @@ async def delete_transaction(
         {"space_id": str(tx.space_id), "count": len(victims),
          "amount_cents": sum(t.amount_cents for t in victims)},
     )  # fmt: skip
+    paths = await delete_unreferenced(session, attachment_ids)
     await session.commit()
+    remove_files(paths)
     return victims

@@ -1,9 +1,19 @@
 import os
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, UniqueConstraint, func, select
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    delete,
+    func,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -80,3 +90,47 @@ def remove_files(paths: list[str]) -> None:
 
 def read_file(att: Attachment) -> bytes:
     return (Path(get_settings().STORAGE_DIR) / att.path).read_bytes()
+
+
+async def delete_unreferenced(session: AsyncSession, ids: set[UUID]) -> list[str]:
+    """Apaga (sem commit) os anexos de `ids` que nenhum lançamento usa; devolve os caminhos
+    dos arquivos, que o chamador remove DEPOIS do commit."""
+    from app.domain.transactions.models import Transaction
+
+    if not ids:
+        return []
+    used = select(Transaction.attachment_id).where(Transaction.attachment_id.in_(ids))
+    return list(
+        await session.scalars(
+            delete(Attachment)
+            .where(Attachment.id.in_(ids), Attachment.id.not_in(used))
+            .returning(Attachment.path)
+        )
+    )
+
+
+async def discard_draft_attachment(session: AsyncSession, data: dict[str, Any]) -> None:
+    """Rascunho abandonado (não, cancelar, expirou, trocado): apaga a imagem salva."""
+    raw = (data.get("draft") or {}).get("attachment_id")
+    if raw:
+        paths = await delete_unreferenced(session, {UUID(raw)})
+        await session.commit()
+        remove_files(paths)
+
+
+async def purge_orphan_attachments(session: AsyncSession, now: datetime | None = None) -> int:
+    """Anexos sem lançamento há mais de 24 h (rascunho que ninguém concluiu): arquivo e linha."""
+    from app.domain.transactions.models import Transaction
+
+    old = (now or datetime.now(UTC)) - timedelta(hours=24)
+    used = select(Transaction.attachment_id).where(Transaction.attachment_id.is_not(None))
+    paths = list(
+        await session.scalars(
+            delete(Attachment)
+            .where(Attachment.created_at < old, Attachment.id.not_in(used))
+            .returning(Attachment.path)
+        )
+    )
+    await session.commit()
+    remove_files(paths)
+    return len(paths)

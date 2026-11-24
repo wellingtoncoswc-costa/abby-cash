@@ -46,7 +46,7 @@ from app.core.db import SessionLocal, engine
 from app.core.money import format_brl
 from app.core.redis import incr_ttl, redis
 from app.core.text import fold
-from app.domain.attachments import MAX_BYTES
+from app.domain.attachments import MAX_BYTES, discard_draft_attachment
 from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
 from app.domain.errors import DomainError
@@ -206,8 +206,12 @@ async def resume(t: Turn, text: str) -> str | None:
     async def take() -> bool:
         return await clear_state(t.session, t.user_id, t.channel)
 
-    if reply == "cancelar":
+    async def drop() -> None:  # rascunho abandonado: some o estado e a imagem do comprovante
         await take()
+        await discard_draft_attachment(t.session, data)
+
+    if reply == "cancelar":
+        await drop()
         return "Ok, cancelei."
     if kind == "correct":
         fields = edit.parse_correction(text, t.today)
@@ -223,28 +227,28 @@ async def resume(t: Turn, text: str) -> str | None:
     try:
         d = Draft.model_validate(data["draft"])
     except (KeyError, ValueError):  # estado velho/malformado não pode travar a conversa
-        await take()
+        await drop()
         return None
     if kind == "amount":
         amount = parse_bare_amount(text)
         if amount is None:
             if ZERO_OR_NEG.fullmatch(text.strip()):  # parece valor, mas é zero/negativo
                 return ZERO + " Quanto foi?"
-            await take()
+            await drop()
             return None
         d.p.amount_cents = amount
     elif kind == "receipt":
         if reply == "nao":
-            await take()
+            await drop()
             return "Ok, não lancei."
         out = await receipt.step(t, d, text, reply)
         if out is not receipt.GO:
             if out is None:
-                await take()
+                await drop()
             return str(out) if out is not None else None
     elif kind == "confirm":
         if reply != "sim":
-            await take()
+            await drop()
             return "Ok, não lancei." if reply == "nao" else None
         d.confirmed = True
     else:  # payment | pick_bill
@@ -252,7 +256,7 @@ async def resume(t: Turn, text: str) -> str | None:
         if picked is None:
             if re.fullmatch(r"\d{1,2}", text.strip()):
                 return "Responda com um dos números da lista."
-            await take()
+            await drop()
             return None
         d.options = []
         if kind == "pick_bill":

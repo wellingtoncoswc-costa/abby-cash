@@ -161,3 +161,49 @@ async def test_delete_account_removes_attachment_files(ana, adapter, session, st
     assert [p for p in Path(storage).rglob("*") if p.is_file()] == []
     assert await session.scalar(select(func.count()).select_from(Attachment)) == 0
     assert await session.scalar(select(func.count()).select_from(Transaction)) == 0
+
+
+async def _draft(ana, adapter, session):
+    await nubank_default(session, ana.user)
+    adapter.media = JPEG
+    ana.extra["receipt_reader"] = FakeReader(FARMACIA)
+    await ana.say("", media_kind="image")
+
+
+async def test_abandoned_receipt_draft_deletes_image(ana, adapter, session, storage):
+    await _draft(ana, adapter, session)
+    assert len([f for f in storage.rglob("*") if f.is_file()]) == 1
+    await ana.say("não")
+    assert not [f for f in storage.rglob("*") if f.is_file()]
+    assert await session.scalar(select(func.count()).select_from(Attachment)) == 0
+
+
+async def test_delete_transaction_deletes_attachment(ana, adapter, session, storage):
+    from app.domain.transactions.service import delete_transaction
+
+    await _draft(ana, adapter, session)
+    await ana.say("sim")
+    [tx] = await txs(session)
+    await delete_transaction(session, actor_id=ana.user.id, tx_id=tx.id)
+    assert not [f for f in storage.rglob("*") if f.is_file()]
+    assert await session.scalar(select(func.count()).select_from(Attachment)) == 0
+
+
+async def test_purge_orphan_attachments_keeps_linked_and_recent(ana, adapter, session, storage):
+    from datetime import UTC, datetime, timedelta
+
+    from app.domain.attachments import purge_orphan_attachments, save_image
+
+    await _draft(ana, adapter, session)
+    await ana.say("sim")  # anexo ligado a lançamento
+    sp = ana.user.default_space_id
+    old = await save_image(session, space_id=sp, origin="t", source_message_id="o", data=JPEG)
+    await save_image(session, space_id=sp, origin="t", source_message_id="n", data=JPEG)
+    await session.execute(
+        update(Attachment)
+        .where(Attachment.id == old.id)
+        .values(created_at=datetime.now(UTC) - timedelta(hours=25))
+    )
+    await session.commit()
+    assert await purge_orphan_attachments(session) == 1
+    assert await session.scalar(select(func.count()).select_from(Attachment)) == 2

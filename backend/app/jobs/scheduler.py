@@ -9,6 +9,7 @@ from sqlalchemy import delete, or_
 from app.channels.ingest import purge_old_inbound
 from app.core.db import SessionLocal
 from app.core.redis import HEARTBEAT_KEY, redis
+from app.domain.attachments import purge_orphan_attachments
 from app.domain.users.models import RefreshToken
 
 log = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ async def isolated(label: str, fn: Callable[[], Awaitable[Any]]) -> None:
 async def purge_inbound_job(ctx: dict[str, Any] | None = None) -> None:
     async with SessionLocal() as s:
         await purge_old_inbound(s)
+    async with SessionLocal() as s:
+        await purge_orphan_attachments(s)
 
 
 async def worker_heartbeat(ctx: dict[str, Any] | None = None) -> None:
