@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from app.assistant import links
 from app.assistant.flows.common import ask
 from app.assistant.intents import ParsedIntent
 from app.assistant.replies import ZERO, options_text
@@ -29,7 +30,8 @@ NO_POCKET = "Você ainda não tem caixinhas. Crie uma no painel web (Caixinhas).
 NO_LOAN = "Você ainda não tem financiamentos. Cadastre um no painel web (Financiamentos)."
 CREATE_ON_PANEL = (
     "Caixinhas e financiamentos são criados no painel web (Caixinhas / Financiamentos). "
-    "Por aqui eu guardo, resgato e consulto."
+    "Por aqui eu guardo, resgato e consulto.\n"
+    f"Caixinhas: {links.caixinhas()}\nFinanciamentos: {links.financiamentos()}"
 )
 _CREATE = re.compile(
     r"\b(criar|cria|crie|abrir|abre|abra|cadastrar|cadastra|cadastre)\b"
@@ -152,7 +154,7 @@ async def caixinhas(t: Turn, space_id: UUID) -> str:
                 t.session, acc.id
             )
             out.append(f"Disponível na conta {acc.name}: {format_brl(free)}")
-    return "\n".join(out)
+    return links.with_link("\n".join(out), links.caixinhas())
 
 
 _KIND = {"financing": "financiamento", "consortium": "consórcio"}
@@ -170,7 +172,7 @@ async def financiamentos(t: Turn, p: ParsedIntent, space_id: UUID) -> str:
         if ids and x.id not in ids:
             continue
         lines.append(await _loan_line(t, x, detail=bool(ids)))
-    return "🎯 Financiamentos:\n" + "\n".join(lines)
+    return links.with_link("🎯 Financiamentos:\n" + "\n".join(lines), links.financiamentos())
 
 
 async def _loan_line(t: Turn, x: Loan, *, detail: bool) -> str:

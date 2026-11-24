@@ -2,6 +2,7 @@ from datetime import date
 
 from sqlalchemy import select
 
+from app.assistant import links
 from app.domain.pockets.service import create_pocket, deposit
 from app.domain.transactions.models import Transaction
 from app.domain.transactions.service import account_balance
@@ -29,7 +30,7 @@ async def test_transfer_executes_at_once_and_updates_balances(ana, session, pars
     nu, it = await setup_accounts(session, ana)
     parser.add(transfer(amount_cents=30_000, account_hint="nubank", to_account_hint="itau"))
     assert await ana.say("transferi 300 do Nubank para o Itaú") == (
-        "✅ R$ 300,00 · Nubank → Itaú · hoje"
+        f"✅ R$ 300,00 · Nubank → Itaú · hoje\nDetalhes no painel:\n{links.lancamentos()}"
     )
     assert await account_balance(session, nu.id) == 70_000
     assert await account_balance(session, it.id) == 40_000
@@ -53,7 +54,7 @@ async def test_missing_origin_then_destination_asked_one_at_a_time(ana, session,
     assert "Nubank" not in q and "Itaú" in q  # a origem sai da lista
     assert await txs(session) == []
     assert await ana.say("9") == "Responda com um dos números da lista."
-    assert (await ana.say("Itaú")).endswith("Nubank → Itaú · hoje")
+    assert "Nubank → Itaú · hoje\nDetalhes no painel:" in await ana.say("Itaú")
     assert await account_balance(session, it.id) == 60_000
 
 
@@ -102,7 +103,7 @@ async def test_type_words_pick_savings_and_checking(ana, session, parser):
     cor = await make_account(session, sp, name="Itaú", initial=0)
     parser.add(transfer(amount_cents=100_000, account_hint="poupança", to_account_hint="corrente"))
     assert await ana.say("mandei 1000 da poupança pra corrente") == (
-        "✅ R$ 1.000,00 · Nubank Cofre → Itaú · hoje"
+        "✅ R$ 1.000,00 · Nubank Cofre → Itaú · hoje\nDetalhes no painel:\n" + links.lancamentos()
     )
     assert await account_balance(session, cor.id) == 100_000 and pou
 
@@ -166,7 +167,7 @@ async def test_across_spaces_uses_source_space(ana, session, parser, new_chat):
     await make_account(session, fam.id, name="Conjunta")
     parser.add(transfer(amount_cents=10_000, account_hint="pessoal", to_account_hint="conjunta"))
     assert await ana.say("passei 100 da pessoal pra conjunta") == (
-        "✅ R$ 100,00 · Pessoal → Conjunta · hoje"
+        "✅ R$ 100,00 · Pessoal → Conjunta · hoje\nDetalhes no painel:\n" + links.lancamentos()
     )
     [tx] = await txs(session)
     assert tx.space_id == ana.user.default_space_id and tx.account_id == pessoal.id

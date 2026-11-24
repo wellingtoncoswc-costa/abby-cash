@@ -2,6 +2,7 @@ from datetime import date
 
 from sqlalchemy import func, select
 
+from app.assistant import links
 from app.domain.loans.service import create_loan
 from app.domain.pockets.models import PocketMovement
 from app.domain.pockets.service import create_pocket, deposit
@@ -120,7 +121,8 @@ async def test_query_pockets_lists_balance_cdi_month_yield_total_and_available(
         "🎯 Caixinhas:\n"
         "• Reserva: R$ 200,00 · 110,5% do CDI · rendeu R$ 0,00 no mês\n"
         "Total: R$ 200,00\n"
-        "Disponível na conta Nubank: R$ 4.800,00"
+        "Disponível na conta Nubank: R$ 4.800,00\n"
+        f"Detalhes no painel:\n{links.caixinhas()}"
     )
     assert parser.calls == []
 
@@ -140,13 +142,15 @@ async def test_query_loans_list_and_detail(ana, session, parser):
         "🎯 Financiamentos:\n"
         "• Carro (financiamento): 0 de 12 pagas · faltam R$ 12.000,00 · próxima R$ 1.000,00 "
         "em 10/12\n"
-        "• Casa (consórcio): 0 de 60 pagas · faltam R$ 60.000,00 · próxima R$ 1.000,00 em 10/12"
+        "• Casa (consórcio): 0 de 60 pagas · faltam R$ 60.000,00 · próxima R$ 1.000,00 em 10/12\n"
+        f"Detalhes no painel:\n{links.financiamentos()}"
     )
     parser.add(intent("consultar_financiamentos", pocket_hint="carro"))
     assert await ana.say("quanto falta do carro") == (
         "🎯 Financiamentos:\n"
         "• Carro (financiamento): 0 de 12 pagas · faltam R$ 12.000,00 · próxima R$ 1.000,00 "
-        "em 10/12 · termina em 11/2027"
+        "em 10/12 · termina em 11/2027\n"
+        f"Detalhes no painel:\n{links.financiamentos()}"
     )
     parser.add(intent("consultar_financiamentos", pocket_hint="moto"))
     assert (await ana.say("quanto falta da moto")).startswith("Não achei esse financiamento.")
@@ -165,7 +169,9 @@ async def test_paguei_financiamento_pays_the_open_installment(ana, session, pars
 
 async def test_create_goes_to_the_panel_and_help_lists_commands(ana, parser):
     for text in ("quero criar uma caixinha", "cadastrar financiamento do carro"):
-        assert (await ana.say(text)).startswith("Caixinhas e financiamentos são criados no painel")
+        reply = await ana.say(text)
+        assert reply.startswith("Caixinhas e financiamentos são criados no painel")
+        assert links.caixinhas() in reply and links.financiamentos() in reply
     help_ = await ana.say("ajuda")
     for needle in ("caixinhas", "guardei 200 na reserva", "tirei 100 da viagem",
                    "paguei o financiamento do carro", "financiamentos"):  # fmt: skip
