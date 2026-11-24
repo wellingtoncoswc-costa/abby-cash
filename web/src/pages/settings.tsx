@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { api, download, logout } from '../api/client'
-import type { ChannelLinkRow, LinkCode, Space } from '../api/types'
+import type { ChannelLinkRow, LinkCode, Me, Member, S, Space } from '../api/types'
 import { spaceLabel, useSpace } from '../space'
-import { Btn, Card, Err, Field, useGet, useSend } from '../ui'
+import { Btn, Card, Err, Field, useGet, useMe, useSend } from '../ui'
 
 const CH = { telegram: 'Telegram', whatsapp_evolution: 'WhatsApp' } as const
 
@@ -47,12 +47,29 @@ export function Spaces() {
   const [link, setLink] = useState('')
   const fam = useSend(() => api<Space>('POST', '/spaces/family', { name }), () => setName(''))
   const inv = useSend((id: string) => api<{ link: string }>('POST', `/spaces/${id}/invites`), (r) => setLink(r.link))
+  const active = spaces.find((s) => s.id === spaceId)
+  const members = useGet<Member[]>(spaceId ? `/spaces/${spaceId}/members` : null)
+  const leave = useSend(() => api('DELETE', `/spaces/${spaceId}/members/me`))
+  const kick = useSend((uid: string) => api('DELETE', `/spaces/${spaceId}/members/${uid}`))
+  const me = useMe()
   const hasFamily = spaces.some((s) => s.type === 'family')
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Espaços e membros</h1>
       <Card title="Meus espaços">
         <ul>{spaces.map((s) => <li key={s.id} className="py-1">{spaceLabel(s)}{s.id === spaceId ? ' (ativo)' : ''}</li>)}</ul>
+      </Card>
+      <Card title="Membros do espaço ativo">
+        <ul>
+          {(members.data ?? []).map((m) => (
+            <li key={m.user_id} className="flex justify-between py-1">
+              <span>{m.name} · {m.role === 'owner' ? 'dono' : 'membro'}</span>
+              {active?.type === 'family' && m.user_id !== me.data?.id && <button type="button" className="underline" aria-label={`Remover ${m.name}`} onClick={() => { if (confirm(`Remover ${m.name}?`)) kick.mutate(m.user_id) }}>Remover</button>}
+            </li>
+          ))}
+        </ul>
+        {active?.type === 'family' && <Btn className="mt-2 bg-red-700 hover:bg-red-800" disabled={leave.isPending} onClick={() => { if (confirm('Sair deste espaço?')) leave.mutate() }}>Sair do espaço</Btn>}
+        <Err e={members.error ?? leave.error ?? kick.error} />
       </Card>
       {!hasFamily && (
         <Card title="Criar espaço familiar">
@@ -63,7 +80,7 @@ export function Spaces() {
           </form>
         </Card>
       )}
-      {spaces.find((s) => s.id === spaceId)?.type === 'family' && (
+      {active?.type === 'family' && (
         <Card title="Convidar membro">
           <Btn onClick={() => inv.mutate(spaceId)} disabled={inv.isPending}>Gerar link de convite</Btn>
           <Err e={inv.error} />
@@ -118,14 +135,48 @@ function DeleteAccount() {
   )
 }
 
+function Prefs({ me }: { me: Me }) {
+  const [f, setF] = useState({ tz: me.tz, reminder_time: me.reminder_time.slice(0, 5), preferred_channel: me.preferred_channel ?? '', weekly_digest: me.weekly_digest })
+  const save = useSend(() => api('PATCH', '/me/settings', { tz: f.tz, reminder_time: f.reminder_time, preferred_channel: f.preferred_channel || null, weekly_digest: f.weekly_digest } satisfies S['SettingsIn']))
+  return (
+    <Card title="Preferências">
+      <form onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
+        <Field label="Fuso horário"><input required maxLength={64} placeholder="America/Sao_Paulo" value={f.tz} onChange={(e) => setF({ ...f, tz: e.target.value })} /></Field>
+        <Field label="Horário dos lembretes"><input type="time" required value={f.reminder_time} onChange={(e) => setF({ ...f, reminder_time: e.target.value })} /></Field>
+        <Field label="Canal preferido"><select value={f.preferred_channel} onChange={(e) => setF({ ...f, preferred_channel: e.target.value })}><option value="">Nenhum</option><option value="telegram">Telegram</option><option value="whatsapp_evolution">WhatsApp</option></select></Field>
+        <label className="mb-3 flex items-center gap-2"><input type="checkbox" className="!w-auto" checked={f.weekly_digest} onChange={(e) => setF({ ...f, weekly_digest: e.target.checked })} />Receber resumo semanal</label>
+        <Err e={save.error} />
+        <Btn type="submit" disabled={save.isPending}>Salvar preferências</Btn>
+        {save.isSuccess && <p role="status" className="mt-2">Preferências salvas.</p>}
+      </form>
+    </Card>
+  )
+}
+
+export function Admin() {
+  const me = useMe()
+  const gen = useSend(() => api<S['SignupInviteOut']>('POST', '/admin/signup-invites'))
+  if (me.data && !me.data.is_admin) return <p>Apenas administradores.</p>
+  return (
+    <>
+      <h1 className="mb-3 text-xl font-bold">Administração</h1>
+      <Card title="Convite de cadastro">
+        <p className="mb-2">O código aparece só uma vez e vale 7 dias.</p>
+        <Btn onClick={() => gen.mutate()} disabled={gen.isPending}>Gerar convite de cadastro</Btn>
+        <Err e={gen.error} />
+        {gen.data && <p role="status" className="mt-2">Código: <code className="font-mono text-xl">{gen.data.code}</code> (expira em {new Date(gen.data.expires_at).toLocaleDateString('pt-BR')})</p>}
+      </Card>
+    </>
+  )
+}
+
 export function Settings() {
   const [err, setErr] = useState<unknown>(null)
+  const me = useMe()
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Configurações</h1>
-      <Card title="Preferências">
-        <p>Fuso (padrão America/Sao_Paulo), horário dos lembretes (09:00), canal preferido e resumo semanal ainda não podem ser alterados pela web: a API não tem rota de atualização.</p>
-      </Card>
+      {me.data ? <Prefs me={me.data} /> : <Card title="Preferências"><p>Carregando…</p><Err e={me.error} /></Card>}
       <Totp />
       <Card title="Privacidade">
         <Btn onClick={() => download('/privacy/export', 'abby-cash-export.zip').catch(setErr)}>Exportar meus dados (.zip)</Btn>

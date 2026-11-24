@@ -4,11 +4,12 @@ import { logout } from './api/client'
 import type { Space } from './api/types'
 import { useAuth } from './auth'
 import { SpaceProvider, spaceLabel, useSpace } from './space'
-import { Err, useGet } from './ui'
+import { Err, useGet, useMe } from './ui'
 
+const ADMIN = ['/admin', 'Admin'] as const
 const NAV = [
   ['/', 'Painel'], ['/lancamentos', 'Lançamentos'], ['/contas', 'Contas a pagar'], ['/cartoes', 'Cartões'],
-  ['/metas', 'Metas'], ['/onboarding', 'Primeiros passos'], ['/teto', 'Teto'], ['/espacos', 'Espaços'], ['/canais', 'Canais'], ['/config', 'Configurações'],
+  ['/metas', 'Metas'], ['/categorias', 'Categorias'], ['/onboarding', 'Primeiros passos'], ['/teto', 'Teto'], ['/espacos', 'Espaços'], ['/canais', 'Canais'], ['/config', 'Configurações'],
 ] as const
 
 const stored = () => { try { return localStorage.getItem('theme') } catch { return null } }
@@ -20,6 +21,7 @@ export const initTheme = () => document.documentElement.classList.toggle('dark',
 
 function Shell() {
   const { spaces, spaceId, setSpaceId } = useSpace()
+  const me = useMe()
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
   return (
     <div className="mx-auto max-w-3xl pb-8">
@@ -33,7 +35,7 @@ function Shell() {
           <button type="button" className="px-2 text-sm underline" onClick={() => void logout()}>Sair</button>
         </div>
         <nav aria-label="Principal" className="mt-2 flex gap-3 overflow-x-auto whitespace-nowrap text-sm">
-          {NAV.map(([to, label]) => <Link key={to} to={to} activeOptions={{ exact: true }} className="py-1 [&.active]:font-bold [&.active]:underline">{label}</Link>)}
+          {(me.data?.is_admin ? [...NAV, ADMIN] : NAV).map(([to, label]) => <Link key={to} to={to} activeOptions={{ exact: true }} className="py-1 [&.active]:font-bold [&.active]:underline">{label}</Link>)}
         </nav>
       </header>
       <main className="p-3"><Outlet /></main>

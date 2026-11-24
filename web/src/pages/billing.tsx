@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
 import type { Bill, Card as CardT, Invoice, S, Statement } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, Err, Field, today, useAccounts, useGet, useSend } from '../ui'
-
-const br = (d: string) => d.split('-').reverse().join('/')
+import { AccountSelect, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useSend } from '../ui'
 
 /** Formulário de pagamento: conta de origem obrigatória; valor vazio = o que falta (só contas). */
 function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultCents?: number; requireAmount?: boolean }) {
@@ -35,7 +33,7 @@ export function Billing() {
     () => api('POST', `/spaces/${spaceId}/bills`, { description: f.description, amount_cents: cents!, due_on: f.due_on } satisfies S['BillIn']),
     () => setF({ ...f, description: '', amount: '' }),
   )
-  const label = { open: 'Em aberto', partial: 'Parcial', paid: 'Paga' }
+  const label: Record<string, string> = { open: 'Em aberto', partial: 'Parcial', paid: 'Paga' }
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Contas a pagar</h1>
@@ -54,7 +52,8 @@ export function Billing() {
             {[...(bills.data ?? [])].sort((a, b) => a.due_on.localeCompare(b.due_on)).map((b) => (
               <li key={b.id} className="py-2">
                 <div className="flex justify-between"><span>{b.description}<br /><small>{br(b.due_on)} · {label[b.status]}{b.kind === 'invoice' ? ' · fatura' : ''}</small></span><span>{formatBRL(b.amount_cents)}</span></div>
-                {b.status !== 'paid' && b.kind !== 'invoice' && (open === b.id ? <PayForm path={`/bills/${b.id}/payments`} /> : <button type="button" className="mt-1 underline" onClick={() => setOpen(b.id)}>Pagar</button>)}
+                {b.status !== 'paid' && b.kind !== 'invoice' && (open === b.id ? <PayForm path={`/bills/${b.id}/payments`} /> : <button type="button" className="mt-1 mr-3 underline" onClick={() => setOpen(b.id)}>Pagar</button>)}
+                {b.kind !== 'invoice' && <EditBox what="conta" fields={[{ k: 'description', label: 'Descrição da conta', v: b.description }, { k: 'amount', label: 'Valor da conta (R$)', v: centsText(b.amount_cents) }, { k: 'due_on', label: 'Vencimento da conta', v: b.due_on, type: 'date' }]} save={(v) => { const c = parseBRL(v.amount); return c ? api('PATCH', `/bills/${b.id}`, { description: v.description, amount_cents: c, due_on: v.due_on } satisfies S['BillPatch']) : Promise.reject(new ApiError(422, 'invalid_amount')) }} remove={() => api('DELETE', `/bills/${b.id}`)} />}
               </li>
             ))}
           </ul>
@@ -100,6 +99,10 @@ export function Cards() {
         {mine.length === 0 ? <p>Nenhum cartão neste espaço.</p> : (
           <Field label="Cartão"><select value={sel} onChange={(e) => { setSel(e.target.value); setInvId(null) }}><option value="">Selecione…</option>{mine.map((c) => <option key={c.id} value={c.id}>{c.name} (fecha {c.closing_day}, vence {c.due_day})</option>)}</select></Field>
         )}
+        {sel && mine.find((c) => c.id === sel) && (() => { const c = mine.find((x) => x.id === sel)!; return (
+          <EditBox key={c.id} what="cartão" fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
+            save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
+            remove={() => api('DELETE', `/cards/${c.id}`).then(() => setSel(''))} />) })()}
         {(invoices.data ?? []).map((i) => (
           <div key={i.id} className="border-t border-slate-200 py-2 dark:border-slate-800">
             <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>

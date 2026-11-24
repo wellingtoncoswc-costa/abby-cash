@@ -3,10 +3,11 @@ import { api, ApiError } from '../api/client'
 import type { Budget as BudgetT, Goal, S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Bar, Btn, Card, catName, Err, Field, monthKey, today, useAccounts, useGet, useSend } from '../ui'
+import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, centsText, monthKey, today, useAccounts, useCatName, useGet, useSend } from '../ui'
 
 export function BudgetForm({ month }: { month: string }) {
   const { spaceId } = useSpace()
+  const catName = useCatName()
   const cur = useGet<BudgetT>(`/spaces/${spaceId}/budgets/${month}`)
   const [v, setV] = useState('')
   const cents = parseBRL(v)
@@ -40,7 +41,6 @@ export function Budget() {
         <Field label="Mês"><input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} /></Field>
         <BudgetForm month={month} />
       </Card>
-      <p className="text-sm">Categorias: a API ainda não lista categorias, então limites por categoria não são editáveis aqui.</p>
     </>
   )
 }
@@ -93,6 +93,12 @@ export function Goals() {
           <Bar value={g.saved_cents} max={g.target_cents} />
           {g.monthly_needed_cents != null && <p className={g.behind ? 'text-amber-600' : ''}>Necessário por mês: {formatBRL(g.monthly_needed_cents)}{g.behind ? ' (atrasada)' : ''}</p>}
           <GoalActions g={g} />
+          <EditBox
+            what="meta"
+            fields={[{ k: 'name', label: 'Nome da meta', v: g.name }, { k: 'target', label: 'Valor alvo (R$) da meta', v: centsText(g.target_cents) }, { k: 'deadline', label: 'Prazo da meta', v: g.deadline ?? '', type: 'date' }]}
+            save={(v) => { const t = parseBRL(v.target); return t ? api('PATCH', `/goals/${g.id}`, { name: v.name, target_cents: t, deadline: v.deadline || null } satisfies S['GoalPatch']) : Promise.reject(new ApiError(422, 'invalid_amount')) }}
+            remove={() => api('DELETE', `/goals/${g.id}`)}
+          />
         </Card>
       ))}
       <Err e={goals.error} />

@@ -6,7 +6,8 @@ import { Billing, Cards } from './pages/billing'
 import { Dashboard } from './pages/dashboard'
 import { Goals, Budget } from './pages/plan'
 import { Invite, Onboarding } from './pages/onboarding'
-import { Channels, Settings, Spaces } from './pages/settings'
+import { Categories } from './pages/categories'
+import { Admin, Channels, Settings, Spaces } from './pages/settings'
 import { Transactions } from './pages/transactions'
 
 const root = createRootRoute({ component: () => <AuthProvider><Outlet /></AuthProvider> })
@@ -20,7 +21,7 @@ const tree = root.addChildren([
   layout.addChildren([
     page('/', Dashboard), page('/onboarding', Onboarding), page('/lancamentos', Transactions),
     page('/contas', Billing), page('/cartoes', Cards), page('/metas', Goals), page('/teto', Budget),
-    page('/espacos', Spaces), page('/canais', Channels), page('/config', Settings), page('/invite/$token', Invite),
+    page('/espacos', Spaces), page('/categorias', Categories), page('/admin', Admin), page('/canais', Channels), page('/config', Settings), page('/invite/$token', Invite),
   ]),
 ])
 

@@ -1,10 +1,10 @@
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
 import type { S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Btn, Card, Err, Field, monthKey, useAccounts, useSend } from '../ui'
+import { Btn, Card, EditBox, Err, Field, centsText, monthKey, useAccounts, useSend } from '../ui'
 import { CardForm } from './billing'
 import { BudgetForm } from './plan'
 import { LinkChannel } from './settings'
@@ -28,7 +28,13 @@ export function Onboarding() {
     <>
       <h1 className="mb-3 text-xl font-bold">Primeiros passos</h1>
       <Card title="1. Contas">
-        <ul className="mb-2">{accounts.data.map((x) => <li key={x.id}>{x.name} · {formatBRL(x.initial_balance_cents)}</li>)}</ul>
+        <ul className="mb-2">{accounts.data.map((x) => (
+          <li key={x.id}>{x.name} · {formatBRL(x.initial_balance_cents)}
+            <EditBox what="conta" fields={[{ k: 'name', label: `Nome da conta ${x.name}`, v: x.name }, { k: 'bal', label: `Saldo inicial (R$) de ${x.name}`, v: centsText(x.initial_balance_cents) }]}
+              save={(v) => { const b = parseBRL(v.bal); return b === null ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/accounts/${x.id}`, { name: v.name, initial_balance_cents: b } satisfies S['AccountPatch']) }}
+              remove={() => api('DELETE', `/accounts/${x.id}`)} />
+          </li>
+        ))}</ul>
         <form onSubmit={(e) => { e.preventDefault(); if (bal !== null) addAcc.mutate() }}>
           <Field label="Tipo"><select value={a.type} onChange={(e) => setA({ ...a, type: e.target.value })}><option value="checking">Conta corrente</option><option value="savings">Poupança</option><option value="wallet">Carteira</option></select></Field>
           <Field label="Nome da conta"><input required maxLength={100} value={a.name} onChange={(e) => setA({ ...a, name: e.target.value })} /></Field>
