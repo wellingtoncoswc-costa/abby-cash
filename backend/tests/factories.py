@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -6,6 +7,7 @@ from app.core.security import create_access_token
 from app.domain.accounts.models import Account
 from app.domain.cards.service import create_card
 from app.domain.categories.models import Category
+from app.domain.channels.models import ChannelLink, InboundMessage
 from app.domain.spaces.models import Space
 from app.domain.spaces.service import (
     accept_space_invite,
@@ -65,3 +67,24 @@ async def make_card(
         session, actor_id=actor.id, space_id=space_id, name=name, closing_day=closing_day,
         due_day=due_day, limit_cents=limit_cents, payment_account_id=payment_account_id,
     )  # fmt: skip
+
+
+TS = datetime(2026, 11, 25, 15, 0, tzinfo=UTC)  # quarta-feira, 12:00 em São Paulo
+
+
+async def make_link(session, user: User, ext: str = "111", channel: str = "telegram") -> None:
+    session.add(ChannelLink(user_id=user.id, channel=channel, external_user_id=ext))
+    await session.commit()
+
+
+async def make_inbound(
+    session, text: str | None, *, ext: str = "111", msg_id: int = 1, channel: str = "telegram",
+    ts: datetime = TS, media_kind: str | None = None,
+) -> UUID:  # fmt: skip
+    row = InboundMessage(
+        channel=channel, external_message_id=f"{ext}:{msg_id}", external_user_id=ext, text=text,
+        media_kind=media_kind, media_ref="file-1" if media_kind else None, received_at=ts,
+    )  # fmt: skip
+    session.add(row)
+    await session.commit()
+    return row.id

@@ -1,15 +1,21 @@
 import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyotp
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import redis
 from app.core.security import hash_password, hash_token, new_opaque_token, verify_password
+from app.domain.audit import audit
+from app.domain.channels.models import ChannelLink
+from app.domain.errors import DomainError
+from app.domain.spaces.access import is_member
 from app.domain.spaces.service import provision_user
 from app.domain.users.models import RefreshToken, SignupInvite, User
 
@@ -174,3 +180,26 @@ async def rotate_refresh(session: AsyncSession, raw: str) -> tuple[User, str]:
         session, tok.user_id, tok.family_id, tok.family_started_at
     )  # commita junto
     return user, new
+
+
+async def update_settings(session: AsyncSession, user: User, fields: dict[str, Any]) -> User:
+    """fields: só as chaves enviadas (tz, reminder_time, preferred_channel, weekly_digest,
+    default_space_id). Canal precisa estar vinculado; espaço precisa ser do usuário."""
+    if "tz" in fields:
+        try:
+            ZoneInfo(fields["tz"])
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            raise DomainError("invalid_tz") from None
+    ch = fields.get("preferred_channel")
+    if ch is not None and not await session.scalar(
+        select(exists().where(ChannelLink.user_id == user.id, ChannelLink.channel == ch))
+    ):
+        raise DomainError("channel_not_linked")
+    sid = fields.get("default_space_id")
+    if sid is not None and not await is_member(session, user.id, sid):
+        raise DomainError("invalid_space")
+    for k, v in fields.items():
+        setattr(user, k, v)
+    audit(session, user.id, "user.update_settings", "user", user.id, {"fields": sorted(fields)})
+    await session.commit()
+    return user

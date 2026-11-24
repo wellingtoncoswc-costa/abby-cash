@@ -8,15 +8,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents
+from app.api.schemas import CardOut, Cents, InvoiceDetailOut, InvoiceOut, TransactionOut
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.cards.models import CreditCard, Invoice
 from app.domain.cards.service import (
     create_card,
+    delete_card,
     invoice_statement,
     invoice_summary,
     register_card_purchase,
+    update_card,
     visible_card,
     visible_invoice,
 )
@@ -44,7 +46,7 @@ class PurchaseIn(BaseModel):
     category_id: UUID | None = None
 
 
-@router.post("/spaces/{space_id}/cards", status_code=201)
+@router.post("/spaces/{space_id}/cards", status_code=201, response_model=CardOut)
 async def create(
     space_id: UUID, body: CardIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -56,7 +58,7 @@ async def create(
     return row(card)
 
 
-@router.get("/cards")
+@router.get("/cards", response_model=list[CardOut])
 async def list_cards(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
     rows = await session.scalars(
         select(CreditCard)
@@ -67,7 +69,9 @@ async def list_cards(user: CurrentUser, session: Session) -> list[dict[str, Any]
     return [row(c) for c in rows]
 
 
-@router.post("/spaces/{space_id}/card-purchases", status_code=201)
+@router.post(
+    "/spaces/{space_id}/card-purchases", status_code=201, response_model=list[TransactionOut]
+)
 async def purchase(
     space_id: UUID, body: PurchaseIn, user: CurrentUser, session: Session
 ) -> list[dict[str, Any]]:
@@ -80,7 +84,7 @@ async def purchase(
     return [row(t) for t in txs]
 
 
-@router.get("/cards/{card_id}/invoices")
+@router.get("/cards/{card_id}/invoices", response_model=list[InvoiceOut])
 async def list_invoices(
     card_id: UUID, user: CurrentUser, session: Session,
     limit: Annotated[int, Query(ge=1, le=100)] = 24,
@@ -95,8 +99,32 @@ async def list_invoices(
     return [row(i) | await invoice_summary(session, i) for i in invs]
 
 
-@router.get("/invoices/{invoice_id}")
+@router.get("/invoices/{invoice_id}", response_model=InvoiceDetailOut)
 async def get_invoice(invoice_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
     inv, _ = await visible_invoice(session, user.id, invoice_id)
     stmt = await invoice_statement(session, user.id, invoice_id)
     return row(inv) | await invoice_summary(session, inv) | {"statement": asdict(stmt)}
+
+
+class CardPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    closing_day: Day | None = None
+    due_day: Day | None = None
+    limit_cents: Cents | None = None  # null remove o limite
+    payment_account_id: UUID | None = None  # null remove a conta de pagamento
+
+
+@router.patch("/cards/{card_id}", response_model=CardOut)
+async def patch(
+    card_id: UUID, body: CardPatch, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    fields = body.model_dump(exclude_unset=True)
+    for k in ("name", "closing_day", "due_day"):
+        if k in fields and fields[k] is None:
+            del fields[k]
+    return row(await update_card(session, actor_id=user.id, card_id=card_id, fields=fields))
+
+
+@router.delete("/cards/{card_id}", status_code=204)
+async def delete(card_id: UUID, user: CurrentUser, session: Session) -> None:
+    await delete_card(session, actor_id=user.id, card_id=card_id)

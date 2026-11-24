@@ -16,3 +16,11 @@ async def require_member(session: AsyncSession, user_id: UUID, space_id: UUID) -
 
 async def is_member(session: AsyncSession, user_id: UUID, space_id: UUID) -> bool:
     return await session.get(SpaceMember, (space_id, user_id), populate_existing=True) is not None
+
+
+async def require_owner(session: AsyncSession, user_id: UUID, space_id: UUID) -> SpaceMember:
+    """Edição estrutural (contas, cartões, metas): só o dono do espaço."""
+    member = await require_member(session, user_id, space_id)
+    if member.role != "owner":
+        raise HTTPException(status_code=403, detail="owner_only")
+    return member

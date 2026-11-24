@@ -1,13 +1,13 @@
 name: abby-cash-dev
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16.6
     environment: {POSTGRES_USER: abby, POSTGRES_PASSWORD: abby, POSTGRES_DB: abby}
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U abby"], interval: 3s, retries: 20}
   redis:
-    image: redis:7
+    image: redis:7.4-alpine
     ports: ["6379:6379"]
   api:
     build: ../backend
@@ -28,11 +28,31 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes: [../backend:/app, /app/.venv]
     depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
+  # STT opcional: `docker compose --profile stt up stt` (baixa o modelo no 1º uso)
+  stt:
+    profiles: [stt]
+    build: ../stt
+    ports: ["8001:8000"]
+    volumes: [stt_models:/models]
+    deploy: {resources: {limits: {cpus: "2", memory: 2G}}}
   web:
     image: node:22
     working_dir: /web
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     ports: ["5173:5173"]
     volumes: [../web:/web, /web/node_modules]
+  # WhatsApp (opcional): descomente, preencha EVOLUTION_* no .env e rode `docker compose up evolution`.
+  # evolution:
+  #   image: atendai/evolution-api:v2.2.3
+  #   environment:
+  #     SERVER_URL: http://localhost:8081
+  #     AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+  #     DATABASE_PROVIDER: postgresql
+  #     DATABASE_CONNECTION_URI: postgresql://abby:abby@postgres:5432/evolution  # crie o banco antes
+  #     CACHE_REDIS_ENABLED: "true"
+  #     CACHE_REDIS_URI: redis://redis:6379/6
+  #   ports: ["127.0.0.1:8081:8080"]
+  #   depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
 volumes:
   pgdata:
+  stt_models:

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from app.api.deps import CurrentUser, Session
+from app.core.http import client_ip
 from app.core.redis import redis
 from app.core.security import create_access_token, verify_password
 from app.domain.users.service import (
@@ -52,6 +53,7 @@ def _set_cookie(resp: Response, raw: str) -> None:
     )  # fmt: skip
 
 
+# ponytail: duplica app.core.redis.incr_ttl (que é atômico); migrar após revisar a semântica do auth
 async def _count(key: str) -> int:
     await redis.set(key, 0, ex=FAIL_TTL, nx=True)  # TTL garantido antes do INCR
     return int(await redis.incr(key))
@@ -65,7 +67,7 @@ async def _hit(key: str, limit: int) -> None:
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterIn, session: Session, request: Request) -> dict[str, str]:
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     await _hit(f"register_ip:{ip}", MAX_REGISTER_PER_IP)  # toda tentativa conta
     try:
         user = await register_user(
@@ -81,8 +83,7 @@ async def register(body: RegisterIn, session: Session, request: Request) -> dict
 async def login(
     body: LoginIn, session: Session, resp: Response, request: Request
 ) -> dict[str, str]:
-    # ponytail: usar IP real (proxy confiável) atrás do Nginx no M8; X-Forwarded-For não é confiável
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     key = f"login_fail:{body.email.strip().lower()}:{ip}"  # por (email, ip): evita DoS de lockout
     ip_key = f"login_fail_ip:{ip}"
     await _hit(key, MAX_FAILS)  # antes de verificar a senha

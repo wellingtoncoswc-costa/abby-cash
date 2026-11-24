@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +29,15 @@ class Transaction(Base):
             "(goal_id IS NULL) = (goal_direction IS NULL)", name="ck_transactions_goal_direction"
         ),
         Index("ix_transactions_space_date", "space_id", "occurred_on"),
+        # uma mensagem do chat grava no máximo uma vez (parcelas: uma linha por número)
+        Index(
+            "uq_transactions_origin_source_message",
+            "origin",
+            "source_message_id",
+            func.coalesce(text("installment_number"), 0),
+            unique=True,
+            postgresql_where=text("source_message_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -51,7 +61,9 @@ class Transaction(Base):
     installment_total: Mapped[int | None] = mapped_column(Integer)
     # NULL = "Usuário removido"
     created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
-    origin: Mapped[str] = mapped_column(String(16), default="web")  # web | telegram | whatsapp_*
+    origin: Mapped[str] = mapped_column(String(32), default="web")  # web | telegram | whatsapp_*
     source_message_id: Mapped[str | None] = mapped_column(String(128))
-    attachment_id: Mapped[UUID | None] = mapped_column()  # tabela de anexos chega no M6
+    attachment_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("attachments.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

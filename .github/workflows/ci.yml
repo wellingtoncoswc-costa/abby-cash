@@ -5,12 +5,12 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16.6
         env: {POSTGRES_USER: abby, POSTGRES_PASSWORD: abby, POSTGRES_DB: abby}
         ports: ["5432:5432"]
         options: --health-cmd "pg_isready -U abby" --health-interval 3s --health-retries 20
       redis:
-        image: redis:7
+        image: redis:7.4-alpine
         ports: ["6379:6379"]
     env:
       DATABASE_URL: postgresql+asyncpg://abby:abby@localhost:5432/abby
@@ -39,3 +39,20 @@ jobs:
         with: {fetch-depth: 0}
       - uses: gitleaks/gitleaks-action@v2
         env: {GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+  # Varredura de dependências. Falha o CI em vulnerabilidade conhecida do backend (pip-audit) e do
+  # web (npm audit só de produção, nível high+). Advisory sem correção: ver docs/superpowers/plans/…m8-production.md.
+  audit-backend:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: backend}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv export --frozen --no-dev --no-emit-project -o /tmp/req.txt && uvx pip-audit -r /tmp/req.txt --no-deps --disable-pip
+  audit-web:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: web}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm audit --omit=dev --audit-level=high

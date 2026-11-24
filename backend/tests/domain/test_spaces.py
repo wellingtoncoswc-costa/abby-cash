@@ -122,3 +122,28 @@ async def test_create_admin_is_provisioned(session):
     assert adm.default_space_id is not None
     wallet = await session.scalar(select(Account).where(Account.space_id == adm.default_space_id))
     assert wallet is not None and wallet.type == "wallet"
+
+
+async def test_leaving_clears_responsible_and_foreign_default_account(session):
+    from datetime import date
+
+    from app.domain.bills.service import create_bill
+    from app.domain.spaces.service import leave_space
+    from tests.factories import make_account
+
+    a, b = await _user(session, "a@x.com"), await _user(session, "b@x.com")
+    fam = await create_family_space(session, owner_id=a.id, name="Casa")
+    inv = await create_space_invite(session, space_id=fam.id, created_by=a.id)
+    await accept_space_invite(session, token=inv.token, user_id=b.id)
+    bill = await create_bill(
+        session, actor_id=a.id, space_id=fam.id, description="Luz", amount_cents=100,
+        due_on=date(2026, 12, 1), responsible_user_id=b.id,
+    )  # fmt: skip
+    fam_acc = await make_account(session, fam.id)
+    mine = await session.get(SpaceMember, (b.default_space_id, b.id))
+    mine.default_account_id = fam_acc.id  # padrão pessoal apontando p/ conta da família
+    await session.commit()
+    await leave_space(session, user_id=b.id, space_id=fam.id)
+    await session.refresh(bill)
+    await session.refresh(mine)
+    assert bill.responsible_user_id is None and mine.default_account_id is None

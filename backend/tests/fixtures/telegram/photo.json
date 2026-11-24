@@ -1,0 +1,12 @@
+{
+  "update_id": 900004,
+  "message": {
+    "message_id": 13,
+    "from": {"id": 111, "is_bot": false, "first_name": "Ana"}, "chat": {"id": 111, "first_name": "Ana", "type": "private"}, "date": 1795618800,
+    "photo": [
+      {"file_id": "small", "file_unique_id": "a", "width": 90, "height": 90, "file_size": 1200},
+      {"file_id": "large", "file_unique_id": "b", "width": 800, "height": 800, "file_size": 90000}
+    ],
+    "caption": "farmácia 87,40"
+  }
+}

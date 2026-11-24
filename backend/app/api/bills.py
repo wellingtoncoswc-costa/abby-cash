@@ -6,11 +6,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents
+from app.api.schemas import BillOut, Cents, TransactionOut
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.bills.recurrence import Recurrence
-from app.domain.bills.service import create_bill, list_bills
+from app.domain.bills.service import create_bill, delete_bill, list_bills, update_bill
 from app.domain.payments import pay_bill, pay_invoice
 
 router = APIRouter(tags=["bills"])
@@ -44,7 +44,7 @@ class PayInvoiceIn(BaseModel):
     paid_on: date | None = None
 
 
-@router.post("/spaces/{space_id}/bills", status_code=201)
+@router.post("/spaces/{space_id}/bills", status_code=201, response_model=BillOut)
 async def create(
     space_id: UUID, body: BillIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -57,7 +57,7 @@ async def create(
     return row(bill)
 
 
-@router.get("/spaces/{space_id}/bills")
+@router.get("/spaces/{space_id}/bills", response_model=list[BillOut])
 async def list_(
     space_id: UUID, user: CurrentUser, session: Session, status: str | None = None,
     start: date | None = None, end: date | None = None,
@@ -68,7 +68,7 @@ async def list_(
     return [row(b) for b in bills]
 
 
-@router.post("/bills/{bill_id}/payments", status_code=201)
+@router.post("/bills/{bill_id}/payments", status_code=201, response_model=TransactionOut)
 async def pay(
     bill_id: UUID, body: PayBillIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -79,7 +79,7 @@ async def pay(
     return row(tx)
 
 
-@router.post("/invoices/{invoice_id}/payments", status_code=201)
+@router.post("/invoices/{invoice_id}/payments", status_code=201, response_model=TransactionOut)
 async def pay_inv(
     invoice_id: UUID, body: PayInvoiceIn, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
@@ -88,3 +88,27 @@ async def pay_inv(
         paid_on=body.paid_on or local_today(user.tz), amount_cents=body.amount_cents,
     )  # fmt: skip
     return row(tx)
+
+
+class BillPatch(BaseModel):
+    description: str | None = Field(default=None, min_length=1, max_length=200)
+    amount_cents: Cents | None = None
+    due_on: date | None = None
+    category_id: UUID | None = None  # null remove a categoria
+    responsible_user_id: UUID | None = None
+
+
+@router.patch("/bills/{bill_id}", response_model=BillOut)
+async def patch(
+    bill_id: UUID, body: BillPatch, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    fields = body.model_dump(exclude_unset=True)
+    for k in ("description", "amount_cents", "due_on"):
+        if k in fields and fields[k] is None:
+            del fields[k]
+    return row(await update_bill(session, actor_id=user.id, bill_id=bill_id, fields=fields))
+
+
+@router.delete("/bills/{bill_id}", status_code=204)
+async def delete(bill_id: UUID, user: CurrentUser, session: Session, series: bool = False) -> None:
+    await delete_bill(session, actor_id=user.id, bill_id=bill_id, series=series)

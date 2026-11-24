@@ -61,3 +61,23 @@ async def test_goal_validation_and_access_over_http(client, session):
     assert (await client.post(url, json=foreign, headers=ha)).status_code == 403
     floaty = {**body, "amount_cents": 10.5}
     assert (await client.post(url, json=floaty, headers=ha)).status_code == 422
+
+
+async def test_goal_edit_and_delete_are_owner_only(client, session):
+    from tests.factories import make_family
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    fam = await make_family(session, a, b)
+    r = await client.post(
+        f"/spaces/{fam.id}/goals", headers=auth(b), json={"name": "Viagem", "target_cents": 1000}
+    )
+    assert r.status_code == 201  # membro pode criar
+    gid = r.json()["id"]
+    assert (
+        await client.patch(f"/goals/{gid}", headers=auth(b), json={"name": "X"})
+    ).status_code == 403
+    assert (await client.delete(f"/goals/{gid}", headers=auth(b))).status_code == 403
+    assert (
+        await client.patch(f"/goals/{gid}", headers=auth(a), json={"name": "X"})
+    ).status_code == 200
+    assert (await client.delete(f"/goals/{gid}", headers=auth(a))).status_code == 204

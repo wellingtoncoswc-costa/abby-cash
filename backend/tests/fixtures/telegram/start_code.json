@@ -1,0 +1,9 @@
+{
+  "update_id": 900002,
+  "message": {
+    "message_id": 11,
+    "from": {"id": 111, "is_bot": false, "first_name": "Ana"}, "chat": {"id": 111, "first_name": "Ana", "type": "private"}, "date": 1795618800,
+    "text": "/start 123456",
+    "entities": [{"offset": 0, "length": 6, "type": "bot_command"}]
+  }
+}

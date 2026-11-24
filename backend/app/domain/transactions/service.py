@@ -1,13 +1,16 @@
 import re
 import unicodedata
 from datetime import date
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from fastapi import HTTPException
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.accounts.access import use_account
 from app.domain.accounts.models import Account
+from app.domain.attachments import delete_unreferenced, remove_files
 from app.domain.audit import audit
 from app.domain.errors import DomainError
 from app.domain.spaces.access import require_member
@@ -94,12 +97,10 @@ async def account_balance(session: AsyncSession, account_id: UUID) -> int:
     return acc.initial_balance_cents + sum(signed(t, account_id) for t in rows)
 
 
-async def list_transactions(
-    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, start: date | None = None,
-    end: date | None = None, category_id: UUID | None = None, account_id: UUID | None = None,
-    limit: int = 100, offset: int = 0,
-) -> list[Transaction]:  # fmt: skip
-    await require_member(session, viewer_id, space_id)
+def _filtered(
+    space_id: UUID, start: date | None, end: date | None, category_id: UUID | None,
+    account_id: UUID | None, card_id: UUID | None, created_by: UUID | None,
+) -> Select[Any]:  # fmt: skip
     q = select(Transaction).where(Transaction.space_id == space_id)
     if start is not None:
         q = q.where(Transaction.occurred_on >= start)
@@ -107,9 +108,160 @@ async def list_transactions(
         q = q.where(Transaction.occurred_on <= end)
     if category_id is not None:
         q = q.where(Transaction.category_id == category_id)
+    if card_id is not None:
+        q = q.where(Transaction.card_id == card_id)
+    if created_by is not None:
+        q = q.where(Transaction.created_by == created_by)
     if account_id is not None:
         q = q.where(
             or_(Transaction.account_id == account_id, Transaction.counter_account_id == account_id)
         )
-    q = q.order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
-    return list(await session.scalars(q.limit(limit).offset(offset)))
+    return q
+
+
+async def list_transactions(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, start: date | None = None,
+    end: date | None = None, category_id: UUID | None = None, account_id: UUID | None = None,
+    card_id: UUID | None = None, created_by: UUID | None = None, limit: int = 100,
+    offset: int = 0,
+) -> list[Transaction]:  # fmt: skip
+    await require_member(session, viewer_id, space_id)
+    q = _filtered(space_id, start, end, category_id, account_id, card_id, created_by)
+    page = q.order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
+    return list(await session.scalars(page.limit(limit).offset(offset)))
+
+
+async def count_transactions(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, start: date | None = None,
+    end: date | None = None, category_id: UUID | None = None, account_id: UUID | None = None,
+    card_id: UUID | None = None, created_by: UUID | None = None,
+) -> int:  # fmt: skip
+    await require_member(session, viewer_id, space_id)
+    q = _filtered(space_id, start, end, category_id, account_id, card_id, created_by)
+    return int(await session.scalar(select(func.count()).select_from(q.subquery())) or 0)
+
+
+async def _target(
+    session: AsyncSession, actor_id: UUID, tx_id: UUID
+) -> tuple[Transaction, list[Transaction]]:
+    """Lançamento que o autor pode alterar (é o autor ou dono do espaço) e o seu grupo de
+    parcelas, ambos travados (delete+edit simultâneos se serializam)."""
+    first = await session.get(Transaction, tx_id)
+    if first is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    member = await require_member(session, actor_id, first.space_id)  # não membro = 404
+    if first.created_by != actor_id and member.role != "owner":
+        raise HTTPException(status_code=403, detail="edit_forbidden")
+    where = (
+        Transaction.installment_group_id == first.installment_group_id
+        if first.installment_group_id is not None
+        else Transaction.id == tx_id
+    )
+    rows = list(  # mesma ordem em todo mundo: sem deadlock entre parcelas do mesmo grupo
+        await session.scalars(
+            select(Transaction)
+            .where(where)
+            .order_by(Transaction.installment_number, Transaction.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    )
+    tx = next((t for t in rows if t.id == tx_id), None)
+    if tx is None:  # apagado por outra transação enquanto esperávamos o lock
+        raise HTTPException(status_code=404, detail="not_found")
+    return tx, rows
+
+
+async def update_transaction(
+    session: AsyncSession, *, actor_id: UUID, tx_id: UUID, amount_cents: int | None = None,
+    description: str | None = None, merchant: str | None = None,
+    category_id: UUID | None = None, occurred_on: date | None = None,
+) -> Transaction:  # fmt: skip
+    """Corrige um lançamento (None = não muda). Só despesa/receita: pagamentos e aportes têm
+    fluxo próprio (só podem ser apagados). Parcelado: só categoria/descrição/estabelecimento,
+    no grupo todo."""
+    from app.domain.cards.models import Invoice
+    from app.domain.cards.service import sync_invoice_bill
+
+    tx, group = await _target(session, actor_id, tx_id)
+    if tx.type == "transfer" or tx.bill_id is not None or tx.goal_id is not None:
+        raise DomainError("not_editable")
+    if tx.installment_group_id is not None and (amount_cents is not None or occurred_on):
+        raise DomainError("installment_group_not_editable")
+    if tx.card_id is not None and occurred_on is not None:
+        raise DomainError("card_date_not_editable")  # mudaria a fatura: apague e lance de novo
+    await check_common(
+        session, actor_id=actor_id, space_id=tx.space_id, type=tx.type,
+        amount_cents=tx.amount_cents if amount_cents is None else amount_cents,
+        category_id=tx.category_id if category_id is None else category_id,
+        occurred_on=occurred_on or tx.occurred_on,
+    )  # fmt: skip
+    before = {"amount_cents": tx.amount_cents, "category_id": str(tx.category_id)}
+    for t in group:
+        if amount_cents is not None:
+            t.amount_cents = amount_cents
+        if description is not None:
+            t.description = description
+        if merchant is not None:
+            t.merchant = merchant
+        if category_id is not None:
+            t.category_id = category_id
+        if occurred_on is not None:
+            t.occurred_on = occurred_on
+    await session.flush()
+    if tx.invoice_id is not None and amount_cents is not None:
+        invoice = await session.get(Invoice, tx.invoice_id)
+        assert invoice is not None
+        await sync_invoice_bill(session, invoice)  # conta espelho = total da fatura
+    audit(
+        session, actor_id, "transaction.update", "transaction", tx.id,
+        {"space_id": str(tx.space_id), "before": before,
+         "after": {"amount_cents": tx.amount_cents, "category_id": str(tx.category_id)}},
+    )  # fmt: skip
+    await session.commit()
+    return tx
+
+
+async def delete_transaction(
+    session: AsyncSession, *, actor_id: UUID, tx_id: UUID
+) -> list[Transaction]:
+    """Apaga o lançamento (compra parcelada: o grupo inteiro) e reajusta fatura, conta a pagar
+    (pagamento desfeito reabre) e meta (aporte que deixaria a meta negativa é recusado)."""
+    from app.domain.bills.models import Bill
+    from app.domain.bills.status import refresh_status
+    from app.domain.cards.models import Invoice
+    from app.domain.cards.service import sync_invoice_bill
+    from app.domain.goals.models import Goal
+    from app.domain.goals.service import goal_saved
+
+    tx, victims = await _target(session, actor_id, tx_id)
+    invoice_ids = {t.invoice_id for t in victims if t.invoice_id is not None}
+    bill_ids = {t.bill_id for t in victims if t.bill_id is not None and t.invoice_id is None}
+    goal_ids = {t.goal_id for t in victims if t.goal_id is not None}
+    for goal_id in goal_ids:
+        await session.get(Goal, goal_id, with_for_update=True)  # serializa com retiradas
+    attachment_ids = {t.attachment_id for t in victims if t.attachment_id is not None}
+    for t in victims:
+        await session.delete(t)
+    await session.flush()
+    for goal_id in goal_ids:
+        if await goal_saved(session, goal_id) < 0:
+            await session.rollback()
+            raise DomainError("insufficient_saved")  # há retiradas que dependem deste aporte
+    for invoice_id in invoice_ids:  # compra apagada ou pagamento desfeito: total e status
+        invoice = await session.get(Invoice, invoice_id)
+        if invoice is not None:
+            await sync_invoice_bill(session, invoice)
+    for bill_id in bill_ids:  # pagamento de conta a pagar desfeito: reabre
+        bill = await session.get(Bill, bill_id, with_for_update=True)
+        if bill is not None:
+            await refresh_status(session, bill)
+    audit(
+        session, actor_id, "transaction.delete", "transaction", tx.id,
+        {"space_id": str(tx.space_id), "count": len(victims),
+         "amount_cents": sum(t.amount_cents for t in victims)},
+    )  # fmt: skip
+    paths = await delete_unreferenced(session, attachment_ids)
+    await session.commit()
+    remove_files(paths)
+    return victims
