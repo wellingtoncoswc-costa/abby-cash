@@ -17,9 +17,6 @@ MONTHS = [
 ]  # fmt: skip
 
 NOT_UNDERSTOOD = "Não entendi. Tente: gastei 45 mercado — ou mande 'ajuda'."
-MEDIA = (
-    "Ainda não entendo áudio nem foto, por enquanto só texto. Mande assim: gastei 45 no mercado."
-)
 HELP = (
     "Eu lanço seus gastos pelo chat. Exemplos:\n"
     "• gastei 45 no mercado\n"

@@ -17,6 +17,8 @@ class FakeAdapter:
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []  # (external_user_id, texto)
+        self.downloads: list[str] = []
+        self.media, self.media_mime = b"", "application/octet-stream"
 
     def verify(self, request: Request) -> bool:
         return True
@@ -28,8 +30,9 @@ class FakeAdapter:
     async def send_text(self, external_user_id: str, text: str) -> None:
         self.sent.append((external_user_id, text))
 
-    async def download_media(self, media_ref: str) -> tuple[bytes, str]:
-        return b"", "application/octet-stream"
+    async def download_media(self, media_ref: str, max_bytes: int) -> tuple[bytes, str]:
+        self.downloads.append(media_ref)
+        return self.media, self.media_mime
 
 
 class FakeIntent(ParsedIntent):
@@ -73,4 +76,29 @@ class FakeParser:
                 if c.kind == kind and fold(c.name) == fold(name)
             )
             result = result.model_copy(update={"category_index": idx})
+        return result
+
+
+class FakeTranscriber:
+    def __init__(self, text: str = "", duration_s: float = 3.5, error: Exception | None = None):
+        self.text, self.duration_s, self.error = text, duration_s, error
+        self.calls: list[tuple[int, str]] = []
+
+    async def transcribe(self, audio: bytes, mime: str):
+        from app.ai.stt import Transcript
+
+        self.calls.append((len(audio), mime))
+        if self.error:
+            raise self.error
+        return Transcript(self.text, self.duration_s)
+
+
+class FakeReader:
+    def __init__(self, *results: Any) -> None:
+        self.results = list(results)
+
+    async def read(self, image: bytes, mime: str, space_id: Any = None):
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
         return result

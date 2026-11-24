@@ -115,7 +115,7 @@ async def run(t: Turn, d: Draft) -> str:
             t.session, actor_id=t.user_id, space_id=d.space_id, card_id=d.payment.id,
             amount_cents=p.amount_cents, occurred_on=occurred, installments=n,
             description=description, merchant=merchant, category_id=category_id,
-            origin=t.channel, source_message_id=t.message_id,
+            origin=t.channel, source_message_id=t.message_id, attachment_id=d.attachment_id,
         )  # fmt: skip
     else:
         txs = [
@@ -132,6 +132,7 @@ async def run(t: Turn, d: Draft) -> str:
                 account_id=d.payment.id,
                 origin=t.channel,
                 source_message_id=t.message_id,
+                attachment_id=d.attachment_id,
             )  # fmt: skip
         ]
     line = await tx_line(

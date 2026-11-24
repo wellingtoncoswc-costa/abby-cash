@@ -11,8 +11,9 @@ from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.usage import record_ai_usage
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.flows import edit, extras, launch, pay, query
+from app.assistant.flows import edit, extras, launch, pay, query, receipt
 from app.assistant.flows.common import already_done
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
@@ -25,7 +26,6 @@ from app.assistant.replies import (
     DIGEST_OFF,
     DIGEST_ON,
     HELP,
-    MEDIA,
     NO_FAMILY,
     NOT_UNDERSTOOD,
     ZERO,
@@ -35,6 +35,7 @@ from app.assistant.replies import (
 from app.assistant.shortcuts import answer, digest_toggle, try_shortcut
 from app.assistant.state import clear_state, get_state
 from app.assistant.turn import Draft, Turn
+from app.channels.base import MediaTooLarge
 from app.channels.registry import get_adapter
 from app.core.config import get_settings
 from app.core.dates import to_local_date
@@ -42,6 +43,7 @@ from app.core.db import SessionLocal, engine
 from app.core.money import format_brl
 from app.core.redis import redis
 from app.core.text import fold
+from app.domain.attachments import MAX_BYTES
 from app.domain.channels.linking import find_user_by_link, link_with_code
 from app.domain.channels.models import InboundMessage
 from app.domain.errors import DomainError
@@ -65,6 +67,8 @@ INVALID_CODE = "Código inválido ou expirado. Gere um novo no painel web (Canai
 TOO_MANY = "Muitas tentativas. Tente de novo em 1 hora."
 UNLINKED = _UNLINKED.format(chat="Telegram")
 UNLINKED_TTL_S = 86400
+AUDIO_FAIL = "Não consegui ouvir o áudio, pode escrever?"
+TOO_BIG = receipt.TOO_BIG
 FAILED = "Tive um problema ao processar sua mensagem. Tente de novo em instantes."
 
 _CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?([0-9]{6})", re.ASCII | re.IGNORECASE)
@@ -226,6 +230,15 @@ async def resume(t: Turn, text: str) -> str | None:
             await take()
             return None
         d.p.amount_cents = amount
+    elif kind == "receipt":
+        if reply == "nao":
+            await take()
+            return "Ok, não lancei."
+        out = await receipt.step(t, d, text, reply)
+        if out is not receipt.GO:
+            if out is None:
+                await take()
+            return str(out) if out is not None else None
     elif kind == "confirm":
         if reply != "sim":
             await take()
@@ -335,19 +348,54 @@ async def handle(session: AsyncSession, ctx: dict[str, Any], row: InboundMessage
         return await unlinked(session, row.channel, row.external_user_id, row.text or "")
     row.user_id = user.id
     await session.commit()  # id durável: um rollback adiante não pode deixar a linha sem dono
-    if row.media_kind is not None:  # áudio e foto entram no M6; a legenda não grava nada
-        return MEDIA
-    text = (row.text or "").strip()
-    if not text:
-        return None
     t = Turn(
         session=session, user_id=user.id, tz=user.tz, default_space_id=user.default_space_id,
         channel=row.channel, message_id=row.external_message_id, now=row.received_at,
         today=to_local_date(row.received_at, user.tz), parser=ctx.get("parser"),
     )  # fmt: skip
+    prefix, text = "", (row.text or "").strip()
+    if row.media_kind == "image":  # a legenda só serve para #pessoal/#familia
+        h = extract_hints(text, t.today)
+        space_id, error = await target_space(t, h)
+        if space_id is None:
+            return error or NOT_UNDERSTOOD
+        return await receipt.start(t, row, ctx.get("receipt_reader"), space_id, h.private)
+    if row.media_kind == "audio":
+        heard, failure = await transcribe(t, row, ctx.get("transcriber"))
+        if heard is None:
+            return failure
+        text = heard
+        prefix = f'🎙️ "{shorten(text)}"\n'
+    if not text:
+        return None
     reply = await converse(t, text)
     row.result = {"intent": t.intent}
-    return reply
+    return prefix + reply
+
+
+async def transcribe(
+    t: Turn, row: InboundMessage, transcriber: Any
+) -> tuple[str | None, str | None]:
+    """Áudio -> (texto, None) ou (None, resposta de falha). O texto nunca é logado."""
+    try:
+        data, mime = await get_adapter(row.channel).download_media(row.media_ref or "", MAX_BYTES)
+        heard = await transcriber.transcribe(data, mime)
+    except MediaTooLarge:
+        return None, TOO_BIG
+    except Exception as e:
+        log.warning("audio failed (%s)", type(e).__name__)
+        return None, AUDIO_FAIL
+    if not heard.text:
+        return None, AUDIO_FAIL
+    space_id, _ = await target_space(t, extract_hints("", t.today))
+    if space_id is not None:
+        await record_ai_usage(space_id, "stt", seconds=heard.duration_s)
+    return str(heard.text), None
+
+
+def shorten(text: str, limit: int = 120) -> str:
+    one = " ".join(text.split())
+    return one if len(one) <= limit else one[: limit - 1] + "…"
 
 
 def _where(e: BaseException) -> str:

@@ -4,6 +4,8 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.ai.openai_parser import OpenAIIntentParser
+from app.ai.receipt import OpenAIReceiptReader
+from app.ai.stt import HttpWhisperTranscriber
 from app.core.config import get_settings
 from app.jobs.bills import daily_bills_job, send_bill_reminders
 from app.jobs.budgets import check_budget_thresholds
@@ -16,6 +18,8 @@ from app.jobs.scheduler import purge_inbound_job
 
 async def startup(ctx: dict[str, Any]) -> None:
     ctx["parser"] = OpenAIIntentParser()  # um cliente por processo do worker
+    ctx["receipt_reader"] = OpenAIReceiptReader()
+    ctx["transcriber"] = HttpWhisperTranscriber()
 
 
 class WorkerSettings:
