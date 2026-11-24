@@ -34,5 +34,17 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     ports: ["5173:5173"]
     volumes: [../web:/web, /web/node_modules]
+  # WhatsApp (opcional): descomente, preencha EVOLUTION_* no .env e rode `docker compose up evolution`.
+  # evolution:
+  #   image: atendai/evolution-api:v2.2.3
+  #   environment:
+  #     SERVER_URL: http://localhost:8081
+  #     AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+  #     DATABASE_PROVIDER: postgresql
+  #     DATABASE_CONNECTION_URI: postgresql://abby:abby@postgres:5432/evolution  # crie o banco antes
+  #     CACHE_REDIS_ENABLED: "true"
+  #     CACHE_REDIS_URI: redis://redis:6379/6
+  #   ports: ["127.0.0.1:8081:8080"]
+  #   depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_started}}
 volumes:
   pgdata:

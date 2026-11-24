@@ -48,7 +48,45 @@ services:
     networks: [abby-cash-net]
     restart: unless-stopped
     deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
+  # WhatsApp (Evolution API v2): sem porta pública; só api/worker falam com ela pela rede interna.
+  # Banco e Redis PRÓPRIOS (a Evolution guarda a sessão do WhatsApp; não misturar com os do app).
+  evolution:
+    image: atendai/evolution-api:v2.2.3  # fixada: confira a tag antes do deploy; não usar latest
+    environment:
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: "${EVOLUTION_API_KEY}"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@evolution-db:5432/evolution
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/6
+      CACHE_LOCAL_ENABLED: "false"
+    volumes: [evolution_instances:/evolution/instances]
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    depends_on:
+      evolution-db: {condition: service_healthy}
+      evolution-redis: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "1", memory: 768M}}}
+  evolution-db:
+    image: postgres:16
+    environment:
+      {POSTGRES_USER: evolution, POSTGRES_DB: evolution, POSTGRES_PASSWORD: "${EVOLUTION_DB_PASSWORD}"}
+    volumes: [evolution_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 5s
+      retries: 10
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.5", memory: 256M}}}
+  evolution-redis:
+    image: redis:7
+    networks: [abby-cash-net]
+    restart: unless-stopped
+    deploy: {resources: {limits: {cpus: "0.5", memory: 128M}}}
 networks:
   abby-cash-net:
 volumes:
   pgdata:
+  evolution_pgdata:
+  evolution_instances:
