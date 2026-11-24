@@ -19,6 +19,10 @@ const MSG: Record<string, string> = {
   admin_only: 'Apenas administradores.',
   insufficient_available: 'Valor maior que o disponível na conta (saldo menos o que está nas caixinhas).',
   insufficient_balance: 'Valor maior que o saldo da caixinha.',
+  installment_paid_real: 'Esta parcela foi paga com lançamento; exclua o lançamento para desfazer.',
+  installment_partial: 'Esta parcela tem pagamento parcial; exclua o lançamento para desfazer.',
+  bill_already_paid: 'Esta parcela já está paga.',
+  invalid_paid_installments: 'Parcelas já pagas: informe de 0 até o total.',
   invalid_setting: 'Configuração inválida.',
 }
 export const errText = (e: unknown) =>

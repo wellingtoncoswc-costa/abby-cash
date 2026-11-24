@@ -783,6 +783,58 @@ export interface paths {
         patch: operations["patch_loans__loan_id__patch"];
         trace?: never;
     };
+    "/loans/{loan_id}/installments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Installments */
+        get: operations["installments_loans__loan_id__installments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/loans/{loan_id}/installments/{number}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle */
+        post: operations["settle_loans__loan_id__installments__number__settle_post"];
+        /** Unsettle */
+        delete: operations["unsettle_loans__loan_id__installments__number__settle_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/loans/{loan_id}/installments/{number}/materialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Materialize */
+        post: operations["materialize_loans__loan_id__installments__number__materialize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/spaces/{space_id}/categories": {
         parameters: {
             query?: never;
@@ -1217,6 +1269,8 @@ export interface components {
             loan_id: string | null;
             /** Installment Number */
             installment_number: number | null;
+            /** Settled Historical At */
+            settled_historical_at: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1582,6 +1636,25 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InstallmentOut */
+        InstallmentOut: {
+            /** Number */
+            number: number;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "paid_history" | "paid_real";
+            /** Bill Id */
+            bill_id: string | null;
+        };
         /** InvoiceDetailOut */
         InvoiceDetailOut: {
             /**
@@ -1703,6 +1776,11 @@ export interface components {
             account_id?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Paid Installments
+             * @default 0
+             */
+            paid_installments: number;
         };
         /** LoanOut */
         LoanOut: {
@@ -4303,6 +4381,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    installments_loans__loan_id__installments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_loans__loan_id__installments__number__settle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsettle_loans__loan_id__installments__number__settle_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materialize_loans__loan_id__installments__number__materialize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                loan_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOut"];
                 };
             };
             /** @description Validation Error */
