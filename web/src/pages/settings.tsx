@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, download, logout } from '../api/client'
 import type { ChannelLinkRow, LinkCode, Me, Member, S, Space } from '../api/types'
 import { spaceLabel, useSpace } from '../space'
@@ -153,6 +153,40 @@ function Prefs({ me }: { me: Me }) {
   )
 }
 
+const WA_STATE: Record<string, string> = { open: 'conectado', connecting: 'aguardando pareamento', close: 'desconectado', none: 'não configurado' }
+
+function Whatsapp() {
+  const st = useGet<S['WhatsappOut']>('/admin/whatsapp')
+  const [qr, setQr] = useState<string | null>(null)
+  const gen = useSend(() => api<S['WhatsappOut']>('POST', '/admin/whatsapp/qr'), (r) => setQr(r.qr ?? null))
+  const out = useSend(() => api<S['WhatsappOut']>('POST', '/admin/whatsapp/logout'), () => setQr(null))
+  const { refetch } = st
+  const { mutate: renew } = gen
+  const state = st.data?.state
+  const showQr = qr !== null && state !== 'open'
+  // com o QR na tela: confere o status a cada 3 s e pede QR novo a cada 25 s (ele expira)
+  useEffect(() => {
+    if (!showQr) return
+    const a = setInterval(() => void refetch(), 3000)
+    const b = setInterval(() => renew(), 25000)
+    return () => { clearInterval(a); clearInterval(b) }
+  }, [showQr, refetch, renew])
+  return (
+    <Card title="WhatsApp">
+      <p className="mb-2">Número da Abby: <strong>{state ? WA_STATE[state] ?? state : '…'}</strong></p>
+      {state !== 'open' && <Btn onClick={() => gen.mutate()} disabled={gen.isPending}>{qr ? 'Gerar novo QR' : 'Conectar número (QR)'}</Btn>}
+      {state === 'open' && <Btn onClick={() => { if (window.confirm('Desconectar o número do WhatsApp?')) out.mutate() }} disabled={out.isPending}>Desconectar número</Btn>}
+      <Err e={gen.error ?? out.error ?? st.error} />
+      {showQr && (
+        <div className="mt-3" role="status">
+          <img src={qr ?? ''} alt="QR code para parear o WhatsApp" className="size-64 rounded-md bg-white p-2" />
+          <p className="mt-1 text-sm">No celular do chip: WhatsApp › Aparelhos conectados › Conectar um aparelho, e escaneie. O QR renova sozinho.</p>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export function Admin() {
   const me = useMe()
   const gen = useSend(() => api<S['SignupInviteOut']>('POST', '/admin/signup-invites'))
@@ -166,6 +200,7 @@ export function Admin() {
         <Err e={gen.error} />
         {gen.data && <p role="status" className="mt-2">Código: <code className="font-mono text-xl">{gen.data.code}</code> (expira em {new Date(gen.data.expires_at).toLocaleDateString('pt-BR')})</p>}
       </Card>
+      <Whatsapp />
     </>
   )
 }

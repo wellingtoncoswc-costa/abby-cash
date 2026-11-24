@@ -68,9 +68,11 @@ curl -sI https://abbycash.abbysystems.com.br/health; curl -sI https://<dominio-d
 ```bash
 # Telegram (usa TELEGRAM_BOT_TOKEN/TELEGRAM_WEBHOOK_SECRET do .env)
 docker compose --env-file .env -f infra/docker-compose.prod.yml exec api python -m app.cli telegram-set-webhook
-# WhatsApp/Evolution (PUBLIC_BASE_URL já aponta para o domínio):
-docker compose --env-file .env -f infra/docker-compose.prod.yml exec api python -m app.cli evolution-set-webhook
 ```
+WhatsApp/Evolution: defina `EVOLUTION_INSTANCE=abby-cash` no `.env` e suba a stack (`up -d evolution api worker`). O pareamento é no painel:
+**Admin › WhatsApp › Conectar número (QR)** (só admin). Ele cria a instância, registra o webhook interno
+(`EVOLUTION_WEBHOOK_URL`, `http://api:8000/...` pela `evolution-bridge`) e mostra o QR; escaneie com o chip dedicado
+(WhatsApp › Aparelhos conectados). Alternativa por linha de comando: `python -m app.cli evolution-set-webhook`.
 URLs: `https://abbycash.abbysystems.com.br/webhooks/telegram` e `.../webhooks/whatsapp_evolution`. Cookie de refresh tem `Path=/auth`: web e API na mesma origem (já é).
 
 ## 6. Aceite
