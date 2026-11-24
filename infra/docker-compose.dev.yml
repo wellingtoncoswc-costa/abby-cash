@@ -1,13 +1,13 @@
 name: abby-cash-dev
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16.6
     environment: {POSTGRES_USER: abby, POSTGRES_PASSWORD: abby, POSTGRES_DB: abby}
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U abby"], interval: 3s, retries: 20}
   redis:
-    image: redis:7
+    image: redis:7.4-alpine
     ports: ["6379:6379"]
   api:
     build: ../backend
