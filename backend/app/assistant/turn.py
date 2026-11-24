@@ -21,10 +21,11 @@ class Pay(BaseModel):
 class Draft(BaseModel):
     """Ação em andamento que precisou perguntar algo; vai inteira para `conversation_state`."""
 
-    action: Literal["launch", "pay", "aporte", "pocket"]
+    action: Literal["launch", "pay", "aporte", "pocket", "transfer"]
     p: ParsedIntent
     space_id: UUID
-    payment: Pay | None = None
+    payment: Pay | None = None  # origem (pagamento, aporte, transferência)
+    to: Pay | None = None  # destino da transferência
     bill_id: UUID | None = None
     options: list[Pay] = []
     warn: str | None = None

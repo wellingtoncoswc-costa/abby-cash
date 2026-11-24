@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.usage import over_budget, record_ai_usage
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.flows import edit, extras, launch, pay, pockets, query, receipt
+from app.assistant.flows import edit, extras, launch, pay, pockets, query, receipt, transfer
 from app.assistant.flows.common import already_done
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
@@ -77,8 +77,12 @@ FAILED = "Tive um problema ao processar sua mensagem. Tente de novo em instantes
 _CODE = re.compile(r"(?:/start(?:@\w+)?\s+)?([0-9]{6})", re.ASCII | re.IGNORECASE)
 _LAUNCH = {"lancar_despesa", "lancar_receita", "lancar_parcelado"}
 _POCKET = {"guardar_caixinha", "resgatar_caixinha"}
-_NEEDS_AMOUNT = _LAUNCH | _POCKET | {"corrigir", "pagar_conta", "nova_conta_a_pagar", "aporte_meta"}
-_WRITES = _POCKET | {"corrigir", "apagar", "pagar_conta", "nova_conta_a_pagar", "aporte_meta"}
+_NEEDS_AMOUNT = _LAUNCH | _POCKET | {
+    "corrigir", "pagar_conta", "nova_conta_a_pagar", "aporte_meta", "transferir_contas",
+}  # fmt: skip
+_WRITES = _POCKET | {
+    "corrigir", "apagar", "pagar_conta", "nova_conta_a_pagar", "aporte_meta", "transferir_contas",
+}  # fmt: skip
 _INCOME_VERBS = re.compile(r"\s*(recebi|ganhei|entrou|caiu)\b")
 _LEADING_VERB = re.compile(r"^\s*(gastei|paguei|comprei|recebi|ganhei|foi|deu)\b\s*", re.I)
 
@@ -139,6 +143,8 @@ def merge_hints(p: ParsedIntent, h: Hints) -> ParsedIntent:
         # ("uber 2 pessoas 23"); `interpret` avisa quando troca um valor do modelo
         if p.amount_cents is None or h.installments or p.amount_cents not in h.amounts:
             p.amount_cents = h.amount_cents
+    if p.intent == "transferir_contas":
+        p.occurred_on = h.occurred_on or p.occurred_on or h.weekday_on
     if p.intent in _LAUNCH:
         p.occurred_on = h.occurred_on or p.occurred_on or h.weekday_on
         p.installments = h.installments or p.installments
@@ -194,6 +200,8 @@ async def run_draft(t: Turn, d: Draft) -> str:
         return await extras.run_aporte(t, d)
     if d.action == "pocket":
         return await pockets.run(t, d)
+    if d.action == "transfer":
+        return await transfer.run(t, d)
     return await launch.run(t, d)
 
 
@@ -254,7 +262,7 @@ async def resume(t: Turn, text: str) -> str | None:
             await drop()
             return "Ok, não lancei." if reply == "nao" else None
         d.confirmed = True
-    else:  # payment | pick_bill
+    else:  # payment | dest | pick_bill
         picked = pick_option(d.options, text)
         if picked is None:
             if re.fullmatch(r"\d{1,2}", text.strip()):
@@ -264,6 +272,8 @@ async def resume(t: Turn, text: str) -> str | None:
         d.options = []
         if kind == "pick_bill":
             d.bill_id = picked.id
+        elif kind == "dest":
+            d.to = picked
         else:
             d.payment = picked
     if not await take():
@@ -339,6 +349,8 @@ async def fresh(t: Turn, text: str) -> str:
             return await extras.aporte(t, p, space_id)
         case "guardar_caixinha" | "resgatar_caixinha":
             return await pockets.guardar_resgatar(t, p, space_id)
+        case "transferir_contas":
+            return await transfer.start(t, p, space_id)
         case "consultar_caixinhas":
             return await pockets.caixinhas(t, space_id)
         case "consultar_financiamentos":

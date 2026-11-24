@@ -9,7 +9,7 @@ Intent = Literal[
     "lancar_despesa", "lancar_receita", "lancar_parcelado", "corrigir", "apagar", "pagar_conta",
     "nova_conta_a_pagar", "aporte_meta", "consultar_gastos", "consultar_teto", "consultar_saldo",
     "consultar_faturas", "guardar_caixinha", "resgatar_caixinha", "consultar_caixinhas",
-    "consultar_financiamentos", "ajuda", "desconhecido",
+    "consultar_financiamentos", "transferir_contas", "ajuda", "desconhecido",
 ]  # fmt: skip
 Period = Literal["hoje", "ontem", "semana", "mes", "mes_passado"]
 
@@ -25,6 +25,7 @@ class ParsedIntent(BaseModel):
     merchant: str | None = None
     category_index: int | None = None  # nº na lista de categorias do prompt
     account_hint: str | None = None  # "nubank", "pix", "dinheiro"
+    to_account_hint: str | None = None  # transferir_contas: DESTINO (a origem é account_hint)
     card_hint: str | None = None
     installments: int | None = None
     occurred_on: date | None = None
@@ -67,7 +68,7 @@ class ParsedIntent(BaseModel):
     def _long_text(cls, v: str | None) -> str | None:
         return None if v is None else clean_text(v, 200)
 
-    @field_validator("account_hint", "card_hint", "goal_hint", "pocket_hint")
+    @field_validator("account_hint", "to_account_hint", "card_hint", "goal_hint", "pocket_hint")
     @classmethod
     def _hint(cls, v: str | None) -> str | None:
         return None if v is None else clean_text(v, 100)

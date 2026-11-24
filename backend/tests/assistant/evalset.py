@@ -25,6 +25,7 @@ EVAL_PATH = Path(__file__).with_name("eval_cases.yaml")
 _FUZZY = {"description"}
 _HINTS = {
     "account_hint": "accounts",
+    "to_account_hint": "accounts",
     "card_hint": "cards",
     "goal_hint": "goals",
     "pocket_hint": "pockets",
@@ -47,6 +48,7 @@ def eval_context(today: date) -> SpaceContext:
             CtxAccount(uuid4(), "Carteira", "wallet", space),
             CtxAccount(uuid4(), "Nubank", "checking", space),
             CtxAccount(uuid4(), "Itaú", "checking", space),
+            CtxAccount(uuid4(), "Poupança", "savings", space),
         ],
         cards=[CtxCard(uuid4(), "Nubank", space), CtxCard(uuid4(), "Visa", space)],
         goals=[CtxGoal(uuid4(), "Viagem"), CtxGoal(uuid4(), "Carro")],

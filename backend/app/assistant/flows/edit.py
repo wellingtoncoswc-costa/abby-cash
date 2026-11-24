@@ -139,7 +139,11 @@ async def apagar(t: Turn) -> str:
     if tx is None:
         return NOT_FOUND.format("apagar")
     group = await _group(t, tx)
-    what = tx.merchant or tx.description or "lançamento"
+    what = (
+        tx.merchant
+        or tx.description
+        or ("transferência" if tx.type == "transfer" else "lançamento")
+    )
     extra = f" ({len(group)} parcelas)" if len(group) > 1 else ""
     total = sum(g.amount_cents for g in group)
     await set_state(t.session, t.user_id, t.channel, "delete", {"tx_id": str(tx.id)}, t.now)

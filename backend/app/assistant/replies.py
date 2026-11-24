@@ -27,6 +27,7 @@ HELP = (
     "Consultas: saldo · teto · faturas · caixinhas · financiamentos · quanto gastei esse mês\n"
     "Ajustes: corrigir · apagar último\n"
     "Contas: paguei · paguei o financiamento do carro · guardei 500 na meta viagem\n"
+    "Entre contas: transferi 300 do Nubank para o Itaú\n"
     "Caixinhas: guardei 200 na reserva · tirei 100 da viagem\n"
     "Criar caixinha ou financiamento: pelo painel web\n"
     "Resumo semanal: resumo semanal on · resumo semanal off"
@@ -53,6 +54,7 @@ _DOMAIN_ERRORS = {
     "amount_too_large": "Esse valor é alto demais.",
     "invalid_date": "Data inválida.",
     "invalid_installments": "Parcelas: de 2 a 48.",
+    "invalid_transfer": "Escolha duas contas diferentes.",
     "invalid_category": "Essa categoria não existe neste espaço.",
     "insufficient_saved": "Não há tanto guardado nessa meta.",
     "invalid_payment_amount": "Esse valor é maior do que falta pagar.",
@@ -140,6 +142,14 @@ async def tx_line(
         acc = await session.get(Account, tx.account_id)
         if acc is not None:
             payment = account_label(acc.type, acc.name)
+    if tx.type == "transfer":
+        names = [
+            (await session.get(Account, i)).name  # type: ignore[union-attr]
+            for i in (tx.account_id, tx.counter_account_id)
+        ]
+        line = f"{format_brl(tx.amount_cents)} · {names[0]} → {names[1]} · "
+        line += when_label(tx.occurred_on, today)
+        return "✅ " + line
     amount = (
         installments_text(total_cents, installments)
         if installments and total_cents

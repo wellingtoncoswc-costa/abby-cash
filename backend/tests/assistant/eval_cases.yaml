@@ -159,3 +159,33 @@ cases:
     expect: {intent: consultar_financiamentos, pocket_hint: carro}
   - text: "quantas parcelas faltam do consórcio da casa?"
     expect: {intent: consultar_financiamentos}
+  # --- transferência entre contas (origem = account_hint, destino = to_account_hint) ---
+  - text: "transferi 300 do Nubank para o Itaú"
+    expect: {intent: transferir_contas, amount_cents: 30000, account_hint: nubank, to_account_hint: itaú}
+  - text: "passa 200 da conta nubank pra itau"
+    expect: {intent: transferir_contas, amount_cents: 20000, account_hint: nubank, to_account_hint: itau}
+  - text: "move 500 do Itaú pro Nubank"
+    expect: {intent: transferir_contas, amount_cents: 50000, account_hint: itaú, to_account_hint: nubank}
+  - text: "mandei 1000 da poupança pra corrente"
+    expect: {intent: transferir_contas, amount_cents: 100000, account_hint: poupança, to_account_hint: corrente}
+  - text: "transferi R$ 1.250,50 da carteira para o nubank"
+    expect: {intent: transferir_contas, amount_cents: 125050, account_hint: carteira, to_account_hint: nubank}
+  - text: "tirei 150 do itaú e botei no nubank"
+    expect: {intent: transferir_contas, amount_cents: 15000, account_hint: itaú, to_account_hint: nubank}
+  - text: "pix de 80 do nubank pro itaú, é minha mesma"
+    expect: {intent: transferir_contas, amount_cents: 8000, account_hint: nubank, to_account_hint: itaú}
+  - text: "transferência de 400 da poupança pro nubank ontem"
+    expect: {intent: transferir_contas, amount_cents: 40000, account_hint: poupança, to_account_hint: nubank, occurred_on: "2026-11-24"}
+  - text: "passei duzentos pro itaú"
+    expect: {intent: transferir_contas, amount_cents: 20000, to_account_hint: itaú}
+  - text: "transferi 300 do nubank"
+    expect: {intent: transferir_contas, amount_cents: 30000, account_hint: nubank}
+  # --- NÃO são transferência entre contas ---
+  - text: "guardei 200 na reserva"
+    expect: {intent: guardar_caixinha}
+  - text: "paguei a fatura do nubank"
+    expect: {intent: pagar_conta}
+  - text: "guardei 500 na meta viagem"
+    expect: {intent: aporte_meta}
+  - text: "paguei 80 de pix pro joão no almoço"
+    expect: {intent: lancar_despesa, amount_cents: 8000}

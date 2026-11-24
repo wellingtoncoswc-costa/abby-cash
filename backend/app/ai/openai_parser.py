@@ -23,7 +23,9 @@ futuro), aporte_meta (guardar dinheiro numa META), guardar_caixinha (colocar din
 CAIXINHA/cofrinho que rende: "guardei 200 na reserva", "joguei 300 na reserva"), resgatar_caixinha \
 (tirar dinheiro da caixinha: "tirei 100 da viagem", "saca 100 da reserva"), consultar_caixinhas \
 ("minhas caixinhas", "quanto tá rendendo"), consultar_financiamentos (financiamentos e \
-consórcios: "meus financiamentos", "quanto falta do carro"), consultar_gastos, consultar_teto, \
+consórcios: "meus financiamentos", "quanto falta do carro"), transferir_contas (mover dinheiro de \
+uma conta cadastrada para outra: "transferi 300 do Nubank para o Itaú", "passa 200 da conta X \
+pra Y", "move 500 do Itaú pro Nubank", "mandei 1000 da poupança pra corrente"), consultar_gastos, consultar_teto, \
 consultar_saldo, consultar_faturas, ajuda ou desconhecido. Se o nome citado for de uma caixinha \
 da lista, é caixinha; se for de uma meta, é aporte_meta.
 - amount_cents: valor TOTAL em centavos, inteiro. "45" = 4500; "1.234,56" = 123456; \
@@ -35,7 +37,12 @@ da lista, é caixinha; se for de uma meta, é aporte_meta.
 receita para receita). Responda sempre o número, nunca o nome; null se nenhuma servir.
 - merchant: nome do estabelecimento; description: descrição curta do gasto.
 - account_hint e card_hint: o texto que o usuário usou para a forma de pagamento ("nubank", \
-"pix", "dinheiro", "cartão"); null se não disse.
+"pix", "dinheiro", "cartão"); null se não disse. Em transferir_contas, account_hint é a conta de \
+ORIGEM e to_account_hint a de DESTINO ("transferi 300 do nubank pro itaú": nubank / itaú), nunca \
+inverta; null para o lado que a mensagem não citar.
+- Mover dinheiro entre contas (transferir_contas) não é guardar em caixinha (guardar_caixinha), \
+nem aporte em meta (aporte_meta), nem pagar fatura/conta (pagar_conta): "guardei 200 na reserva" e \
+"paguei a fatura do nubank" NÃO são transferência.
 - private: true só se a mensagem tiver #pessoal.
 - goal_hint: nome (ou parte) da meta. pocket_hint: nome (ou parte) da caixinha, ou do \
 financiamento em consultar_financiamentos; sem a palavra "caixinha"; null se não citou.
