@@ -26,7 +26,9 @@ CAIXINHA/cofrinho que rende: "guardei 200 na reserva", "joguei 300 na reserva"),
 consórcios: "meus financiamentos", "quanto falta do carro"), transferir_contas (mover dinheiro de \
 uma conta cadastrada para outra: "transferi 300 do Nubank para o Itaú", "passa 200 da conta X \
 pra Y", "move 500 do Itaú pro Nubank", "mandei 1000 da poupança pra corrente"), \
-consultar_gastos, consultar_teto, \
+resumo_periodo (visão geral do período: "resumo do mês", "como tô esse mês?", "resumão da \
+semana", "comparar com o mês passado"), maiores_gastos (ranking das maiores despesas: "maiores \
+gastos do mês", "no que mais gastei", "onde mais gastei"), consultar_gastos, consultar_teto, \
 consultar_saldo, consultar_faturas, ajuda ou desconhecido. Se o nome citado for de uma caixinha \
 da lista, é caixinha; se for de uma meta, é aporte_meta.
 - amount_cents: valor TOTAL em centavos, inteiro. "45" = 4500; "1.234,56" = 123456; \
@@ -47,7 +49,11 @@ nem aporte em meta (aporte_meta), nem pagar fatura/conta (pagar_conta): "guardei
 - private: true só se a mensagem tiver #pessoal.
 - goal_hint: nome (ou parte) da meta. pocket_hint: nome (ou parte) da caixinha, ou do \
 financiamento em consultar_financiamentos; sem a palavra "caixinha"; null se não citou.
-- period: hoje, ontem, semana, mes ou mes_passado, nas consultas.
+- period: hoje, ontem, semana, mes ou mes_passado, nas consultas, em resumo_periodo e em \
+maiores_gastos (sem período citado, use mes).
+- consultar_gastos continua sendo "quanto gastei de X hoje" (total, com ou sem categoria); \
+resumo_periodo é a visão geral (receitas, despesas, comparação) e maiores_gastos é o ranking das \
+maiores despesas; saldo das contas é consultar_saldo.
 - choice: o número escolhido, apenas quando a mensagem é só um número.
 - confidence: de 0 a 1; abaixo de 0.6 quando a mensagem for ambígua.
 - corrigir: preencha apenas o que o usuário quer mudar (amount_cents, category_index, \

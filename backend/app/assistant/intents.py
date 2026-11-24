@@ -9,7 +9,8 @@ Intent = Literal[
     "lancar_despesa", "lancar_receita", "lancar_parcelado", "corrigir", "apagar", "pagar_conta",
     "nova_conta_a_pagar", "aporte_meta", "consultar_gastos", "consultar_teto", "consultar_saldo",
     "consultar_faturas", "guardar_caixinha", "resgatar_caixinha", "consultar_caixinhas",
-    "consultar_financiamentos", "transferir_contas", "ajuda", "desconhecido",
+    "consultar_financiamentos", "resumo_periodo", "maiores_gastos", "transferir_contas", "ajuda",
+    "desconhecido",
 ]  # fmt: skip
 Period = Literal["hoje", "ontem", "semana", "mes", "mes_passado"]
 

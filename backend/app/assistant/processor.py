@@ -13,7 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.usage import over_budget, record_ai_usage
 from app.assistant.amounts import ZERO_OR_NEG, parse_bare_amount
-from app.assistant.flows import edit, extras, launch, pay, pockets, query, receipt, transfer
+from app.assistant.flows import (
+    analysis,
+    edit,
+    extras,
+    launch,
+    pay,
+    pockets,
+    query,
+    receipt,
+    transfer,
+)
 from app.assistant.flows.common import already_done
 from app.assistant.flows.payment import pick_option
 from app.assistant.hints import Hints, extract_hints
@@ -357,6 +367,10 @@ async def fresh(t: Turn, text: str) -> str:
             return await pockets.financiamentos(t, p, space_id)
         case "consultar_gastos":
             return await query.gastos(t, p, space_id)
+        case "resumo_periodo":
+            return await analysis.resumo(t, p, space_id)
+        case "maiores_gastos":
+            return await analysis.maiores(t, p, space_id)
         case "consultar_teto":
             return await query.teto(t, space_id)
         case "consultar_saldo":

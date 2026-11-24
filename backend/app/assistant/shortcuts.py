@@ -24,6 +24,8 @@ _register("consultar_faturas", "fatura", "faturas", "minhas faturas")
 _register("consultar_caixinhas", "caixinhas", "minhas caixinhas", "quanto rendeu")
 _register("consultar_financiamentos", "financiamentos", "meus financiamentos")
 _register("consultar_gastos", "gastos", "meus gastos", "quanto gastei", period="mes")
+_register("resumo_periodo", "resumo", "resumo do mes", "resumo mensal", period="mes")
+_register("maiores_gastos", "maiores gastos", "maiores gastos do mes", period="mes")
 _register("ajuda", "ajuda", "help", "menu", "comandos", "start")
 
 _YES = {"sim", "s", "isso", "ok", "pode", "confirmo", "certo", "yes"}

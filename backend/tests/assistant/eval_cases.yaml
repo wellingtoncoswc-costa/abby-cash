@@ -189,3 +189,35 @@ cases:
     expect: {intent: aporte_meta}
   - text: "paguei 80 de pix pro joão no almoço"
     expect: {intent: lancar_despesa, amount_cents: 8000}
+  # --- análises: resumo_periodo (visão geral) e maiores_gastos (ranking) ---
+  - text: "resumo do mês"
+    expect: {intent: resumo_periodo, period: mes}
+  - text: "como tô esse mês?"
+    expect: {intent: resumo_periodo, period: mes}
+  - text: "como estou esse mes"
+    expect: {intent: resumo_periodo}
+  - text: "resumão da semana"
+    expect: {intent: resumo_periodo, period: semana}
+  - text: "como foi a semana?"
+    expect: {intent: resumo_periodo, period: semana}
+  - text: "comparar com o mês passado"
+    expect: {intent: resumo_periodo}
+  - text: "resumo do mês passado"
+    expect: {intent: resumo_periodo, period: mes_passado}
+  - text: "maiores gastos do mês"
+    expect: {intent: maiores_gastos, period: mes}
+  - text: "no que mais gastei?"
+    expect: {intent: maiores_gastos}
+  - text: "onde mais gastei essa semana"
+    expect: {intent: maiores_gastos, period: semana}
+  - text: "quais foram as maiores despesas do mês passado"
+    expect: {intent: maiores_gastos, period: mes_passado}
+  # --- NÃO são análise ---
+  - text: "quanto gastei de mercado hoje"
+    expect: {intent: consultar_gastos, period: hoje}
+  - text: "quanto gastei esse mês"
+    expect: {intent: consultar_gastos, period: mes}
+  - text: "quanto tenho na conta?"
+    expect: {intent: consultar_saldo}
+  - text: "gastei 120 no mercado"
+    expect: {intent: lancar_despesa, amount_cents: 12000}

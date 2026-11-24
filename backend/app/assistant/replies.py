@@ -24,6 +24,7 @@ HELP = (
     "• tv 3000 em 10x no nubank\n"
     "• recebi 3000 de salário\n"
     "• #pessoal presente 150 (só você vê)\n"
+    "Análises: resumo do mês · resumo da semana · maiores gastos\n"
     "Consultas: saldo · teto · faturas · caixinhas · financiamentos · quanto gastei esse mês\n"
     "Ajustes: corrigir · apagar último\n"
     "Contas: paguei · paguei o financiamento do carro · guardei 500 na meta viagem\n"
