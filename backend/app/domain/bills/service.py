@@ -1,0 +1,131 @@
+from datetime import date
+from typing import Any
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.domain.audit import audit
+from app.domain.bills.models import Bill, BillRecurrenceSkip
+from app.domain.bills.recurrence import Recurrence
+from app.domain.errors import DomainError
+from app.domain.spaces.access import is_member, require_member
+from app.domain.transactions.rules import check_common
+
+
+async def create_bill(
+    session: AsyncSession, *, actor_id: UUID, space_id: UUID, description: str, amount_cents: int,
+    due_on: date, category_id: UUID | None = None, responsible_user_id: UUID | None = None,
+    recurrence: Recurrence | None = None,
+) -> Bill:  # fmt: skip
+    """Conta a pagar avulsa ou recorrente. A próxima ocorrência é gerada pelo job do M5."""
+    await check_common(
+        session, actor_id=actor_id, space_id=space_id, type="expense", amount_cents=amount_cents,
+        category_id=category_id, occurred_on=due_on,
+    )  # fmt: skip
+    resp = responsible_user_id
+    if resp is not None and not await is_member(session, resp, space_id):
+        raise DomainError("invalid_responsible")
+    bill = Bill(
+        space_id=space_id, kind="manual", description=description, amount_cents=amount_cents,
+        due_on=due_on, category_id=category_id, responsible_user_id=responsible_user_id,
+        recurrence_rule=recurrence.to_json() if recurrence else None,
+    )  # fmt: skip
+    session.add(bill)
+    await session.flush()
+    if recurrence:
+        bill.recurrence_id = bill.id
+    audit(
+        session,
+        actor_id,
+        "bill.create",
+        "bill",
+        bill.id,
+        {"space_id": str(space_id), "amount_cents": amount_cents},
+    )
+    await session.commit()
+    return bill
+
+
+async def list_bills(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, status: str | None = None,
+    start: date | None = None, end: date | None = None,
+) -> list[Bill]:  # fmt: skip
+    await require_member(session, viewer_id, space_id)
+    q = select(Bill).where(Bill.space_id == space_id)
+    if status is not None:
+        q = q.where(Bill.status == status)
+    if start is not None:
+        q = q.where(Bill.due_on >= start)
+    if end is not None:
+        q = q.where(Bill.due_on <= end)
+    return list(await session.scalars(q.order_by(Bill.due_on, Bill.created_at)))
+
+
+async def _open_bill(session: AsyncSession, actor_id: UUID, bill_id: UUID) -> Bill:
+    bill = await session.get(Bill, bill_id, with_for_update=True)
+    if bill is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    await require_member(session, actor_id, bill.space_id)
+    if bill.kind != "manual" or bill.status != "open":
+        raise DomainError("bill_not_editable")
+    return bill
+
+
+async def update_bill(
+    session: AsyncSession, *, actor_id: UUID, bill_id: UUID, fields: dict[str, Any]
+) -> Bill:
+    """Conta manual ainda em aberto: descrição, valor, vencimento, categoria, responsável."""
+    bill = await _open_bill(session, actor_id, bill_id)
+    await check_common(
+        session, actor_id=actor_id, space_id=bill.space_id, type="expense",
+        amount_cents=fields.get("amount_cents", bill.amount_cents),
+        category_id=fields.get("category_id", bill.category_id),
+        occurred_on=fields.get("due_on", bill.due_on),
+    )  # fmt: skip
+    resp = fields.get("responsible_user_id")
+    if resp is not None and not await is_member(session, resp, bill.space_id):
+        raise DomainError("invalid_responsible")
+    for k, v in fields.items():
+        setattr(bill, k, v)
+    audit(session, actor_id, "bill.update", "bill", bill.id,
+          {"space_id": str(bill.space_id), "fields": sorted(fields)})  # fmt: skip
+    await session.commit()
+    return bill
+
+
+async def delete_bill(
+    session: AsyncSession, *, actor_id: UUID, bill_id: UUID, series: bool = False
+) -> None:
+    """Apaga a conta aberta; ocorrência gerada fica registrada para não ser recriada.
+    `series=True` encerra a série (limpa a regra da origem, mesmo paga) e apaga esta, se aberta."""
+    if series:
+        bill = await session.get(Bill, bill_id, with_for_update=True)
+        if bill is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        await require_member(session, actor_id, bill.space_id)
+        if bill.kind != "manual" or bill.recurrence_id is None:
+            raise DomainError("bill_not_recurring")
+        src = await session.get(Bill, bill.recurrence_id, with_for_update=True)
+        if src is not None:
+            src.recurrence_rule = None
+        audit(session, actor_id, "bill.series_stop", "bill", bill.recurrence_id,
+              {"space_id": str(bill.space_id)})  # fmt: skip
+        if bill.status != "open":
+            await session.commit()
+            return
+    else:
+        bill = await _open_bill(session, actor_id, bill_id)
+    if bill.loan_id is not None:
+        raise DomainError("loan_bill_locked")  # cancele o financiamento/consórcio
+    if bill.recurrence_id is not None and bill.recurrence_id != bill.id:
+        await session.execute(
+            insert(BillRecurrenceSkip)
+            .values(space_id=bill.space_id, recurrence_id=bill.recurrence_id, due_on=bill.due_on)
+            .on_conflict_do_nothing()
+        )
+    audit(session, actor_id, "bill.delete", "bill", bill.id, {"space_id": str(bill.space_id)})
+    await session.delete(bill)
+    await session.commit()

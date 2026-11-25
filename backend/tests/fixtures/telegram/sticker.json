@@ -1,0 +1,8 @@
+{
+  "update_id": 900007,
+  "message": {
+    "message_id": 15,
+    "from": {"id": 111, "is_bot": false, "first_name": "Ana"}, "chat": {"id": 111, "first_name": "Ana", "type": "private"}, "date": 1795618800,
+    "sticker": {"file_id": "stk", "file_unique_id": "s", "width": 512, "height": 512, "emoji": "👍"}
+  }
+}

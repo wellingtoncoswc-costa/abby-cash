@@ -26,7 +26,7 @@ Leia os três inteiros antes de qualquer código. As "Restrições globais" e o 
   3. com o PR aberto, rode `/code-review high --comment <número do PR>` para deixar os achados registrados no PR.
   No M8, rode também `/security-review` antes do deploy. No PR, liste o que cada revisão encontrou e como foi resolvido. Achados que você decidir não corrigir precisam de justificativa.
 - TDD sempre: teste falhando → implementação mínima → teste passando → commit. Os testes nomeados no plano são obrigatórios. Os testes do "Foco de revisão" também.
-- Antes de escrever o código que chama o Claude (interpretador de mensagens e leitura de comprovante), carregue o skill claude-api e siga-o: SDK oficial `anthropic`, saída estruturada com Pydantic, modelo vindo de AI_MODEL (padrão claude-opus-5-5).
+- Antes de escrever o código que chama o modelo de IA (interpretador de mensagens e leitura de comprovante), consulte a documentação atual do SDK `openai` via context7 e siga-a: SDK oficial `openai`, saída estruturada com Pydantic, modelo vindo de AI_MODEL (padrão gpt-4.1).
 - Commits pequenos, em inglês, no padrão Conventional Commits.
 - Git: crie a branch `main` a partir de `claude/laughing-pasteur-s90m4c` se `main` ainda não existir (me pergunte antes de fazer push dela). Para cada marco, crie a branch `feat/mN-<nome>` a partir de `main`, faça push e abra um PR para `main` com um resumo do que foi feito e de como testar. Ao fim de cada marco, pare e me peça a revisão do PR antes de começar o próximo, a menos que eu diga para seguir direto.
 - O CI (GitHub Actions) precisa estar verde em todo PR. Nunca desative, pule ou apague um teste para passar.
@@ -41,7 +41,7 @@ Leia os três inteiros antes de qualquer código. As "Restrições globais" e o 
 - Nada destrutivo no servidor (apagar volumes, `docker system prune`, `DROP`) sem a minha confirmação explícita.
 
 ## Pontos em que você para e me pede algo
-- Antes do M3: TELEGRAM_BOT_TOKEN e ANTHROPIC_API_KEY no .env.
+- Antes do M3: TELEGRAM_BOT_TOKEN e OPENAI_API_KEY no .env.
 - Antes do M4: o chip dedicado e a leitura do QR code da Evolution API.
 - Antes do M8: acesso SSH ao servidor, o subdomínio/DNS, a configuração do `rclone config` com o remote `gdrive` (Google Drive) e a chave de criptografia dos backups.
 - Sempre que a spec e o plano não decidirem algo que mude o comportamento para o usuário final, me pergunte. Para detalhes técnicos internos, decida e registre a decisão no plano do marco.
