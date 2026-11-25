@@ -96,6 +96,7 @@ function Ativo({ a }: { a: InvAsset }) {
   return (
     <Card title={`${a.name}${a.ticker ? ` · ${a.ticker}` : ''}`}>
       <p>{KIND[a.kind]} · valor {formatBRL(a.value_cents)} · aportado {formatBRL(a.contributed_cents)}</p>
+      {a.contributed_cents === 0 && <p>Sem aportes ainda. Clique em “Aportar em {label(a)}” para informar {VARIAVEL.includes(a.kind) ? 'a quantidade de cotas e a data' : 'o valor aportado e a data'}.</p>}
       <p>Rentabilidade: {fmtSigned(a.profit_cents)} ({fmtBp(a.profit_bp)})</p>
       {a.quantity != null && (
         <p>

@@ -49,3 +49,22 @@ async def test_dashboard_empty(session):
     a = await make_user(session, "a@x.com")
     d = await svc.dashboard(session, viewer_id=a.id, space_id=a.default_space_id, today=TODAY)
     assert d["assets"] == [] and d["series"] == [] and d["profit_bp"] is None
+
+
+async def test_dashboard_lists_assets_without_movements(session, quotes):  # noqa: F811
+    a = await make_user(session, "a@x.com")
+    sp = a.default_space_id
+    await svc.create_investment(
+        session, actor_id=a.id, space_id=sp, kind="stock", name="Petrobras", ticker="PETR4",
+        today=TODAY,
+    )  # fmt: skip
+    await svc.create_investment(
+        session, actor_id=a.id, space_id=sp, kind="cdb", name="CDB", rate_type="fixed",
+        rate_bp=1250, today=TODAY,
+    )  # fmt: skip
+    d = await svc.dashboard(session, viewer_id=a.id, space_id=sp, today=TODAY)
+    assert {x["name"] for x in d["assets"]} == {"Petrobras", "CDB"}  # recém-cadastrados aparecem
+    assert all(x["value_cents"] == 0 and x["contributed_cents"] == 0 for x in d["assets"])
+    stock = next(x for x in d["assets"] if x["ticker"] == "PETR4")
+    assert stock["quantity"] == "0" and stock["price_cents"] == 3850
+    assert d["series"] == [] and d["profit_bp"] is None

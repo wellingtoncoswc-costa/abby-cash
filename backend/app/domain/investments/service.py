@@ -213,16 +213,11 @@ async def dashboard(
     invs = list(await session.scalars(select(Investment).where(Investment.space_id == space_id)))
     data = {i.id: await movements(session, i.id) for i in invs}
     firsts = [m[0].occurred_on for m in data.values() if m]
-    if not firsts:
-        return {"assets": [], "by_kind": [], "series": [], "contributed_cents": 0,
-                "current_cents": 0, "profit_cents": 0, "profit_bp": None}  # fmt: skip
-    start = max(min(firsts), today - timedelta(days=days))
+    start = max(min(firsts), today - timedelta(days=days)) if firsts else today
     value_on: dict[UUID, Any] = {}
     assets: list[dict[str, Any]] = []
     for i in invs:
         movs = data[i.id]
-        if not movs:
-            continue
         contributed = sum(_signed(m) for m in movs)
         a: dict[str, Any] = {
             "id": i.id, "name": i.name, "kind": i.kind, "ticker": i.ticker, "quantity": None,
@@ -263,7 +258,9 @@ async def dashboard(
                     )
         else:
             pairs = fixed_pairs(movs)
-            factors = await fixed_factors(session, i, min(d for d, _ in pairs), today)
+            factors = (
+                await fixed_factors(session, i, min(d for d, _ in pairs), today) if pairs else {}
+            )
 
             def vfix(day: date, pairs: Any = pairs, factors: Any = factors) -> int:
                 return fixed_value([p for p in pairs if p[0] <= day], factors, day)
@@ -285,6 +282,7 @@ async def dashboard(
             ),
         }
         for n in range((today - start).days + 1)
+        if firsts
     ]
     by_kind: dict[str, int] = {}
     for a in assets:
