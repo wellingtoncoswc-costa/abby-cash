@@ -118,3 +118,25 @@ async def test_shared_invoice_hides_private_items_over_http(client, session):
     assert [i["description"] for i in st["items"]] == ["mercado"]
     assert st["private_total_cents"] == 4_000 and st["total_cents"] == 14_000
     assert seen.json()["total_cents"] == 14_000
+
+
+async def test_settle_past_invoice_over_http(client, session):
+    a = await make_user(session, "a@x.com")
+    h, sp = auth(a), str(a.default_space_id)
+    card = await _new_card(client, h, sp)
+    r = await client.post(
+        f"/spaces/{sp}/card-purchases",
+        json={"card_id": card["id"], "amount_cents": 6_000, "installments": 3,
+              "occurred_on": "2026-08-05", "description": "geladeira antiga"},
+        headers=h,
+    )  # fmt: skip
+    inv = r.json()[0]["invoice_id"]
+    ok = await client.post(f"/invoices/{inv}/settle", headers=h)
+    assert ok.status_code == 200 and ok.json()["status"] == "paid"
+    assert ok.json()["remaining_cents"] == 0 and ok.json()["total_cents"] == 2_000
+    again = await client.post(f"/invoices/{inv}/settle", headers=h)
+    assert again.status_code == 200
+    back = await client.delete(f"/invoices/{inv}/settle", headers=h)
+    assert back.json()["status"] == "open" and back.json()["remaining_cents"] == 2_000
+    other = await make_user(session, "b@x.com")
+    assert (await client.post(f"/invoices/{inv}/settle", headers=auth(other))).status_code == 404

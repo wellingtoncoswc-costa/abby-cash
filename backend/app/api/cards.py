@@ -18,6 +18,8 @@ from app.domain.cards.service import (
     invoice_statement,
     invoice_summary,
     register_card_purchase,
+    settle_invoice,
+    unsettle_invoice,
     update_card,
     visible_card,
     visible_invoice,
@@ -112,6 +114,19 @@ class CardPatch(BaseModel):
     due_day: Day | None = None
     limit_cents: Cents | None = None  # null remove o limite
     payment_account_id: UUID | None = None  # null remove a conta de pagamento
+
+
+@router.post("/invoices/{invoice_id}/settle", response_model=InvoiceOut)
+async def settle(invoice_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    """Baixa histórica: fatura que já estava paga antes do cadastro (sem lançamento)."""
+    inv = await settle_invoice(session, actor_id=user.id, invoice_id=invoice_id)
+    return row(inv) | await invoice_summary(session, inv)
+
+
+@router.delete("/invoices/{invoice_id}/settle", response_model=InvoiceOut)
+async def unsettle(invoice_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    inv = await unsettle_invoice(session, actor_id=user.id, invoice_id=invoice_id)
+    return row(inv) | await invoice_summary(session, inv)
 
 
 @router.patch("/cards/{card_id}", response_model=CardOut)

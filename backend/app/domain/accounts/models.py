@@ -1,6 +1,7 @@
+from datetime import date
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, Date, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -14,4 +15,7 @@ class Account(Base):
     type: Mapped[str] = mapped_column(String(16))  # checking | wallet | savings
     name: Mapped[str] = mapped_column(String(100))
     initial_balance_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    opened_on: Mapped[date | None] = mapped_column(
+        Date
+    )  # lançamentos antes disso já estão no saldo inicial
     institution: Mapped[str | None] = mapped_column(String(40))  # chave do catálogo do web

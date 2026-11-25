@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, Session
 from app.api.schemas import AccountDetailOut, AccountOut, SignedCents
+from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.accounts.access import visible_account
 from app.domain.accounts.models import Account
@@ -62,6 +63,7 @@ async def create(
     acc = await create_account(
         session, actor_id=user.id, space_id=space_id, type=body.type, name=body.name,
         initial_balance_cents=body.initial_balance_cents, institution=body.institution,
+        opened_on=local_today(user.tz),
     )  # fmt: skip
     return await _out(session, acc)
 

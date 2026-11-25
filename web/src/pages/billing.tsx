@@ -66,13 +66,18 @@ export function Billing() {
 
 function InvoiceView({ id }: { id: string }) {
   const inv = useGet<Invoice & { statement: Statement }>(`/invoices/${id}`)
+  const settle = useSend((on: boolean) => api(on ? 'POST' : 'DELETE', `/invoices/${id}/settle`))
   if (!inv.data) return <p>Carregando…</p>
   const { statement: st } = inv.data
+  const baixa = inv.data.status === 'paid' && inv.data.paid_cents === 0 && inv.data.total_cents > 0 // sem pagamento real: veio da baixa histórica
   return (
     <div>
       <p>Total {formatBRL(inv.data.total_cents)} · pago {formatBRL(inv.data.paid_cents)} · restante {formatBRL(inv.data.remaining_cents)}</p>
       <ul>{st.items.map((i) => <li key={i.id} className="flex justify-between"><span>{br(i.occurred_on)} {i.description || i.merchant}</span><span>{formatBRL(i.amount_cents)}</span></li>)}</ul>
       {st.private_total_cents !== 0 && <p className="flex justify-between font-medium"><span>Outros lançamentos (privados)</span><span>{formatBRL(st.private_total_cents)}</span></p>}
+      {baixa && <Btn type="button" disabled={settle.isPending} onClick={() => settle.mutate(false)}>Desfazer baixa</Btn>}
+      {!baixa && inv.data.paid_cents === 0 && inv.data.total_cents > 0 && <Btn type="button" disabled={settle.isPending} onClick={() => settle.mutate(true)}>Marcar como paga (paga antes do cadastro)</Btn>}
+      <Err e={settle.error} />
       {inv.data.remaining_cents > 0 && <PayForm path={`/invoices/${id}/payments`} defaultCents={inv.data.remaining_cents} requireAmount />}
     </div>
   )
@@ -107,7 +112,7 @@ export function Cards() {
         {(invoices.data ?? []).map((i) => (
           <div key={i.id} className="border-t border-border py-2">
             <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
-              <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}</span><span>{formatBRL(i.total_cents)}</span>
+              <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}{i.status === 'paid' && <> · <span>paga</span></>}</span><span>{formatBRL(i.total_cents)}</span>
             </button>
             {invId === i.id && <InvoiceView id={i.id} />}
           </div>

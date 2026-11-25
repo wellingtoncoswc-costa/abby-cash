@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -22,7 +23,7 @@ ACCOUNT_TYPES = {"checking", "wallet", "savings"}
 
 async def create_account(
     session: AsyncSession, *, actor_id: UUID, space_id: UUID, type: str, name: str,
-    initial_balance_cents: int = 0, institution: str | None = None,
+    initial_balance_cents: int = 0, institution: str | None = None, opened_on: date | None = None,
 ) -> Account:  # fmt: skip
     await require_member(session, actor_id, space_id)
     if type not in ACCOUNT_TYPES:
@@ -35,6 +36,7 @@ async def create_account(
         name=name,
         initial_balance_cents=initial_balance_cents,
         institution=institution,
+        opened_on=opened_on,
     )
     session.add(acc)
     await session.flush()

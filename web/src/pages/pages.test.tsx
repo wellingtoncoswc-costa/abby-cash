@@ -203,3 +203,29 @@ test('painel: meta batida ganha o selo', async () => {
   expect(await screen.findByText('Meta batida')).toBeInTheDocument()
   routes[`/spaces/${SP}/goals`] = () => J([])
 })
+
+const FATURA = { id: 'i1', card_id: 'k1', closing_on: '2026-08-05', due_on: '2026-08-12', total_cents: 20000, paid_cents: 0, remaining_cents: 20000, status: 'open' }
+
+test('fatura antiga: marcar como paga antes do cadastro e desfazer', async () => {
+  routes['/cards/k1/invoices'] = () => J([FATURA])
+  let baixada = false
+  const estado = () => (baixada ? { ...FATURA, status: 'paid', remaining_cents: 0 } : FATURA)
+  routes['/invoices/i1'] = () => J({ ...estado(), statement: { items: [], private_total_cents: 0, total_cents: 20000 } })
+  routes['/invoices/i1/settle'] = (init) => { baixada = init.method === 'POST'; return J(estado()) }
+  go('/cartoes')
+  await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
+  await userEvent.click(await screen.findByRole('button', { name: /Fatura 05\/08\/2026/ }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Marcar como paga (paga antes do cadastro)' }))
+  const post = calls.find(([u, i]) => u === '/invoices/i1/settle' && i.method === 'POST')
+  expect(post).toBeDefined()
+  expect(await screen.findByRole('button', { name: 'Desfazer baixa' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Desfazer baixa' }))
+  expect(calls.some(([u, i]) => u === '/invoices/i1/settle' && i.method === 'DELETE')).toBe(true)
+})
+
+test('fatura paga aparece com o status na lista', async () => {
+  routes['/cards/k1/invoices'] = () => J([{ ...FATURA, status: 'paid', remaining_cents: 0 }])
+  go('/cartoes')
+  await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
+  expect(await screen.findByText('paga')).toBeInTheDocument()
+})
