@@ -13,7 +13,7 @@ from app.assistant.intents import ParsedIntent
 class Pay(BaseModel):
     """Uma opção/escolha: conta, cartão, conta a pagar ou caixinha (rótulo pronto)."""
 
-    type: Literal["account", "card", "bill", "pocket"]
+    type: Literal["account", "card", "bill", "pocket", "category"]
     id: UUID
     label: str
 
@@ -27,6 +27,7 @@ class Draft(BaseModel):
     payment: Pay | None = None  # origem (pagamento, aporte, transferência)
     to: Pay | None = None  # destino da transferência
     bill_id: UUID | None = None
+    category_id: UUID | None = None  # escolhida na pergunta "Qual a categoria?"
     options: list[Pay] = []
     warn: str | None = None
     confirmed: bool = False

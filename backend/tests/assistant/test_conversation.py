@@ -44,7 +44,7 @@ async def nubank_default(session, user) -> None:
 
 async def test_expense_message_creates_tx_and_confirms(ana, parser, session):
     await nubank_default(session, ana.user)
-    parser.add(expense(4500, "Alimentação", merchant="Mercado"))
+    parser.add(expense(4500, "Alimentação", merchant="Mercado", account_hint="nubank"))
     reply = await ana.say("gastei 45 no mercado")
     assert reply == "✅ R$ 45,00 · Alimentação · Mercado · hoje · Conta Nubank" + CONFIRM_TAIL
     [tx] = await txs(session)
@@ -126,7 +126,7 @@ async def test_missing_amount_asks_and_resumes(ana, parser, session):
 
 
 async def test_zero_amount_rejected(ana, parser, session):
-    parser.add(expense(None, merchant="Mercado"))  # o modelo não aceita 0: devolve nulo
+    parser.add(expense(None, "Mercado", merchant="Mercado"))  # o modelo não aceita 0: devolve nulo
     reply = await ana.say("gastei 0 no mercado")
     assert reply.startswith("O valor precisa ser maior que zero.")
     assert await txs(session) == []
@@ -164,12 +164,12 @@ async def test_state_expires_after_30_minutes(ana, parser, session):
 
 
 async def test_low_confidence_asks_to_confirm(ana, parser, session):
-    parser.add(expense(4500, merchant="Padaria", confidence=0.4))
+    parser.add(expense(4500, "Mercado", merchant="Padaria", confidence=0.4))
     reply = await ana.say("acho que foi 45 na padaria")
     assert reply == 'Entendi R$ 45,00 em "Padaria". Posso lançar? (sim/não)'
     assert await txs(session) == []
     assert (await ana.say("sim")).startswith("✅ R$ 45,00")
-    parser.add(expense(900, merchant="Bala", confidence=0.2))
+    parser.add(expense(900, "Mercado", merchant="Bala", confidence=0.2))
     await ana.say("sei lá, uns 9 de bala")
     assert await ana.say("não") == "Ok, não lancei."
     assert len(await txs(session)) == 1
@@ -194,7 +194,7 @@ async def test_the_model_cannot_pick_a_foreign_account_card_or_category(session,
     assert await txs(session) == []
     parser.add(expense(1000).model_copy(update={"category_index": 999}))  # fora da lista
     reply = await ana.say("gastei 10")
-    assert "· Outros ·" in reply
+    assert reply.startswith("Qual a categoria?")  # índice fora da lista: pergunta, não chuta
 
 
 async def test_parcelado_reply_mentions_future_budgets(ana, parser, session):
@@ -248,13 +248,13 @@ async def test_threshold_alert_is_appended_and_every_member_notified(
     await set_budget(
         session, actor_id=ana.user.id, space_id=fam.id, month=date(2026, 11, 1), limit_cents=10_000
     )
-    parser.add(expense(8_500, "Mercado"))
+    parser.add(expense(8_500, "Mercado", account_hint="casa"))
     reply = await ana.say("#familia mercado 85")
     alert = "⚠️ Você atingiu 80% do teto de novembro: R$ 85,00 de R$ 100,00."
     assert reply.endswith(alert)
     assert ("222", alert) in adapter.sent  # a Bia também é avisada
     assert ("111", alert) not in adapter.sent  # a Ana recebe junto da confirmação, uma vez só
-    parser.add(expense(1_500, "Mercado"))
+    parser.add(expense(1_500, "Mercado", account_hint="casa"))
     reply = await ana.say("#familia mercado 15")
     assert "⚠️ Você atingiu 100% do teto" in reply
 
@@ -284,14 +284,16 @@ async def test_alert_goes_through_each_members_preferred_channel(
     await set_budget(
         session, actor_id=ana.user.id, space_id=fam.id, month=date(2026, 11, 1), limit_cents=10_000
     )
-    parser.add(expense(8_500, "Mercado"))
+    parser.add(expense(8_500, "Mercado", account_hint="casa"))
     await ana.say("#familia mercado 85")
     assert [e for e, _ in other.sent] == ["55"] and adapter.sent[-1][0] == "111"
 
 
 async def test_domain_errors_become_polite_replies(ana, parser, session):
     await make_card(session, ana.user, ana.user.default_space_id, name="Visa")
-    parser.add(intent("lancar_parcelado", amount_cents=1000, installments=60, card_hint="visa"))
+    parser.add(
+        intent("lancar_parcelado", "Compras", amount_cents=1000, installments=60, card_hint="visa")
+    )
     assert await ana.say("tv 10 em 60 parcelas") == "Parcelas: de 2 a 48."
     assert await txs(session) == []
 
@@ -314,7 +316,8 @@ async def test_llm_failure_fallback(ana, parser, session):
         'Entendi R$ 45,00 em "no mercado". Posso lançar?'
     )  # sem IA a confiança é 0.5: pergunta antes de gravar
     assert await txs(session) == []
-    reply = await ana.say("sim")
+    assert (await ana.say("sim")).startswith("Qual a categoria?")  # sem IA, não chuta
+    reply = await ana.say("outros")
     assert reply.startswith("⚠️ A IA está indisponível agora; lancei do jeito simples")
     assert "✅ R$ 45,00 · Outros · no mercado · hoje · Carteira" in reply
     [tx] = await txs(session)
@@ -325,14 +328,16 @@ async def test_llm_failure_fallback(ana, parser, session):
     assert (await ana.say("bom dia")) == NOT_UNDERSTOOD  # sem valor não dá para adivinhar
     parser.add(TimeoutError())
     await ana.say("recebi 3000 de salário")
-    reply = await ana.say("sim")
+    await ana.say("sim")
+    reply = await ana.say("outros")
     assert "✅ R$ 3.000,00 · Outros" in reply and (await txs(session))[-1].type == "income"
 
 
 async def test_without_a_configured_parser_the_fallback_is_used(ana, session):
     ana.parser = None
     await ana.say("gastei 45 no mercado")
-    reply = await ana.say("sim")
+    await ana.say("sim")
+    reply = await ana.say("outros")
     assert reply.startswith("⚠️ A IA está indisponível")
 
 
@@ -404,7 +409,7 @@ async def test_one_failing_message_does_not_block_the_next(ana, parser, session,
     parser.add(expense(4500))
     await ana.say("gastei 45")
     monkeypatch.setattr(launch, "run", real)
-    parser.add(expense(1000))
+    parser.add(expense(1000, "Mercado"))
     assert (await ana.say("gastei 10")).startswith("✅ R$ 10,00")
     rows = list(
         await session.scalars(select(InboundMessage.status).order_by(InboundMessage.created_at))
@@ -413,7 +418,7 @@ async def test_one_failing_message_does_not_block_the_next(ana, parser, session,
 
 
 async def test_replies_never_leak_internal_ids(ana, parser, session):
-    parser.add(expense(1000))
+    parser.add(expense(1000, "Mercado"))
     reply = await ana.say("gastei 10")
     assert str(ana.user.id) not in reply and "Traceback" not in reply
 
@@ -473,7 +478,9 @@ async def test_correct_zero_is_refused_and_installments_are_limited(ana, parser,
     await ana.say("corrigir")
     assert (await ana.say("valor 0")).startswith("O valor precisa ser maior que zero.")
     await make_card(session, ana.user, ana.user.default_space_id, name="Visa")
-    parser.add(intent("lancar_parcelado", amount_cents=30_000, installments=3, card_hint="visa"))
+    parser.add(
+        intent("lancar_parcelado", "Compras", amount_cents=30_000, installments=3, card_hint="visa")
+    )
     await ana.say("tv 300 em 3x no visa")
     parser.add(intent("corrigir", amount_cents=100))
     reply = await ana.say("era 1")

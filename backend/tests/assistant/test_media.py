@@ -15,7 +15,7 @@ from app.domain.privacy import delete_account
 from app.domain.transactions.models import Transaction
 from app.jobs.inbound import process_inbound
 from tests.assistant.fakes import FakeReader, FakeTranscriber, expense
-from tests.assistant.test_conversation import nubank_default, txs
+from tests.assistant.test_conversation import txs
 from tests.factories import make_inbound
 
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
@@ -32,7 +32,6 @@ def storage(tmp_path, monkeypatch):
 
 
 async def test_audio_message_transcribed_then_parsed(ana, parser, adapter, session):
-    await nubank_default(session, ana.user)
     adapter.media, adapter.media_mime = b"OGG", "audio/ogg"
     tr = FakeTranscriber("gastei 45 no mercado", 3.5)
     ana.extra["transcriber"] = tr
@@ -46,7 +45,6 @@ async def test_audio_message_transcribed_then_parsed(ana, parser, adapter, sessi
 
 
 async def test_long_transcript_is_truncated_in_reply(ana, parser, adapter, session):
-    await nubank_default(session, ana.user)
     ana.extra["transcriber"] = FakeTranscriber("gastei 45 no mercado " + "bla " * 60)
     parser.add(expense(4500, "Alimentação"))
     first = (await ana.say("", media_kind="audio")).split("\n")[0]
@@ -67,7 +65,6 @@ async def test_unlinked_sender_media_is_never_downloaded(session, adapter):
 
 
 async def test_receipt_requires_confirmation(ana, adapter, session):
-    await nubank_default(session, ana.user)
     adapter.media, adapter.media_mime = JPEG, "image/jpeg"
     ana.extra["receipt_reader"] = FakeReader(FARMACIA)
     assert await ana.say("", media_kind="image") == ASK
@@ -77,11 +74,11 @@ async def test_receipt_requires_confirmation(ana, adapter, session):
 
 
 async def test_receipt_confirm_creates_tx_with_attachment(ana, adapter, session, storage):
-    await nubank_default(session, ana.user)
     adapter.media = JPEG
     ana.extra["receipt_reader"] = FakeReader(FARMACIA)
     await ana.say("", media_kind="image")
-    reply = await ana.say("sim")
+    assert (await ana.say("sim")).startswith("Qual a categoria?")  # recibo não traz categoria
+    reply = await ana.say("saúde")
     assert reply.startswith("✅ R$ 87,40")
     [tx] = await txs(session)
     att = await session.get(Attachment, tx.attachment_id)
@@ -96,7 +93,6 @@ async def test_receipt_confirm_creates_tx_with_attachment(ana, adapter, session,
 
 
 async def test_receipt_corrections_update_draft_and_ask_again(ana, adapter, session):
-    await nubank_default(session, ana.user)
     adapter.media = JPEG
     ana.extra["receipt_reader"] = FakeReader(FARMACIA)
     await ana.say("", media_kind="image")
@@ -110,7 +106,6 @@ async def test_receipt_corrections_update_draft_and_ask_again(ana, adapter, sess
 
 
 async def test_receipt_no_cancels(ana, adapter, session):
-    await nubank_default(session, ana.user)
     adapter.media = JPEG
     ana.extra["receipt_reader"] = FakeReader(FARMACIA)
     await ana.say("", media_kind="image")
@@ -119,13 +114,13 @@ async def test_receipt_no_cancels(ana, adapter, session):
 
 
 async def test_receipt_unreadable_asks_amount(ana, adapter, session):
-    await nubank_default(session, ana.user)
     adapter.media = JPEG
     ana.extra["receipt_reader"] = FakeReader(ReceiptError("x"))
     assert "Quanto foi?" in await ana.say("", media_kind="image")
     assert (await ana.say("50")).startswith("Lançar R$ 50,00")  # ainda confirma
     assert await txs(session) == []
-    assert (await ana.say("sim")).startswith("✅ R$ 50,00")
+    assert (await ana.say("sim")).startswith("Qual a categoria?")
+    assert (await ana.say("outros")).startswith("✅ R$ 50,00")
     [tx] = await txs(session)
     assert tx.attachment_id is not None
 
@@ -151,7 +146,6 @@ async def test_redelivered_image_reuses_attachment(ana, adapter, session):
 
 
 async def test_delete_account_removes_attachment_files(ana, adapter, session, storage):
-    await nubank_default(session, ana.user)
     adapter.media = JPEG
     ana.extra["receipt_reader"] = FakeReader(FARMACIA)
     await ana.say("", media_kind="image")
@@ -164,7 +158,6 @@ async def test_delete_account_removes_attachment_files(ana, adapter, session, st
 
 
 async def _draft(ana, adapter, session):
-    await nubank_default(session, ana.user)
     adapter.media = JPEG
     ana.extra["receipt_reader"] = FakeReader(FARMACIA)
     await ana.say("", media_kind="image")
@@ -183,6 +176,7 @@ async def test_delete_transaction_deletes_attachment(ana, adapter, session, stor
 
     await _draft(ana, adapter, session)
     await ana.say("sim")
+    await ana.say("saúde")
     [tx] = await txs(session)
     await delete_transaction(session, actor_id=ana.user.id, tx_id=tx.id)
     assert not [f for f in storage.rglob("*") if f.is_file()]

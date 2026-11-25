@@ -9,7 +9,6 @@ from app.channels.ingest import ingest
 from app.domain.transactions.models import Transaction
 from app.jobs.inbound import process_inbound
 from tests.assistant.fakes import FakeAdapter, FakeParser, expense
-from tests.assistant.test_conversation import nubank_default
 from tests.factories import make_link, make_user
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "evolution"
@@ -31,7 +30,6 @@ async def test_whatsapp_message_end_to_end(session, monkeypatch):
     monkeypatch.setitem(registry._adapters, "telegram", tg)
     ana = await make_user(session, "ana@x.com")
     await make_link(session, ana, "5511988887777", "whatsapp_evolution")
-    await nubank_default(session, ana)
     parser = FakeParser(expense(4500, "Alimentação", merchant="Mercado"))
     msgs = wa.parse_event(json.loads((FIX / "text.json").read_text(encoding="utf-8")))
     ids: list = []
