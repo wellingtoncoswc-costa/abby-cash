@@ -267,3 +267,13 @@ test('investimentos: aportar em ação envia quantidade e conta', async () => {
   const post = calls.find(([u]) => u === '/investments/i1/buys')!
   expect(JSON.parse(post[1].body as string)).toMatchObject({ account_id: 'a1', quantity: '10' })
 })
+
+test('investimentos: ativo recém-cadastrado aparece com o caminho para aportar', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J({
+    assets: [{ ...INV.assets[0], quantity: '0', avg_price_cents: null, contributed_cents: 0, value_cents: 0, profit_cents: 0, profit_bp: null }],
+    by_kind: [], series: [], contributed_cents: 0, current_cents: 0, profit_cents: 0, profit_bp: null,
+  })
+  go('/investimentos')
+  expect(await screen.findByText(/Sem aportes ainda/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+})
