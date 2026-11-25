@@ -229,3 +229,14 @@ test('fatura paga aparece com o status na lista', async () => {
   await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   expect(await screen.findByText('paga')).toBeInTheDocument()
 })
+
+test('metas: conta já ligada a outra meta fica desabilitada', async () => {
+  const base = { saved_cents: 0, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem', account_ids: ['a1'] }, { ...base, id: 'g2', name: 'Carro', account_ids: [] }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  go('/metas')
+  const carro = within((await screen.findByRole('heading', { name: 'Carro' })).closest('section')!)
+  expect(await carro.findByLabelText(/Nubank/)).toBeDisabled()
+  expect(carro.getByText(/já na meta Viagem/)).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})

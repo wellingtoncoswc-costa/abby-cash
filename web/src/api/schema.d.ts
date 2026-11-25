@@ -448,6 +448,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/invoices/{invoice_id}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle
+         * @description Baixa histórica: fatura que já estava paga antes do cadastro (sem lançamento).
+         */
+        post: operations["settle_invoices__invoice_id__settle_post"];
+        /** Unsettle */
+        delete: operations["unsettle_invoices__invoice_id__settle_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -1551,8 +1572,10 @@ export interface components {
             target_cents: number;
             /** Deadline */
             deadline?: string | null;
-            /** Account Id */
-            account_id?: string | null;
+            /** Account Ids */
+            account_ids?: string[];
+            /** Pocket Ids */
+            pocket_ids?: string[];
         };
         /** GoalOut */
         GoalOut: {
@@ -1572,8 +1595,10 @@ export interface components {
             target_cents: number;
             /** Deadline */
             deadline: string | null;
-            /** Account Id */
-            account_id: string | null;
+            /** Account Ids */
+            account_ids: string[];
+            /** Pocket Ids */
+            pocket_ids: string[];
             /**
              * Created On
              * Format: date
@@ -1593,6 +1618,10 @@ export interface components {
             target_cents?: number | null;
             /** Deadline */
             deadline?: string | null;
+            /** Account Ids */
+            account_ids?: string[] | null;
+            /** Pocket Ids */
+            pocket_ids?: string[] | null;
         };
         /** GoalProgressOut */
         GoalProgressOut: {
@@ -1612,8 +1641,10 @@ export interface components {
             target_cents: number;
             /** Deadline */
             deadline: string | null;
-            /** Account Id */
-            account_id: string | null;
+            /** Account Ids */
+            account_ids: string[];
+            /** Pocket Ids */
+            pocket_ids: string[];
             /**
              * Created On
              * Format: date
@@ -3289,6 +3320,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_invoices__invoice_id__settle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsettle_invoices__invoice_id__settle_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
                 };
             };
             /** @description Validation Error */

@@ -21,7 +21,9 @@ def upgrade() -> None:
     op.create_table(
         "goal_accounts",
         sa.Column(
-            "account_id", sa.Uuid(), sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+            "account_id",
+            sa.Uuid(),
+            sa.ForeignKey("accounts.id", ondelete="CASCADE"),
             primary_key=True,
         ),
         sa.Column(
@@ -32,7 +34,9 @@ def upgrade() -> None:
     op.create_table(
         "goal_pockets",
         sa.Column(
-            "pocket_id", sa.Uuid(), sa.ForeignKey("pockets.id", ondelete="CASCADE"),
+            "pocket_id",
+            sa.Uuid(),
+            sa.ForeignKey("pockets.id", ondelete="CASCADE"),
             primary_key=True,
         ),
         sa.Column(

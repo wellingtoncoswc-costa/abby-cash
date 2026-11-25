@@ -195,7 +195,8 @@ class GoalOut(Out):
     name: str
     target_cents: int
     deadline: date | None
-    account_id: UUID | None
+    account_ids: list[UUID]
+    pocket_ids: list[UUID]
     created_on: date
     created_at: datetime
 
