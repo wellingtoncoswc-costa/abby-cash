@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { Bill, Card as CardT, Invoice, S, Statement } from '../api/types'
+import type { Bill, Card as CardT, CardPanel, Invoice, S, Statement } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useIsOwner, useSend } from '../ui'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
 
 /** Formulário de pagamento: conta de origem obrigatória; valor vazio = o que falta (só contas). */
 function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultCents?: number; requireAmount?: boolean }) {
@@ -83,14 +83,118 @@ function InvoiceView({ id }: { id: string }) {
   )
 }
 
+const pctOf = (v: number, max: number) => (max > 0 ? Math.round((v / max) * 100) : 0)
+
+function CardPanelView({ card, invoiceId, onPick }: { card: CardT; invoiceId: string | null; onPick: (id: string) => void }) {
+  const p = useGet<CardPanel>(`/cards/${card.id}/panel${invoiceId ? `?invoice=${invoiceId}` : ''}`)
+  const catName = useCatName()
+  if (!p.data) return <p>Carregando…</p>
+  const d = p.data
+  const maxCat = Math.max(1, ...d.by_category.map((c) => c.total_cents))
+  const maxH = Math.max(1, ...d.history.map((h) => h.total_cents))
+  return (
+    <div className="mt-2">
+      <h3 className="font-semibold">Gastos por categoria{d.invoice ? ` · fatura ${br(d.invoice.closing_on)}` : ''}</h3>
+      {d.by_category.length === 0 && <p>Sem compras nesta fatura.</p>}
+      <ul>{d.by_category.map((c) => (
+        <li key={c.category_id ?? 'none'}>
+          <div className="flex justify-between"><span>{catName(c.category_id)}</span><span>{formatBRL(c.total_cents)}</span></div>
+          <div className="h-2 rounded bg-muted"><div className="h-2 rounded bg-primary" style={{ width: `${pctOf(c.total_cents, maxCat)}%` }} /></div>
+        </li>
+      ))}</ul>
+      {d.private_total_cents !== 0 && <p>Outros lançamentos (privados): {formatBRL(d.private_total_cents)}</p>}
+      <h3 className="mt-3 font-semibold">Últimas faturas</h3>
+      <div className="flex items-end gap-2" role="group" aria-label="Últimas faturas">
+        {d.history.map((h) => (
+          <button key={h.invoice_id} type="button" aria-label={`Fatura ${br(h.closing_on)}: ${formatBRL(h.total_cents)}`} aria-pressed={d.invoice?.id === h.invoice_id}
+            className="flex flex-col items-center text-xs" onClick={() => onPick(h.invoice_id)}>
+            <span className="w-8 rounded-t bg-primary" style={{ height: `${Math.max(4, pctOf(h.total_cents, maxH) * 0.8)}px` }} />
+            <span>{h.closing_on.slice(5, 7)}/{h.closing_on.slice(2, 4)}</span>
+          </button>
+        ))}
+      </div>
+      <h3 className="mt-3 font-semibold">Maiores compras</h3>
+      <ul>{d.top.map((t, i) => <li key={i} className="flex justify-between"><span>{br(t.occurred_on)} {t.description || t.merchant}</span><span>{formatBRL(t.amount_cents)}</span></li>)}</ul>
+    </div>
+  )
+}
+
+function PurchaseForm({ card, done }: { card: CardT; done: () => void }) {
+  const [f, setF] = useState({ amount: '', installments: '1', description: '', category_id: '', occurred_on: today() })
+  const cents = parseBRL(f.amount)
+  const send = useSend(
+    () => api('POST', `/spaces/${card.space_id}/card-purchases`, { card_id: card.id, amount_cents: cents!, installments: Number(f.installments), description: f.description, category_id: f.category_id || null, occurred_on: f.occurred_on } satisfies S['PurchaseIn']),
+    done,
+  )
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (cents) send.mutate() }}>
+      <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+      <Field label="Parcelas"><input type="number" min={1} max={48} value={f.installments} onChange={(e) => setF({ ...f, installments: e.target.value })} /></Field>
+      <Field label="Data"><input type="date" value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+      <Field label="Descrição"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <CategorySelect value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !cents}>Registrar compra</Btn>
+    </form>
+  )
+}
+
+function InvoiceTotalForm({ card, done }: { card: CardT; done: () => void }) {
+  const [f, setF] = useState({ month: '', total: '' })
+  const cents = parseBRL(f.total)
+  const send = useSend(() => api('POST', `/cards/${card.id}/invoice-totals`, { month: f.month, total_cents: cents! }), done)
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (cents && f.month) send.mutate() }}>
+      <Field label="Mês de fechamento"><input type="month" required value={f.month} onChange={(e) => setF({ ...f, month: e.target.value })} /></Field>
+      <Field label="Valor total (R$)"><input inputMode="decimal" required value={f.total} onChange={(e) => setF({ ...f, total: e.target.value })} /></Field>
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !cents || !f.month}>Salvar fatura</Btn>
+    </form>
+  )
+}
+
+function CardTile({ c, owner }: { c: CardT; owner: boolean }) {
+  const [open, setOpen] = useState<'purchase' | 'invoice' | 'panel' | null>(null)
+  const [pick, setPick] = useState<string | null>(null)
+  const [invId, setInvId] = useState<string | null>(null)
+  const sum = useGet<CardPanel>(`/cards/${c.id}/panel`)
+  const invoices = useGet<Invoice[]>(`/cards/${c.id}/invoices`)
+  const toggle = (k: 'purchase' | 'invoice' | 'panel') => setOpen(open === k ? null : k)
+  const cur = sum.data?.invoice
+  return (
+    <Card title={c.name}>
+      <p>Fecha dia {c.closing_day} · vence dia {c.due_day}</p>
+      {cur && <p>Fatura atual {formatBRL(cur.total_cents)} · vence {br(cur.due_on)}{cur.status === 'paid' ? ' · paga' : ''}</p>}
+      {sum.data?.limit_cents != null && <p>Limite {formatBRL(sum.data.limit_cents)} · usado {formatBRL(sum.data.used_cents)} · Disponível {formatBRL(sum.data.available_cents ?? 0)}</p>}
+      <div className="my-2 flex flex-wrap gap-2">
+        <Btn type="button" onClick={() => toggle('purchase')}>Nova compra</Btn>
+        <Btn type="button" onClick={() => toggle('invoice')}>Cadastrar fatura</Btn>
+        <Btn type="button" onClick={() => toggle('panel')} className="bg-muted-foreground hover:bg-muted-foreground/90">{open === 'panel' ? 'Ocultar painel' : 'Ver painel'}</Btn>
+      </div>
+      {open === 'purchase' && <PurchaseForm card={c} done={() => setOpen(null)} />}
+      {open === 'invoice' && <InvoiceTotalForm card={c} done={() => setOpen(null)} />}
+      {open === 'panel' && <CardPanelView card={c} invoiceId={pick} onPick={setPick} />}
+      {(invoices.data ?? []).map((i) => (
+        <div key={i.id} className="border-t border-border py-2">
+          <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
+            <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}{i.status === 'paid' && <> · <span>paga</span></>}</span><span>{formatBRL(i.total_cents)}</span>
+          </button>
+          {invId === i.id && <InvoiceView id={i.id} />}
+        </div>
+      ))}
+      <Err e={invoices.error} />
+      <EditBox what="cartão" canEdit={owner} fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
+        save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
+        remove={() => api('DELETE', `/cards/${c.id}`)} />
+    </Card>
+  )
+}
+
 export function Cards() {
   const owner = useIsOwner()
   const { spaceId } = useSpace()
   const cards = useGet<CardT[]>('/cards')
   const mine = (cards.data ?? []).filter((c) => c.space_id === spaceId)
-  const [sel, setSel] = useState('')
-  const [invId, setInvId] = useState<string | null>(null)
-  const invoices = useGet<Invoice[]>(sel ? `/cards/${sel}/invoices` : null)
   const [f, setF] = useState({ name: '', closing_day: '5', due_day: '12', limit: '' })
   const lim = f.limit ? parseBRL(f.limit) : null
   const create = useSend(
@@ -101,24 +205,9 @@ export function Cards() {
     <>
       <h1 className="mb-3 text-xl font-bold">Cartões e faturas</h1>
       <Card title="Novo cartão"><CardForm f={f} setF={setF} onSubmit={() => create.mutate()} err={create.error} busy={create.isPending} lim={lim} /></Card>
-      <Card title="Meus cartões">
-        {mine.length === 0 ? <p>Nenhum cartão neste espaço.</p> : (
-          <Field label="Cartão"><select value={sel} onChange={(e) => { setSel(e.target.value); setInvId(null) }}><option value="">Selecione…</option>{mine.map((c) => <option key={c.id} value={c.id}>{c.name} (fecha {c.closing_day}, vence {c.due_day})</option>)}</select></Field>
-        )}
-        {sel && mine.find((c) => c.id === sel) && (() => { const c = mine.find((x) => x.id === sel)!; return (
-          <EditBox key={c.id} what="cartão" canEdit={owner} fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
-            save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
-            remove={() => api('DELETE', `/cards/${c.id}`).then(() => setSel(''))} />) })()}
-        {(invoices.data ?? []).map((i) => (
-          <div key={i.id} className="border-t border-border py-2">
-            <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
-              <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}{i.status === 'paid' && <> · <span>paga</span></>}</span><span>{formatBRL(i.total_cents)}</span>
-            </button>
-            {invId === i.id && <InvoiceView id={i.id} />}
-          </div>
-        ))}
-        <Err e={invoices.error} />
-      </Card>
+      {!cards.isLoading && mine.length === 0 && <p className="mb-4">Nenhum cartão neste espaço.</p>}
+      <div className="grid gap-4 md:grid-cols-2">{mine.map((c) => <CardTile key={c.id} c={c} owner={owner} />)}</div>
+      <Err e={cards.error} />
     </>
   )
 }

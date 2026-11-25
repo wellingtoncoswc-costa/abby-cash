@@ -16,6 +16,7 @@ const routes: Record<string, (init: RequestInit) => Response> = {
   '/me': () => J({ id: 'u1', name: 'Ana', email: 'a@x.com', tz: 'America/Sao_Paulo', default_space_id: SP, preferred_channel: null, reminder_time: '09:00:00', weekly_digest: false, is_admin: false, totp_enabled: false }),
   [`/spaces/${SP}/categories`]: () => J([{ id: 'c1', space_id: SP, kind: 'expense', name: 'Mercado', icon: null, color: null }]),
   [`/spaces/${SP}/members`]: () => J([{ user_id: 'u1', name: 'Ana', role: 'owner', joined_at: '2026-11-01T00:00:00Z' }]),
+  '/cards/k1/panel': () => J({ invoice: null, limit_cents: null, used_cents: 0, available_cents: null, by_category: [], private_total_cents: 0, top: [], history: [] }),
   '/cards': () => J([{ id: 'k1', space_id: SP, name: 'Visa', closing_day: 5, due_day: 12, limit_cents: null, payment_account_id: null }]),
   [`/spaces/${SP}/card-purchases`]: () => J([1, 2].map((n) => ({ id: `p${n}`, invoice_id: `i${n}`, amount_cents: 5000, installment_number: n, installment_total: 2 })), 201),
   '/attachments/att1': () => new Response('x', { headers: { 'Content-Type': 'image/png' } }),
@@ -213,7 +214,6 @@ test('fatura antiga: marcar como paga antes do cadastro e desfazer', async () =>
   routes['/invoices/i1'] = () => J({ ...estado(), statement: { items: [], private_total_cents: 0, total_cents: 20000 } })
   routes['/invoices/i1/settle'] = (init) => { baixada = init.method === 'POST'; return J(estado()) }
   go('/cartoes')
-  await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   await userEvent.click(await screen.findByRole('button', { name: /Fatura 05\/08\/2026/ }))
   await userEvent.click(await screen.findByRole('button', { name: 'Marcar como paga (paga antes do cadastro)' }))
   const post = calls.find(([u, i]) => u === '/invoices/i1/settle' && i.method === 'POST')
@@ -226,7 +226,6 @@ test('fatura antiga: marcar como paga antes do cadastro e desfazer', async () =>
 test('fatura paga aparece com o status na lista', async () => {
   routes['/cards/k1/invoices'] = () => J([{ ...FATURA, status: 'paid', remaining_cents: 0 }])
   go('/cartoes')
-  await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   expect(await screen.findByText('paga')).toBeInTheDocument()
 })
 
@@ -276,4 +275,50 @@ test('investimentos: ativo recém-cadastrado aparece com o caminho para aportar'
   go('/investimentos')
   expect(await screen.findByText(/Sem aportes ainda/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+})
+
+const PANEL = {
+  invoice: { id: 'i1', card_id: 'k1', closing_on: '2026-12-05', due_on: '2026-12-12', total_cents: 50000, paid_cents: 0, remaining_cents: 50000, status: 'open' },
+  limit_cents: 200000, used_cents: 50000, available_cents: 150000,
+  by_category: [{ category_id: 'c1', total_cents: 50000 }], private_total_cents: 0,
+  top: [{ description: 'Supermercado', merchant: null, amount_cents: 30000, occurred_on: '2026-11-20' }],
+  history: [{ invoice_id: 'i1', closing_on: '2026-12-05', due_on: '2026-12-12', total_cents: 50000 }],
+}
+const tile = async () => within((await screen.findByRole('heading', { name: 'Visa' })).closest('section')!)
+
+test('cartões: um card por cartão com resumo, limite e painel', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([PANEL.invoice])
+  go('/cartoes')
+  const card = await tile()
+  expect(await card.findByText(/Disponível R\$ 1\.500,00/)).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Mercado')).toBeInTheDocument()
+  expect(card.getByText(/Supermercado/)).toBeInTheDocument()
+})
+
+test('cartões: cadastrar fatura pelo total envia mês e valor', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([PANEL.invoice])
+  routes['/cards/k1/invoice-totals'] = () => J(PANEL.invoice, 201)
+  go('/cartoes')
+  const card = await tile()
+  await userEvent.click(await card.findByRole('button', { name: 'Cadastrar fatura' }))
+  await userEvent.type(card.getByLabelText('Mês de fechamento'), '2026-08')
+  await userEvent.type(card.getByLabelText('Valor total (R$)'), '1234,56')
+  await userEvent.click(card.getByRole('button', { name: 'Salvar fatura' }))
+  const post = calls.find(([u]) => u === '/cards/k1/invoice-totals')!
+  expect(JSON.parse(post[1].body as string)).toEqual({ month: '2026-08', total_cents: 123456 })
+})
+
+test('cartões: nova compra no cartão', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([])
+  go('/cartoes')
+  const card = await tile()
+  await userEvent.click(await card.findByRole('button', { name: 'Nova compra' }))
+  await userEvent.type(card.getByLabelText('Valor (R$)'), '45,00')
+  await userEvent.click(card.getByRole('button', { name: 'Registrar compra' }))
+  const post = calls.find(([u]) => u === `/spaces/${SP}/card-purchases`)!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ card_id: 'k1', amount_cents: 4500, installments: 1 })
 })
