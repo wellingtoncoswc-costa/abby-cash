@@ -262,7 +262,7 @@ async def resume(t: Turn, text: str) -> str | None:
             await drop()
             return "Ok, não lancei." if reply == "nao" else None
         d.confirmed = True
-    else:  # payment | dest | pick_bill
+    else:  # payment | dest | pick_bill | category
         picked = pick_option(d.options, text)
         if picked is None:
             if re.fullmatch(r"\d{1,2}", text.strip()):
@@ -274,6 +274,9 @@ async def resume(t: Turn, text: str) -> str | None:
             d.bill_id = picked.id
         elif kind == "dest":
             d.to = picked
+        elif kind == "category":
+            d.category_id = picked.id
+            await edit.learn_rule(t, d.space_id, d.p.merchant or d.p.description or "", picked.id)
         else:
             d.payment = picked
     if not await take():

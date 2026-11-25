@@ -41,7 +41,11 @@ async def test_retry_after_crash_does_not_duplicate_expense(ana, parser, session
 
 async def test_retry_after_crash_does_not_duplicate_installments(ana, parser, session):
     card = await make_card(session, ana.user, ana.user.default_space_id, name="Visa")
-    parser.add(intent("lancar_parcelado", amount_cents=30_000, installments=3, card_hint=card.name))
+    parser.add(
+        intent(
+            "lancar_parcelado", "Compras", amount_cents=30_000, installments=3, card_hint=card.name
+        )
+    )
     assert await crash_and_retry(session, ana, "tv 300 em 3x no visa") == "Já registrei isso."
     assert await count(session) == 3
 

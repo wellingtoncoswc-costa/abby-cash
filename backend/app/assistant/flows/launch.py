@@ -21,7 +21,7 @@ from app.assistant.replies import (
     tx_line,
 )
 from app.assistant.resolve import pick_category
-from app.assistant.turn import Draft, Turn
+from app.assistant.turn import Draft, Pay, Turn
 from app.core.money import format_brl
 from app.domain.budgets.service import evaluate_thresholds, future_impact
 from app.domain.cards.service import register_card_purchase
@@ -40,9 +40,10 @@ async def start(t: Turn, p: ParsedIntent, space_id: UUID, h: Hints, warn: str | 
 
 
 async def resolve_category(
-    t: Turn, ctx: SpaceContext, p: ParsedIntent, space_id: UUID, kind: str
+    t: Turn, ctx: SpaceContext, p: ParsedIntent, space_id: UUID, kind: str, *, other: bool = True
 ) -> UUID | None:
-    """Regra aprendida > categoria sugerida pelo nº da lista (do próprio espaço) > "Outros"."""
+    """Regra aprendida > categoria sugerida pelo nº da lista (do próprio espaço) > "Outros"
+    (ou None, com `other=False`, para o chamador perguntar)."""
     ids = {c.id for c in ctx.categories if c.kind == kind}
     norm = normalize_merchant(p.merchant or p.description or "")
     if norm:
@@ -55,6 +56,8 @@ async def resolve_category(
             return learned
     if cat := pick_category(ctx, kind, p.category_index):
         return cat.id
+    if not other:
+        return None
     return next((c.id for c in ctx.categories if c.kind == kind and c.name == "Outros"), None)
 
 
@@ -100,14 +103,25 @@ async def run(t: Turn, d: Draft) -> str:
             if not options:
                 return NO_CARD if (p.installments or 1) > 1 or p.card_hint else NO_ACCOUNT
             d.options = options
-            question = "Em qual cartão foi?" if options[0].type == "card" else "Em qual conta foi?"
+            question = (
+                "Em qual cartão foi?" if options[0].type == "card"
+                else "Em qual conta entrou?" if income else "Em qual conta foi?"
+            )  # fmt: skip
             return await ask(t, d, "payment", options_text(question, [o.label for o in options]))
         d.payment = chosen
     occurred: date = p.occurred_on or t.today
     if occurred > t.today:
         return FUTURE_DATE
     n = p.installments if p.installments and p.installments > 1 and not income else 1
-    category_id = await resolve_category(t, ctx, p, d.space_id, "income" if income else "expense")
+    kind = "income" if income else "expense"
+    category_id = d.category_id or await resolve_category(t, ctx, p, d.space_id, kind, other=False)
+    if category_id is None:
+        d.options = [
+            Pay(type="category", id=c.id, label=c.name) for c in ctx.categories if c.kind == kind
+        ]
+        return await ask(
+            t, d, "category", options_text("Qual a categoria?", [o.label for o in d.options])
+        )
     description = (p.description or p.merchant or "")[:500]
     merchant = p.merchant[:200] if p.merchant else None
     if d.payment.type == "card":

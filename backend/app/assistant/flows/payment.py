@@ -37,8 +37,8 @@ def _match(items: list[tuple[UUID, str]], tokens: list[str]) -> set[UUID]:
 
 
 def choose_account(ctx: SpaceContext, hints: list[str]) -> Choice:
-    """Dica da mensagem -> conta padrão do espaço -> pergunta (spec 13). Dica que não casa com
-    nenhuma conta pergunta, em vez de cair em silêncio na padrão."""
+    """Dica da mensagem -> conta única -> pergunta. Sem dica ou com dica que não casa, pergunta:
+    nunca assume a conta padrão em silêncio."""
     text = fold(" ".join(hints))
     everyone = _accounts(ctx)
     if not ctx.accounts:
@@ -49,15 +49,6 @@ def choose_account(ctx: SpaceContext, hints: list[str]) -> Choice:
     if tokens := _tokens(hints):
         found = _accounts(ctx, _match([(a.id, a.name) for a in ctx.accounts], tokens))
         return (found[0], []) if len(found) == 1 else (None, found or everyone)
-    default = next((a for a in ctx.accounts if a.id == ctx.default_account_id), None)
-    if default is not None and re.search(r"\b(pix|debito)\b", text) and default.type == "wallet":
-        banks = [a for a in ctx.accounts if a.type != "wallet"]  # pix não sai da carteira
-        default = banks[0] if len(banks) == 1 else None
-        if default is None:
-            return None, _accounts(ctx, {a.id for a in banks}) or everyone
-    if default is not None:
-        pay = Pay(type="account", id=default.id, label=account_label(default.type, default.name))
-        return pay, []
     return (everyone[0], []) if len(everyone) == 1 else (None, everyone)
 
 
