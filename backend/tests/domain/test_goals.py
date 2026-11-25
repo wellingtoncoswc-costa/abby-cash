@@ -20,7 +20,7 @@ D = date(2026, 1, 15)
 async def _goal(session, user, *, target=120_000, deadline=None, created_on=D, space=None):
     return await create_goal(
         session, actor_id=user.id, space_id=space or user.default_space_id, name="Viagem",
-        target_cents=target, deadline=deadline, account_id=None, created_on=created_on,
+        target_cents=target, deadline=deadline, created_on=created_on,
     )  # fmt: skip
 
 
