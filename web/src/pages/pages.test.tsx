@@ -229,3 +229,41 @@ test('fatura paga aparece com o status na lista', async () => {
   await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   expect(await screen.findByText('paga')).toBeInTheDocument()
 })
+
+test('metas: conta já ligada a outra meta fica desabilitada', async () => {
+  const base = { saved_cents: 0, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem', account_ids: ['a1'] }, { ...base, id: 'g2', name: 'Carro', account_ids: [] }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  go('/metas')
+  const carro = within((await screen.findByRole('heading', { name: 'Carro' })).closest('section')!)
+  expect(await carro.findByLabelText(/Nubank/)).toBeDisabled()
+  expect(carro.getByText(/já na meta Viagem/)).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+const INV = {
+  assets: [{ id: 'i1', name: 'Petrobras', kind: 'stock', ticker: 'PETR4', quantity: '10', avg_price_cents: 3800, price_cents: 3850, quote_date: '2026-01-15', day_change_bp: 131, contributed_cents: 38000, value_cents: 38500, profit_cents: 500, profit_bp: 131 }],
+  by_kind: [{ kind: 'stock', value_cents: 38500 }],
+  series: [{ on: '2026-01-14', value_cents: 38000, contributed_cents: 38000 }, { on: '2026-01-15', value_cents: 38500, contributed_cents: 38000 }],
+  contributed_cents: 38000, current_cents: 38500, profit_cents: 500, profit_bp: 131,
+}
+
+test('investimentos: mostra totais, rentabilidade e ativos', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  go('/investimentos')
+  expect(await screen.findByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+  expect(screen.getAllByText(/R\$ 385,00/).length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/\+1,31%/).length).toBeGreaterThan(0)
+})
+
+test('investimentos: aportar em ação envia quantidade e conta', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  routes['/investments/i1/buys'] = () => J({ id: 'm1' }, 201)
+  go('/investimentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Aportar em PETR4' }))
+  await userEvent.selectOptions(screen.getByLabelText('Conta'), 'a1')
+  await userEvent.type(screen.getByLabelText('Quantidade'), '10')
+  await userEvent.click(screen.getByRole('button', { name: 'Confirmar aporte' }))
+  const post = calls.find(([u]) => u === '/investments/i1/buys')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ account_id: 'a1', quantity: '10' })
+})

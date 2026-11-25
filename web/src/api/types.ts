@@ -27,3 +27,6 @@ export type Installment = S['InstallmentOut']
 // Visão geral de Análises (tipo gerado do OpenAPI).
 export type ReportTotals = { income_cents: number; expense_cents: number; net_cents: number; tx_count: number; avg_daily_expense_cents: number }
 export type OverviewOut = S['OverviewOut']
+
+export type InvAsset = { id: string; name: string; kind: 'stock' | 'fii' | 'cdb' | 'lci' | 'lca'; ticker: string | null; quantity: string | null; avg_price_cents: number | null; price_cents: number | null; quote_date: string | null; day_change_bp: number | null; contributed_cents: number; value_cents: number; profit_cents: number; profit_bp: number | null }
+export type InvDashboard = { assets: InvAsset[]; by_kind: { kind: string; value_cents: number }[]; series: { on: string; value_cents: number; contributed_cents: number }[]; contributed_cents: number; current_cents: number; profit_cents: number; profit_bp: number | null }

@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet } from '@tanstack/react-router'
-import { ArrowLeftRight, ChartNoAxesCombined, CreditCard, Gauge, Landmark, LayoutDashboard, LogOut, type LucideIcon, Menu, MessageCircle, Moon, PiggyBank, Receipt, Rocket, Settings, Shield, Sun, Tags, Target, Users, X } from 'lucide-react'
+import { ArrowLeftRight, ChartNoAxesCombined, CreditCard, Gauge, Landmark, LayoutDashboard, LogOut, type LucideIcon, Menu, MessageCircle, Moon, PiggyBank, Receipt, Rocket, Settings, Shield, Sun, Tags, Target, TrendingUp, Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { logout } from './api/client'
 import type { Space } from './api/types'
@@ -13,7 +13,7 @@ type Item = readonly [to: string, label: string, Icon: LucideIcon]
 const PRINCIPAL: Item[] = [
   ['/', 'Painel', LayoutDashboard], ['/lancamentos', 'Lançamentos', ArrowLeftRight], ['/analises', 'Análises', ChartNoAxesCombined], ['/contas', 'Contas a pagar', Receipt],
   ['/cartoes', 'Cartões', CreditCard], ['/metas', 'Metas', Target],
-  ['/caixinhas', 'Caixinhas', PiggyBank], ['/financiamentos', 'Financiamentos e consórcios', Landmark],
+  ['/caixinhas', 'Caixinhas', PiggyBank], ['/investimentos', 'Investimentos', TrendingUp], ['/financiamentos', 'Financiamentos e consórcios', Landmark],
 ]
 const MAIS: Item[] = [
   ['/categorias', 'Categorias', Tags], ['/teto', 'Teto', Gauge], ['/espacos', 'Espaços', Users], ['/canais', 'Canais', MessageCircle],

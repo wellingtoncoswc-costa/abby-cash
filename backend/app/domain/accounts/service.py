@@ -11,7 +11,7 @@ from app.domain.accounts.models import Account
 from app.domain.audit import audit, snap
 from app.domain.cards.models import CreditCard
 from app.domain.errors import DomainError
-from app.domain.goals.models import Goal
+from app.domain.goals.models import GoalAccount
 from app.domain.loans.models import Loan
 from app.domain.pockets.models import Pocket
 from app.domain.spaces.access import require_member, require_owner
@@ -95,7 +95,7 @@ async def delete_account(session: AsyncSession, *, actor_id: UUID, account_id: U
                 or_(Transaction.account_id == acc.id, Transaction.counter_account_id == acc.id)
             )
             | exists().where(CreditCard.payment_account_id == acc.id)
-            | exists().where(Goal.account_id == acc.id)
+            | exists().where(GoalAccount.account_id == acc.id)
             | exists().where(Pocket.account_id == acc.id)
             | exists().where(Loan.account_id == acc.id)
         )

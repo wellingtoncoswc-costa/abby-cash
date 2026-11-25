@@ -448,6 +448,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/invoices/{invoice_id}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle
+         * @description Baixa histórica: fatura que já estava paga antes do cadastro (sem lançamento).
+         */
+        post: operations["settle_invoices__invoice_id__settle_post"];
+        /** Unsettle */
+        delete: operations["unsettle_invoices__invoice_id__settle_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -637,6 +658,91 @@ export interface paths {
         /** Add Withdrawal */
         post: operations["add_withdrawal_goals__goal_id__withdrawals_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{space_id}/investments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create */
+        post: operations["create_spaces__space_id__investments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{space_id}/investments/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard */
+        get: operations["dashboard_spaces__space_id__investments_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/investments/{investment_id}/buys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Buy */
+        post: operations["add_buy_investments__investment_id__buys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/investments/{investment_id}/redeems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Redeem */
+        post: operations["add_redeem_investments__investment_id__redeems_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/investments/{investment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_investments__investment_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1551,8 +1657,10 @@ export interface components {
             target_cents: number;
             /** Deadline */
             deadline?: string | null;
-            /** Account Id */
-            account_id?: string | null;
+            /** Account Ids */
+            account_ids?: string[];
+            /** Pocket Ids */
+            pocket_ids?: string[];
         };
         /** GoalOut */
         GoalOut: {
@@ -1572,8 +1680,10 @@ export interface components {
             target_cents: number;
             /** Deadline */
             deadline: string | null;
-            /** Account Id */
-            account_id: string | null;
+            /** Account Ids */
+            account_ids: string[];
+            /** Pocket Ids */
+            pocket_ids: string[];
             /**
              * Created On
              * Format: date
@@ -1593,6 +1703,10 @@ export interface components {
             target_cents?: number | null;
             /** Deadline */
             deadline?: string | null;
+            /** Account Ids */
+            account_ids?: string[] | null;
+            /** Pocket Ids */
+            pocket_ids?: string[] | null;
         };
         /** GoalProgressOut */
         GoalProgressOut: {
@@ -1612,8 +1726,10 @@ export interface components {
             target_cents: number;
             /** Deadline */
             deadline: string | null;
-            /** Account Id */
-            account_id: string | null;
+            /** Account Ids */
+            account_ids: string[];
+            /** Pocket Ids */
+            pocket_ids: string[];
             /**
              * Created On
              * Format: date
@@ -1654,6 +1770,49 @@ export interface components {
             state: "open" | "paid_history" | "paid_real";
             /** Bill Id */
             bill_id: string | null;
+        };
+        /** InvestmentIn */
+        InvestmentIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "stock" | "fii" | "cdb" | "lci" | "lca";
+            /** Name */
+            name: string;
+            /** Ticker */
+            ticker?: string | null;
+            /** Rate Type */
+            rate_type?: ("cdi_pct" | "fixed") | null;
+            /** Rate Bp */
+            rate_bp?: number | null;
+            /** Maturity On */
+            maturity_on?: string | null;
+        };
+        /** InvestmentOut */
+        InvestmentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Space Id
+             * Format: uuid
+             */
+            space_id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Ticker */
+            ticker: string | null;
+            /** Rate Type */
+            rate_type: string | null;
+            /** Rate Bp */
+            rate_bp: number | null;
+            /** Maturity On */
+            maturity_on: string | null;
         };
         /** InvoiceDetailOut */
         InvoiceDetailOut: {
@@ -1893,12 +2052,36 @@ export interface components {
              */
             joined_at: string;
         };
-        /** MoveIn */
-        MoveIn: {
+        /** MovementOut */
+        MovementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Investment Id
+             * Format: uuid
+             */
+            investment_id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Quantity */
+            quantity: string | null;
+            /** Unit Price Cents */
+            unit_price_cents: number | null;
             /** Amount Cents */
             amount_cents: number;
-            /** Occurred On */
-            occurred_on?: string | null;
+            /**
+             * Transaction Id
+             * Format: uuid
+             */
+            transaction_id: string;
         };
         /** OverviewOut */
         OverviewOut: {
@@ -2280,6 +2463,29 @@ export interface components {
              * Format: uuid
              */
             to_account_id: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /** Occurred On */
+            occurred_on?: string | null;
+        };
+        /** MoveIn */
+        app__api__investments__MoveIn: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Occurred On */
+            occurred_on?: string | null;
+            /** Amount Cents */
+            amount_cents?: number | null;
+            /** Quantity */
+            quantity?: number | string | null;
+            /** Unit Price Cents */
+            unit_price_cents?: number | null;
+        };
+        /** MoveIn */
+        app__api__pockets__MoveIn: {
             /** Amount Cents */
             amount_cents: number;
             /** Occurred On */
@@ -3302,6 +3508,72 @@ export interface operations {
             };
         };
     };
+    settle_invoices__invoice_id__settle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsettle_invoices__invoice_id__settle_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_cards__card_id__delete: {
         parameters: {
             query?: never;
@@ -3947,6 +4219,183 @@ export interface operations {
             };
         };
     };
+    create_spaces__space_id__investments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvestmentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_spaces__space_id__investments_dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_buy_investments__investment_id__buys_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                investment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__api__investments__MoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_redeem_investments__investment_id__redeems_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                investment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__api__investments__MoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_investments__investment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                investment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list__spaces__space_id__pockets_get: {
         parameters: {
             query?: never;
@@ -4098,7 +4547,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MoveIn"];
+                "application/json": components["schemas"]["app__api__pockets__MoveIn"];
             };
         };
         responses: {
@@ -4135,7 +4584,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MoveIn"];
+                "application/json": components["schemas"]["app__api__pockets__MoveIn"];
             };
         };
         responses: {
