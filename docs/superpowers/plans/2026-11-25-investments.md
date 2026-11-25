@@ -17,7 +17,7 @@ Pré-requisitos: infra de testes de pé (`docker compose -f infra/docker-compose
 
 - `backend/app/core/config.py` (+`BRAPI_TOKEN`), `.env.example`, `infra/docker-compose.*.yml` (repassar a env, se o `OPENAI_API_KEY` estiver lá).
 - `backend/app/domain/investments/__init__.py`, `models.py`, `quotes.py` (cliente brapi + cache de fechamentos), `valuation.py` (funções puras da renda fixa), `service.py` (cadastro, aporte, resgate, dashboard).
-- `backend/migrations/versions/e1f2a3b4c5d6_investments.py`; registrar em `backend/app/domain/models.py`.
+- `backend/migrations/versions/f7a8b9c0d1e2_investments.py`; registrar em `backend/app/domain/models.py`.
 - `backend/app/jobs/investments.py` + cron em `backend/app/worker.py`.
 - `backend/app/api/investments.py` + `include_router` em `backend/app/main.py`.
 - Testes: `backend/tests/domain/test_investments_*.py`, `backend/tests/api/test_investments_api.py`, `backend/tests/jobs/test_investments_job.py`.
@@ -98,7 +98,7 @@ class PriceQuote(Base):
 
 Em `domain/models.py`, junto dos outros imports: `import app.domain.investments.models  # noqa: F401`.
 
-- [ ] **Step 3: Migração** `migrations/versions/e1f2a3b4c5d6_investments.py` (`down_revision = "d0e1f2a3b4c5"` se a Parte A já foi mergeada; senão `"c9d0e1f2a3b4"` — confira com `ls migrations/versions` e `grep -rn "down_revision" migrations/versions | grep <head>` para não criar duas heads). Crie as 3 tabelas espelhando os models (mesmos nomes de constraint, `sa.Uuid()`, `sa.Numeric(18, 6)`, `sa.BigInteger()`, `server_default=sa.func.now()` em `created_at`, índices `ix_investments_space_id` e `ix_investment_movements_investment_id`; PK composta `(ticker, on_date)` em `price_quotes`) e `downgrade` com `drop_table` na ordem inversa.
+- [ ] **Step 3: Migração** `migrations/versions/f7a8b9c0d1e2_investments.py` (`down_revision = "d0e1f2a3b4c5"` se a Parte A já foi mergeada; senão `"c9d0e1f2a3b4"` — confira com `ls migrations/versions` e `grep -rn "down_revision" migrations/versions | grep <head>` para não criar duas heads). Crie as 3 tabelas espelhando os models (mesmos nomes de constraint, `sa.Uuid()`, `sa.Numeric(18, 6)`, `sa.BigInteger()`, `server_default=sa.func.now()` em `created_at`, índices `ix_investments_space_id` e `ix_investment_movements_investment_id`; PK composta `(ticker, on_date)` em `price_quotes`) e `downgrade` com `drop_table` na ordem inversa.
 
 - [ ] **Step 4: Verificar** — `cd backend && bash scripts/migrate_check.sh` → termina sem diferenças ("No new upgrade operations detected"). Se acusar diferença, ajuste a migração ao model.
 
@@ -1103,7 +1103,7 @@ Run: `cd web && npm test -- investments` → FAIL.
 - [ ] Web: `cd web && npm run lint && npm run typecheck && npm test && npm run build`.
 - [ ] **Verificação real da brapi (precisa do `BRAPI_TOKEN`, peça ao usuário):** `curl -s "https://brapi.dev/api/quote/PETR4?range=1mo&interval=1d&token=$BRAPI_TOKEN" | head -c 600` e confirme que `results[0].historicalDataPrice[]` tem `date` (epoch) e `close`. Se o formato ou o limite do plano gratuito diferir do que `quotes.py` assume (campos, 1 ticker por chamada, ranges aceitos), ajuste `quotes.py` e seu teste antes do PR. O código não foi validado contra a API real até este passo.
 - [ ] Conferir no navegador: cadastrar PETR4, aportar, ver preço/rentabilidade; cadastrar um CDB 110% CDI, aportar e ver o valor crescer depois do CDI do dia.
-- [ ] Deploy (só com confirmação do usuário): definir `BRAPI_TOKEN` no `.env` de produção e recriar `api`/`worker`/`web`; a migração `e1f2a3b4c5d6` roda no deploy.
+- [ ] Deploy (só com confirmação do usuário): definir `BRAPI_TOKEN` no `.env` de produção e recriar `api`/`worker`/`web`; a migração `f7a8b9c0d1e2` roda no deploy.
 - [ ] Abrir PR para a `main` (`gh pr create`).
 
 ## Self-review (spec → tarefas)
