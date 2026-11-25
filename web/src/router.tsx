@@ -30,5 +30,5 @@ const tree = root.addChildren([
   ]),
 ])
 
-export const makeRouter = (history?: RouterHistory) => createRouter({ routeTree: tree, history })
+export const makeRouter = (history?: RouterHistory) => createRouter({ routeTree: tree, history, defaultViewTransition: true })
 declare module '@tanstack/react-router' { interface Register { router: ReturnType<typeof makeRouter> } }

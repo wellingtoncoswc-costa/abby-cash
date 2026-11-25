@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export const reduzido = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -47,3 +47,21 @@ export function Anel({ pct, cor }: { pct: number; cor: string }) {
 
 /** Movimento permitido? Sem matchMedia (testes) ou com movimento reduzido, os gráficos já nascem prontos. */
 export const podeAnimar = () => typeof matchMedia === 'function' && !reduzido()
+
+/** Ids que chegaram depois da primeira carga da lista (para destacar o lançamento novo, sem piscar a lista inteira). */
+export function useNovos(ids: string[]): Set<string> {
+  const base = useRef<Set<string> | null>(null)
+  const [novos, setNovos] = useState<Set<string>>(new Set())
+  const chave = ids.join(',')
+  useEffect(() => {
+    if (!base.current) {
+      if (ids.length) base.current = new Set(ids)
+      return
+    }
+    const novo = ids.filter((i) => !base.current!.has(i))
+    if (!novo.length) return
+    novo.forEach((i) => base.current!.add(i))
+    setNovos((n) => new Set([...n, ...novo]))
+  }, [chave]) // eslint-disable-line
+  return novos
+}

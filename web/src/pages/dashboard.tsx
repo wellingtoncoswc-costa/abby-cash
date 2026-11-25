@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { ApiError } from '../api/client'
 import type { Account, Bill, Budget, Goal, Tx } from '../api/types'
-import { Anel, podeAnimar, useCountUp } from '../anim'
+import { Anel, podeAnimar, useCountUp, useNovos } from '../anim'
 import { formatBRL } from '../lib/money'
 import { useSpace } from '../space'
 import { Bar, br, Err, Esqueleto, monthKey, useCatName, useGet } from '../ui'
@@ -114,6 +114,7 @@ const Secao = ({ title, children }: { title: string; children: ReactNode }) => (
 export const TxList = ({ items, onSelect }: { items: Tx[]; onSelect?: (t: Tx) => void }) => {
   const catName = useCatName()
   const accounts = useGet<Account[]>('/accounts')
+  const novos = useNovos(items.map((t) => t.id))
   const accName = (id: string | null) => accounts.data?.find((a) => a.id === id)?.name ?? 'Conta'
   return (
     <ul className="divide-y divide-border">
@@ -122,7 +123,7 @@ export const TxList = ({ items, onSelect }: { items: Tx[]; onSelect?: (t: Tx) =>
         const title = transfer ? `Transferência · ${accName(t.account_id)} → ${accName(t.counter_account_id)}` : t.description || t.merchant || 'Lançamento'
         const body = <>{title}{t.installment_total ? ` (${t.installment_number}/${t.installment_total})` : ''}<br /><small>{br(t.occurred_on)} · {transfer ? t.description || 'Entre contas' : catName(t.category_id)}</small></>
         return (
-          <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
+          <li key={t.id} className={`flex items-center justify-between gap-3 py-2.5 ${novos.has(t.id) ? 'novo' : ''}`}>
             {onSelect ? <button type="button" className="text-left underline-offset-2 hover:underline" aria-label={`Abrir ${title}`} onClick={() => onSelect(t)}>{body}</button> : <span>{body}</span>}
             <span className={`tabular shrink-0 font-medium ${t.type === 'income' ? 'text-success' : ''}`}>{t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}{formatBRL(t.amount_cents)}</span>
           </li>
