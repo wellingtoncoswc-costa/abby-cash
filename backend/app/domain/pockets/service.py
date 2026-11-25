@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -14,6 +14,7 @@ from app.domain.accounts.access import use_account
 from app.domain.audit import audit, snap
 from app.domain.categories.models import Category
 from app.domain.errors import DomainError
+from app.domain.goals.models import GoalPocket
 from app.domain.pockets.models import CdiRate, Pocket, PocketMovement, PocketYieldPosting
 from app.domain.spaces.access import require_member
 from app.domain.transactions.models import Transaction
@@ -126,6 +127,7 @@ async def delete_pocket(session: AsyncSession, *, actor_id: UUID, pocket_id: UUI
     if (await pocket_stats(session, pocket.id, local_today(_tz()))).balance != 0:
         raise DomainError("pocket_has_balance")
     pocket.closed_at = datetime.now(UTC)
+    await session.execute(delete(GoalPocket).where(GoalPocket.pocket_id == pocket.id))
     audit(
         session, actor_id, "pocket.delete", "pocket", pocket.id, {"space_id": str(pocket.space_id)}
     )
