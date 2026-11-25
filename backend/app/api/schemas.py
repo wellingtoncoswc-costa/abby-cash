@@ -141,6 +141,36 @@ class InvoiceOut(Out):
     status: str
 
 
+class PanelCategoryOut(Out):
+    category_id: UUID | None
+    total_cents: int
+
+
+class PanelPurchaseOut(Out):
+    description: str
+    merchant: str | None
+    amount_cents: int
+    occurred_on: date
+
+
+class PanelInvoiceOut(Out):
+    invoice_id: UUID
+    closing_on: date
+    due_on: date
+    total_cents: int
+
+
+class CardPanelOut(Out):
+    invoice: InvoiceOut | None
+    limit_cents: int | None
+    used_cents: int
+    available_cents: int | None
+    by_category: list[PanelCategoryOut]
+    private_total_cents: int
+    top: list[PanelPurchaseOut]
+    history: list[PanelInvoiceOut]
+
+
 class InvoiceDetailOut(InvoiceOut):
     statement: dict[str, Any]
 

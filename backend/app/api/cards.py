@@ -8,16 +8,25 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import CardOut, Cents, InvoiceDetailOut, InvoiceOut, TransactionOut
+from app.api.schemas import (
+    CardOut,
+    CardPanelOut,
+    Cents,
+    InvoiceDetailOut,
+    InvoiceOut,
+    TransactionOut,
+)
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.cards.models import CreditCard, Invoice
+from app.domain.cards.panel import card_panel
 from app.domain.cards.service import (
     create_card,
     delete_card,
     invoice_statement,
     invoice_summary,
     register_card_purchase,
+    register_invoice_total,
     settle_invoice,
     unsettle_invoice,
     update_card,
@@ -84,6 +93,31 @@ async def purchase(
         category_id=body.category_id, origin="web",
     )  # fmt: skip
     return [row(t) for t in txs]
+
+
+class InvoiceTotalIn(BaseModel):
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")  # mês de fechamento, YYYY-MM
+    total_cents: Cents
+
+
+@router.post("/cards/{card_id}/invoice-totals", status_code=201, response_model=InvoiceOut)
+async def invoice_total_in(
+    card_id: UUID, body: InvoiceTotalIn, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    inv = await register_invoice_total(
+        session, actor_id=user.id, card_id=card_id, year=int(body.month[:4]),
+        month=int(body.month[5:]), total_cents=body.total_cents,
+    )  # fmt: skip
+    return row(inv) | await invoice_summary(session, inv)
+
+
+@router.get("/cards/{card_id}/panel", response_model=CardPanelOut)
+async def panel(
+    card_id: UUID, user: CurrentUser, session: Session, invoice: UUID | None = None
+) -> dict[str, Any]:
+    return await card_panel(
+        session, user.id, card_id, today=local_today(user.tz), invoice_id=invoice
+    )
 
 
 @router.get("/cards/{card_id}/invoices", response_model=list[InvoiceOut])

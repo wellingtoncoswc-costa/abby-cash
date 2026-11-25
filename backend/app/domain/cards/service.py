@@ -242,6 +242,24 @@ async def register_card_purchase(
     return txs
 
 
+async def register_invoice_total(
+    session: AsyncSession, *, actor_id: UUID, card_id: UUID, year: int, month: int,
+    total_cents: int,
+) -> Invoice:  # fmt: skip
+    """Fatura pelo total: uma compra "Fatura MM/AAAA" no dia do fechamento (compra no dia do
+    fechamento cai na fatura que fecha). `month` = mês de FECHAMENTO."""
+    card = await use_card(session, actor_id, card_id)
+    dates = invoice_dates_for_month(card.closing_day, card.due_day, year, month)
+    txs = await register_card_purchase(
+        session, actor_id=actor_id, space_id=card.space_id, card_id=card.id,
+        amount_cents=total_cents, occurred_on=dates.closing,
+        description=f"Fatura {month:02d}/{year}",
+    )  # fmt: skip
+    inv = await session.get(Invoice, txs[0].invoice_id)
+    assert inv is not None
+    return inv
+
+
 async def invoice_statement(session: AsyncSession, viewer_id: UUID, invoice_id: UUID) -> Statement:
     """Compras da fatura; as de espaços de que o visualizador não é membro viram agregado."""
     inv, _ = await visible_invoice(session, viewer_id, invoice_id)

@@ -414,6 +414,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{card_id}/invoice-totals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invoice Total In */
+        post: operations["invoice_total_in_cards__card_id__invoice_totals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/{card_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panel */
+        get: operations["panel_cards__card_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{card_id}/invoices": {
         parameters: {
             query?: never;
@@ -1533,6 +1567,24 @@ export interface components {
             /** Payment Account Id */
             payment_account_id: string | null;
         };
+        /** CardPanelOut */
+        CardPanelOut: {
+            invoice: components["schemas"]["InvoiceOut"] | null;
+            /** Limit Cents */
+            limit_cents: number | null;
+            /** Used Cents */
+            used_cents: number;
+            /** Available Cents */
+            available_cents: number | null;
+            /** By Category */
+            by_category: components["schemas"]["PanelCategoryOut"][];
+            /** Private Total Cents */
+            private_total_cents: number;
+            /** Top */
+            top: components["schemas"]["PanelPurchaseOut"][];
+            /** History */
+            history: components["schemas"]["PanelInvoiceOut"][];
+        };
         /** CardPatch */
         CardPatch: {
             /** Name */
@@ -1880,6 +1932,13 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** InvoiceTotalIn */
+        InvoiceTotalIn: {
+            /** Month */
+            month: string;
+            /** Total Cents */
+            total_cents: number;
+        };
         /** Largest */
         Largest: {
             /**
@@ -2105,6 +2164,47 @@ export interface components {
             balance_series: components["schemas"]["BalancePoint"][];
             /** Upcoming */
             upcoming: components["schemas"]["Upcoming"][];
+        };
+        /** PanelCategoryOut */
+        PanelCategoryOut: {
+            /** Category Id */
+            category_id: string | null;
+            /** Total Cents */
+            total_cents: number;
+        };
+        /** PanelInvoiceOut */
+        PanelInvoiceOut: {
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /**
+             * Closing On
+             * Format: date
+             */
+            closing_on: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Total Cents */
+            total_cents: number;
+        };
+        /** PanelPurchaseOut */
+        PanelPurchaseOut: {
+            /** Description */
+            description: string;
+            /** Merchant */
+            merchant: string | null;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
         };
         /** PasswordIn */
         PasswordIn: {
@@ -3427,6 +3527,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_total_in_cards__card_id__invoice_totals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceTotalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panel_cards__card_id__panel_get: {
+        parameters: {
+            query?: {
+                invoice?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardPanelOut"];
                 };
             };
             /** @description Validation Error */
