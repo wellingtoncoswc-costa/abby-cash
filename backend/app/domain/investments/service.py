@@ -1,4 +1,5 @@
-from datetime import date
+import bisect
+from datetime import date, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any
 from uuid import UUID
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.accounts.access import use_account
 from app.domain.audit import audit
 from app.domain.errors import DomainError
-from app.domain.investments.models import Investment, InvestmentMovement
+from app.domain.investments.models import Investment, InvestmentMovement, PriceQuote
 from app.domain.investments.quotes import fetch_quotes, latest_close, upsert_quotes
 from app.domain.investments.valuation import cdi_factors, fixed_value, weekday_factors
 from app.domain.pockets.models import CdiRate
@@ -192,3 +193,106 @@ async def redeem(
         kind="redeem", amount_cents=amount_cents, quantity=quantity,
         unit_price_cents=unit_price_cents, today=today, transport=transport,
     )  # fmt: skip
+
+
+def _bp(num: int, den: int) -> int | None:
+    return num * 10000 // den if den > 0 else None
+
+
+def _signed(m: InvestmentMovement) -> int:
+    return m.amount_cents if m.kind == "buy" else -m.amount_cents
+
+
+async def dashboard(
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, today: date, days: int = 365
+) -> dict[str, Any]:
+    """Posição atual por ativo, totais, alocação por tipo e série diária (valor x aportado).
+    # ponytail: série recalculada a cada chamada (O(dias x ativos)); cachear se passar de ~50 ativos
+    """
+    await require_member(session, viewer_id, space_id)
+    invs = list(await session.scalars(select(Investment).where(Investment.space_id == space_id)))
+    data = {i.id: await movements(session, i.id) for i in invs}
+    firsts = [m[0].occurred_on for m in data.values() if m]
+    if not firsts:
+        return {"assets": [], "by_kind": [], "series": [], "contributed_cents": 0,
+                "current_cents": 0, "profit_cents": 0, "profit_bp": None}  # fmt: skip
+    start = max(min(firsts), today - timedelta(days=days))
+    value_on: dict[UUID, Any] = {}
+    assets: list[dict[str, Any]] = []
+    for i in invs:
+        movs = data[i.id]
+        if not movs:
+            continue
+        contributed = sum(_signed(m) for m in movs)
+        a: dict[str, Any] = {
+            "id": i.id, "name": i.name, "kind": i.kind, "ticker": i.ticker, "quantity": None,
+            "avg_price_cents": None, "price_cents": None, "quote_date": None,
+            "day_change_bp": None, "contributed_cents": contributed,
+        }  # fmt: skip
+        if i.kind in VARIABLE:
+            assert i.ticker is not None
+            qs = list(
+                await session.scalars(
+                    select(PriceQuote)
+                    .where(PriceQuote.ticker == i.ticker, PriceQuote.on_date <= today)
+                    .order_by(PriceQuote.on_date)
+                )
+            )
+            dates = [q.on_date for q in qs]
+
+            def vvar(day: date, qs: Any = qs, dates: Any = dates, movs: Any = movs) -> int:
+                k = bisect.bisect_right(dates, day) - 1
+                if k < 0:
+                    return 0
+                v = position_qty(movs, day) * qs[k].close_cents
+                return int(v.quantize(Decimal(1), ROUND_HALF_EVEN))
+
+            vv: Any = vvar
+
+            buys = [m for m in movs if m.kind == "buy"]
+            bought = sum((m.quantity or Decimal(0) for m in buys), Decimal(0))
+            a["quantity"] = format(position_qty(movs).normalize(), "f")
+            a["avg_price_cents"] = (
+                int(sum(m.amount_cents for m in buys) / bought) if bought else None
+            )
+            if qs:
+                a["price_cents"], a["quote_date"] = qs[-1].close_cents, qs[-1].on_date
+                if len(qs) > 1 and qs[-2].close_cents:
+                    a["day_change_bp"] = _bp(
+                        qs[-1].close_cents - qs[-2].close_cents, qs[-2].close_cents
+                    )
+        else:
+            pairs = fixed_pairs(movs)
+            factors = await fixed_factors(session, i, min(d for d, _ in pairs), today)
+
+            def vfix(day: date, pairs: Any = pairs, factors: Any = factors) -> int:
+                return fixed_value([p for p in pairs if p[0] <= day], factors, day)
+
+            vv = vfix
+
+        a["value_cents"] = vv(today)
+        value_on[i.id] = vv
+        a["profit_cents"] = a["value_cents"] - contributed
+        a["profit_bp"] = _bp(a["profit_cents"], contributed)
+        assets.append(a)
+    live = [i for i in invs if i.id in value_on]
+    series = [
+        {
+            "on": (day := start + timedelta(n)),
+            "value_cents": sum(value_on[i.id](day) for i in live),
+            "contributed_cents": sum(
+                _signed(m) for i in live for m in data[i.id] if m.occurred_on <= day
+            ),
+        }
+        for n in range((today - start).days + 1)
+    ]
+    by_kind: dict[str, int] = {}
+    for a in assets:
+        by_kind[a["kind"]] = by_kind.get(a["kind"], 0) + a["value_cents"]
+    contributed = sum(a["contributed_cents"] for a in assets)
+    current = sum(a["value_cents"] for a in assets)
+    return {
+        "assets": assets, "by_kind": [{"kind": k, "value_cents": v} for k, v in by_kind.items()],
+        "series": series, "contributed_cents": contributed, "current_cents": current,
+        "profit_cents": current - contributed, "profit_bp": _bp(current - contributed, contributed),
+    }  # fmt: skip
