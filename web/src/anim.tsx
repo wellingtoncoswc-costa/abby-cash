@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const reduzido = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+export const reduzido = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** Número que sobe até o valor (ease-out). Sem matchMedia (testes) ou com movimento reduzido: valor direto. */
 export function useCountUp(alvo: number, ms = 900): number {
@@ -44,3 +44,6 @@ export function Anel({ pct, cor }: { pct: number; cor: string }) {
     </svg>
   )
 }
+
+/** Movimento permitido? Sem matchMedia (testes) ou com movimento reduzido, os gráficos já nascem prontos. */
+export const podeAnimar = () => typeof matchMedia === 'function' && !reduzido()

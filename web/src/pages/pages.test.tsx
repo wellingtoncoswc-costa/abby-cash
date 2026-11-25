@@ -173,3 +173,20 @@ test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
   expect(await screen.findByRole('button', { name: 'Desconectar número' })).toBeInTheDocument()
   await waitFor(() => expect(screen.queryByAltText('QR code para parear o WhatsApp')).toBeNull())
 })
+
+test('painel: passar o mouse numa categoria troca o centro da rosca', async () => {
+  go('/')
+  const centro = await screen.findByTestId('centro-rosca')
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+  await userEvent.hover(await screen.findByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Mercado')).toBeInTheDocument()
+  await userEvent.unhover(screen.getByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+})
+
+test('painel: seção mostra esqueleto enquanto carrega', async () => {
+  routes[`/spaces/${SP}/goals`] = () => new Promise(() => {}) as unknown as Response
+  go('/')
+  expect(await screen.findByLabelText('Carregando metas')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
