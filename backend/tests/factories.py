@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.security import create_access_token
 from app.domain.accounts.models import Account
@@ -23,7 +23,12 @@ PWD = "correct horse battery"
 async def make_user(session, email: str) -> User:
     admin = await create_admin(session, email=f"adm-{email}", name="Adm", password=PWD)
     inv = await create_signup_invite(session, created_by=admin.id)
-    return await register_user(session, email=email, name=email, password=PWD, invite_code=inv.code)
+    user = await register_user(session, email=email, name=email, password=PWD, invite_code=inv.code)
+    await session.execute(  # testes usam datas fixas: a Carteira nasce sem corte de abertura
+        update(Account).where(Account.space_id == user.default_space_id).values(opened_on=None)
+    )
+    await session.commit()
+    return user
 
 
 async def make_family(session, owner: User, *members: User) -> Space:
@@ -35,9 +40,12 @@ async def make_family(session, owner: User, *members: User) -> Space:
 
 
 async def make_account(
-    session, space_id: UUID, *, name: str = "Conta", type: str = "checking", initial: int = 0
-) -> Account:
-    acc = Account(space_id=space_id, type=type, name=name, initial_balance_cents=initial)
+    session, space_id: UUID, *, name: str = "Conta", type: str = "checking", initial: int = 0,
+    opened_on: date | None = None,
+) -> Account:  # fmt: skip
+    acc = Account(
+        space_id=space_id, type=type, name=name, initial_balance_cents=initial, opened_on=opened_on
+    )
     session.add(acc)
     await session.commit()
     return acc

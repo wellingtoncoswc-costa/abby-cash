@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Integer, case, cast, extract, func, select
+from sqlalchemy import Integer, case, cast, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dates import add_months
@@ -56,13 +56,20 @@ async def balance_series(
     out_ = case((T.type == "income", T.amount_cents), else_=-T.amount_cents)  # + receita, − o resto
     stmt = (
         select(m.label("m"), func.sum(out_))
-        .where(T.account_id.in_(mine), T.occurred_on < add_months(months[-1], 1))
+        .join(Account, Account.id == T.account_id)
+        .where(
+            T.account_id.in_(mine),
+            T.occurred_on < add_months(months[-1], 1),
+            or_(Account.opened_on.is_(None), T.occurred_on >= Account.opened_on),
+        )
         .group_by(m)
     )
     into = (
         select(m.label("m"), func.sum(T.amount_cents))
+        .join(Account, Account.id == T.counter_account_id)
         .where(T.type == "transfer", T.counter_account_id.in_(mine),
-               T.occurred_on < add_months(months[-1], 1))
+               T.occurred_on < add_months(months[-1], 1),
+               or_(Account.opened_on.is_(None), T.occurred_on >= Account.opened_on))
         .group_by(m)
     )  # fmt: skip
     delta: dict[date, int] = {}
