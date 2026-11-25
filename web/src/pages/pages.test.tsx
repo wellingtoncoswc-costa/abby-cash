@@ -173,3 +173,33 @@ test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
   expect(await screen.findByRole('button', { name: 'Desconectar número' })).toBeInTheDocument()
   await waitFor(() => expect(screen.queryByAltText('QR code para parear o WhatsApp')).toBeNull())
 })
+
+test('painel: passar o mouse numa categoria troca o centro da rosca', async () => {
+  go('/')
+  const centro = await screen.findByTestId('centro-rosca')
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+  await userEvent.hover(await screen.findByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Mercado')).toBeInTheDocument()
+  await userEvent.unhover(screen.getByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+})
+
+test('painel: seção mostra esqueleto enquanto carrega', async () => {
+  routes[`/spaces/${SP}/goals`] = () => new Promise(() => {}) as unknown as Response
+  go('/')
+  expect(await screen.findByLabelText('Carregando metas')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+test('painel: mapa de calor mostra o gasto de cada dia', async () => {
+  go('/')
+  const mapa = await screen.findByRole('img', { name: /Gastos por dia/ })
+  expect(within(mapa).getByLabelText('20/11: R$ 1.234,56')).toBeInTheDocument()
+})
+
+test('painel: meta batida ganha o selo', async () => {
+  routes[`/spaces/${SP}/goals`] = () => J([{ id: 'g1', name: 'Viagem', saved_cents: 100000, target_cents: 100000 }])
+  go('/')
+  expect(await screen.findByText('Meta batida')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})

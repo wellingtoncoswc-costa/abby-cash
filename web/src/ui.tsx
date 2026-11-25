@@ -54,6 +54,13 @@ export const Field = ({ label, children }: { label: string; children: ReactNode 
   </label>
 )
 
+/** Espaço reservado enquanto a seção carrega (some sozinho quando os dados chegam). */
+export const Esqueleto = ({ rotulo, linhas = 3 }: { rotulo: string; linhas?: number }) => (
+  <div role="status" aria-label={`Carregando ${rotulo}`} className="grid gap-2">
+    {Array.from({ length: linhas }, (_, i) => <div key={i} className="h-5 animate-pulse rounded-md bg-muted" style={{ width: `${100 - i * 12}%` }} />)}
+  </div>
+)
+
 export const Bar = ({ value, max }: { value: number; max: number }) => {
   const pct = max > 0 ? Math.min(100, Math.floor((value * 100) / max)) : 0
   const color = value > max ? 'bg-destructive' : pct >= 80 ? 'bg-warning' : 'bg-primary'
