@@ -161,6 +161,11 @@
   input[type=checkbox], input[type=radio] { accent-color: var(--primary); }
 }
 
+@keyframes destaque { from { background-color: color-mix(in oklab, var(--luz) 30%, transparent); } to { background-color: transparent; } }
+.novo { animation: destaque 1.8s ease-out; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
+
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
