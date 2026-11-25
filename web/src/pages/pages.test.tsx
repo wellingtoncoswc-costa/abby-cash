@@ -190,3 +190,16 @@ test('painel: seção mostra esqueleto enquanto carrega', async () => {
   expect(await screen.findByLabelText('Carregando metas')).toBeInTheDocument()
   routes[`/spaces/${SP}/goals`] = () => J([])
 })
+
+test('painel: mapa de calor mostra o gasto de cada dia', async () => {
+  go('/')
+  const mapa = await screen.findByRole('img', { name: /Gastos por dia/ })
+  expect(within(mapa).getByLabelText('20/11: R$ 1.234,56')).toBeInTheDocument()
+})
+
+test('painel: meta batida ganha o selo', async () => {
+  routes[`/spaces/${SP}/goals`] = () => J([{ id: 'g1', name: 'Viagem', saved_cents: 100000, target_cents: 100000 }])
+  go('/')
+  expect(await screen.findByText('Meta batida')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})

@@ -4,9 +4,11 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { ApiError } from '../api/client'
 import type { Account, Bill, Budget, Goal, Tx } from '../api/types'
 import { Anel, podeAnimar, useCountUp, useNovos } from '../anim'
+import { MapaCalor } from '../heatmap'
+import { gastoPorDia, insights } from '../lib/insights'
 import { formatBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Bar, br, Err, Esqueleto, monthKey, useCatName, useGet } from '../ui'
+import { Bar, br, Err, Esqueleto, monthKey, today, useCatName, useGet } from '../ui'
 
 const COLORS = [1, 2, 3, 4, 5].map((n) => `var(--chart-${n})`).concat([1, 2, 3].map((n) => `color-mix(in oklab, var(--chart-${n}) 60%, transparent)`))
 
@@ -18,6 +20,8 @@ export function Dashboard() {
   const catName = useCatName()
   const budget = useGet<Budget>(`/spaces/${spaceId}/budgets/${month}`)
   const txs = useGet<Tx[]>(`/spaces/${spaceId}/transactions?start=${month}-01&end=${month}-${last}&limit=500`)
+  const ant = new Date(y, m - 2, 1)
+  const prevTxs = useGet<Tx[]>(`/spaces/${spaceId}/transactions?start=${monthKey(ant)}-01&end=${monthKey(ant)}-${new Date(y, m - 1, 0).getDate()}&limit=500`)
   const bills = useGet<Bill[]>(`/spaces/${spaceId}/bills?status=open`)
   const goals = useGet<Goal[]>(`/spaces/${spaceId}/goals`)
   const accounts = useGet<Account[]>('/accounts')
@@ -34,6 +38,8 @@ export function Dashboard() {
   const [foco, setFoco] = useState<string | null>(null)
   const emFoco = pie.find((p) => p.name === foco)
   const total = pie.reduce((a, p) => a + p.value, 0)
+  const ate = today().startsWith(month) ? Number(today().slice(8)) : last
+  const dicas = insights(txs.data ?? [], prevTxs.data ?? [], ate, ant.toLocaleDateString('pt-BR', { month: 'long' }), catName)
   const cor = spent > limit ? 'oklch(0.75 0.17 25)' : pct >= 80 ? 'oklch(0.82 0.15 80)' : 'var(--luz)'
   return (
     <>
@@ -60,6 +66,7 @@ export function Dashboard() {
           </div>
         ) : <Err e={budget.error} />}
       </section>
+      {dicas.length > 0 && <ul aria-label="Insights do mês" className="mb-8 grid gap-2 md:grid-cols-2">{dicas.map((d) => <li key={d} className="rounded-2xl bg-muted p-3 text-sm">{d}</li>)}</ul>}
       <div className="grid gap-x-10 gap-y-8 md:grid-cols-2">
         <Secao title="Por categoria">
           {!txs.data ? <Esqueleto rotulo="categorias" /> : pie.length === 0 ? <p className="text-muted-foreground">Nenhum gasto neste mês.</p> : (
@@ -89,10 +96,13 @@ export function Dashboard() {
           </Secao>
           <Secao title="Metas">
             {!goals.data ? <Esqueleto rotulo="metas" /> : goals.data.length === 0 ? <p className="text-muted-foreground">Nenhuma meta.</p> : goals.data.map((g) => (
-              <div key={g.id} className="mb-3"><div className="mb-1 flex justify-between"><span>{g.name}</span><span className="tabular text-sm text-muted-foreground">{formatBRL(g.saved_cents)} / {formatBRL(g.target_cents)}</span></div><Bar value={g.saved_cents} max={g.target_cents} /></div>
+              <div key={g.id} className="mb-3"><div className="mb-1 flex justify-between"><span>{g.name}</span><span className="tabular text-sm text-muted-foreground">{g.saved_cents >= g.target_cents && <span className="brilho mr-2 inline-flex items-center gap-1 font-medium text-foreground"><span className="size-2 rounded-full bg-luz" />Meta batida</span>}{formatBRL(g.saved_cents)} / {formatBRL(g.target_cents)}</span></div><Bar value={g.saved_cents} max={g.target_cents} /></div>
             ))}
           </Secao>
         </div>
+        <Secao title="Gastos por dia">
+          {!txs.data ? <Esqueleto rotulo="gastos por dia" /> : <MapaCalor ano={y} mes={m} gastos={gastoPorDia(txs.data)} />}
+        </Secao>
         <div className="md:col-span-2">
           <Secao title="Últimos lançamentos">
             {!txs.data ? <Esqueleto rotulo="lançamentos" /> : txs.data.length === 0 ? <p className="text-muted-foreground">Nenhum lançamento.</p> : <TxList items={txs.data.slice(0, 5)} />}

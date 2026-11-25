@@ -162,6 +162,8 @@
 }
 
 @keyframes destaque { from { background-color: color-mix(in oklab, var(--luz) 30%, transparent); } to { background-color: transparent; } }
+@keyframes brilho { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--luz) 60%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+.brilho > span:first-child { animation: brilho 1.4s ease-out 2; }
 .novo { animation: destaque 1.8s ease-out; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
 
