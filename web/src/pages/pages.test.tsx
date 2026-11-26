@@ -514,3 +514,13 @@ test('lançamentos: cada botão + tem legenda curta visível', async () => {
   await screen.findByRole('button', { name: 'Novo lançamento' })
   for (const t of ['Lançamento', 'Transferência', 'Compra no cartão']) expect(screen.getByText(t)).toBeInTheDocument()
 })
+
+test('metas: checkbox de vínculo tem tamanho fixo (não estica como os campos de texto)', async () => {
+  const base = { saved_cents: 0, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, account_ids: [], pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem' }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  go('/metas')
+  const card = within((await screen.findByRole('heading', { name: 'Viagem' })).closest('section')!)
+  expect(await card.findByRole('checkbox', { name: /Nubank/ })).toHaveClass('size-4', 'shrink-0')
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})

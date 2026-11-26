@@ -94,8 +94,8 @@ function GoalLinks({ goals, self, value, onChange }: { goals: Goal[]; self?: str
   const toggle = (k: keyof Links, id: string) =>
     onChange({ ...value, [k]: value[k].includes(id) ? value[k].filter((x) => x !== id) : [...value[k], id] })
   const row = (k: keyof Links, id: string, label: string, by?: string) => (
-    <label key={id} className="flex items-center gap-2">
-      <input type="checkbox" checked={value[k].includes(id)} disabled={!!by} onChange={() => toggle(k, id)} />
+    <label key={id} className="mb-1 flex items-center gap-2">
+      <input type="checkbox" className="size-4 shrink-0" checked={value[k].includes(id)} disabled={!!by} onChange={() => toggle(k, id)} />
       {label}{by && <small> · já na meta {by}</small>}
     </label>
   )
