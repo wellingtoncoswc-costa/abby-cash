@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { api } from '../api/client'
-import type { InvAsset, InvDashboard } from '../api/types'
+import type { InvAsset, InvDashboard, InvestmentPanel } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, Err, Field, today, useAccounts, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, Err, Field, br, today, useAccounts, useGet, useSend } from '../ui'
 
 const KIND: Record<string, string> = { stock: 'Ações', fii: 'Fundos imobiliários', cdb: 'CDB', lci: 'LCI', lca: 'LCA' }
 const VARIAVEL = ['stock', 'fii']
@@ -91,8 +91,35 @@ function MovimentoForm({ a, kind, onDone }: { a: InvAsset; kind: 'buys' | 'redee
   )
 }
 
+function AtivoPanel({ a }: { a: InvAsset }) {
+  const p = useGet<InvestmentPanel>(`/investments/${a.id}/panel`)
+  const d = p.data
+  if (!d) return <p>Carregando…</p>
+  const max = Math.max(1, ...d.series.flatMap((x) => [x.value_cents, x.contributed_cents]))
+  const pts = (k: 'value_cents' | 'contributed_cents') => d.series.map((x, i) => `${(i / Math.max(1, d.series.length - 1)) * 300},${100 - (x[k] / max) * 100}`).join(' ')
+  return (
+    <div className="mt-2">
+      {d.series.length > 1 && (
+        <svg viewBox="0 0 300 100" className="w-full" role="img" aria-label={`Evolução de ${label(a)}`} preserveAspectRatio="none">
+          <polyline points={pts('contributed_cents')} fill="none" stroke="var(--chart-3)" strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
+          <polyline points={pts('value_cents')} fill="none" stroke="var(--chart-1)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        </svg>
+      )}
+      <h3 className="mt-2 font-semibold">Movimentações</h3>
+      <ul>{d.movements.map((m) => (
+        <li key={m.id} className="flex justify-between">
+          <span>{br(m.occurred_on)} {m.kind === 'buy' ? 'Aporte' : 'Resgate'}{m.quantity != null ? ` · ${m.quantity} cotas` : ''}{m.unit_price_cents != null ? ` a ${formatBRL(m.unit_price_cents)}` : ''}</span>
+          <span>{m.kind === 'buy' ? '' : '-'}{formatBRL(m.amount_cents)}</span>
+        </li>
+      ))}</ul>
+      <Err e={p.error} />
+    </div>
+  )
+}
+
 function Ativo({ a }: { a: InvAsset }) {
   const [open, setOpen] = useState<'buys' | 'redeems' | null>(null)
+  const [panel, setPanel] = useState(false)
   return (
     <Card title={`${a.name}${a.ticker ? ` · ${a.ticker}` : ''}`}>
       <p>{KIND[a.kind]} · valor {formatBRL(a.value_cents)} · aportado {formatBRL(a.contributed_cents)}</p>
@@ -108,6 +135,8 @@ function Ativo({ a }: { a: InvAsset }) {
         <Btn type="button" onClick={() => setOpen(open === 'buys' ? null : 'buys')}>Aportar em {label(a)}</Btn>
         <Btn type="button" className="bg-muted-foreground hover:bg-muted-foreground/90" onClick={() => setOpen(open === 'redeems' ? null : 'redeems')}>Resgatar de {label(a)}</Btn>
       </div>
+      <Btn type="button" className="mt-2 bg-muted-foreground hover:bg-muted-foreground/90" onClick={() => setPanel(!panel)}>{panel ? 'Ocultar painel' : 'Ver painel'}</Btn>
+      {panel && <AtivoPanel a={a} />}
       {open && <MovimentoForm a={a} kind={open} onDone={() => setOpen(null)} />}
     </Card>
   )

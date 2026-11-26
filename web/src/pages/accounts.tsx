@@ -48,8 +48,10 @@ function AccountTile({ a, owner }: { a: Account; owner: boolean }) {
   const makeDefault = useSend(() => api('PUT', `/spaces/${a.space_id}/default-account`, { account_id: a.id }))
   return (
     <Card title={a.name}>
-      <p className="flex items-center gap-2"><BankIcon institution={a.institution} name={a.name} />{TYPE[a.type] ?? a.type}{sum.data?.is_default && <> · <strong>padrão</strong></>}</p>
-      <p>Saldo {formatBRL(a.balance_cents)} · em caixinhas {formatBRL(a.pockets_cents)} · disponível {formatBRL(a.available_cents)}</p>
+      <p className="flex items-center gap-2"><BankIcon institution={a.institution} name={a.name} />{BANK_LIST.find((b) => b.key === a.institution)?.name ?? 'Banco não informado'} · {TYPE[a.type] ?? a.type}{sum.data?.is_default && <> · <strong>padrão</strong></>}</p>
+      <p className="flex items-baseline justify-between"><span>Saldo</span><span className={`text-lg font-semibold tabular-nums ${a.available_cents < 0 ? 'text-destructive' : ''}`}>{formatBRL(a.available_cents)}</span></p>
+      {a.pockets_cents > 0 && <p className="text-sm text-muted-foreground">Guardado em caixinhas (fora do saldo): <span className="tabular-nums">{formatBRL(a.pockets_cents)}</span></p>}
+      {a.available_cents < 0 && <p role="note" className="text-sm text-destructive">Saldo negativo.</p>}
       <div className="my-2 flex flex-wrap gap-2">
         <Link to="/lancamentos" className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground">Transferir</Link>
         {!sum.data?.is_default && <Btn type="button" disabled={makeDefault.isPending} onClick={() => makeDefault.mutate()}>Tornar padrão</Btn>}

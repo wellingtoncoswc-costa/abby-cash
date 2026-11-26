@@ -33,3 +33,23 @@ async def test_panel_requires_membership(client, session):
     card = await make_card(session, a, a.default_space_id)
     r = await client.get(f"/cards/{card.id}/panel", headers=auth(b))
     assert r.status_code in (403, 404)
+
+
+async def test_card_credit_over_http(client, session):
+    a = await make_user(session, "cr@x.com")
+    h = auth(a)
+    card = await make_card(session, a, a.default_space_id, closing_day=10, due_day=20)
+    r = await client.post(
+        f"/cards/{card.id}/credits", headers=h,
+        json={"amount_cents": 5_000, "occurred_on": "2026-11-05", "description": "Estorno"},
+    )  # fmt: skip
+    assert r.status_code == 201 and r.json()["type"] == "income"
+    invs = (await client.get(f"/cards/{card.id}/invoices", headers=h)).json()
+    assert [(i["total_cents"], i["remaining_cents"]) for i in invs] == [(-5_000, -5_000)]
+    bad = await client.post(f"/cards/{card.id}/credits", headers=h, json={"amount_cents": 0})
+    assert bad.status_code == 422
+    other = await make_user(session, "cr2@x.com")
+    r2 = await client.post(
+        f"/cards/{card.id}/credits", headers=auth(other), json={"amount_cents": 100}
+    )
+    assert r2.status_code in (403, 404)

@@ -7,10 +7,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents, GoalOut, GoalProgressOut, TransactionOut
+from app.api.schemas import Cents, GoalOut, GoalPanelOut, GoalProgressOut, TransactionOut
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.goals.models import Goal
+from app.domain.goals.panel import goal_panel
 from app.domain.goals.service import (
     GoalProgress,
     contribute,
@@ -93,6 +94,11 @@ async def get_goal(goal_id: UUID, user: CurrentUser, session: Session) -> dict[s
     goal = await visible_goal(session, user.id, goal_id)
     prog = await goal_progress(session, goal.id, today=local_today(user.tz))
     return row(goal) | await _links(session, goal.id) | _progress(prog)
+
+
+@router.get("/goals/{goal_id}/panel", response_model=GoalPanelOut)
+async def panel(goal_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    return await goal_panel(session, user.id, goal_id, today=local_today(user.tz))
 
 
 @router.post("/goals/{goal_id}/contributions", status_code=201, response_model=TransactionOut)

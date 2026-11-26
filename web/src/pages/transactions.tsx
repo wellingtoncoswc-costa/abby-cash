@@ -4,7 +4,7 @@ import { api, ApiError, apiPage, fetchBlob } from '../api/client'
 import type { Card as CardT, Member, S, Tx } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, Modal, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
 import { TxList } from './dashboard'
 
 const PAGE = 20
@@ -28,20 +28,24 @@ function TransferDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
   const name = (id: string | null) => { const a = data.find((x) => x.id === id); return a ? label(a) : 'Conta' }
   const del = useSend(() => api('DELETE', `/transactions/${t.id}`), onClose)
   return (
-    <Card title="Detalhes da transferência">
+    <div>
       <p>Transferência · {name(t.account_id)} → {name(t.counter_account_id)} · {formatBRL(t.amount_cents)} · {br(t.occurred_on)}</p>
       {t.description && <p>{t.description}</p>}
       <p className="text-sm">Transferências não podem ser editadas. Exclua e lance de novo para corrigir.</p>
       <Err e={del.error} />
       <Btn type="button" className="mt-2 bg-destructive hover:bg-destructive/90" disabled={del.isPending} onClick={() => { if (confirm('Excluir transferência?')) del.mutate() }}>Excluir transferência</Btn>
       <button type="button" className="mt-2 ml-3 underline" onClick={onClose}>Fechar</button>
-    </Card>
+    </div>
   )
 }
 
 export function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
-  if (t.type === 'transfer') return <TransferDetail t={t} onClose={onClose} />
-  return <ExpenseDetail t={t} onClose={onClose} />
+  const transfer = t.type === 'transfer'
+  return (
+    <Modal title={transfer ? 'Detalhes da transferência' : 'Editar lançamento'} onClose={onClose}>
+      {transfer ? <TransferDetail t={t} onClose={onClose} /> : <ExpenseDetail t={t} onClose={onClose} />}
+    </Modal>
+  )
 }
 
 function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
@@ -62,10 +66,11 @@ function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
     return Object.keys(body).length ? api('PATCH', `/transactions/${t.id}`, body) : Promise.resolve()
   }
   return (
-    <Card title="Detalhes do lançamento">
+    <div>
       <p>{t.description || t.merchant || 'Lançamento'} · {formatBRL(t.amount_cents)}{t.installment_total ? ` · parcela ${t.installment_number}/${t.installment_total}` : ''}</p>
       {locked && <p role="note" className="text-sm">Valor e data de compras no cartão ou parceladas não podem ser editados aqui (afetam a fatura). Exclua e lance de novo para corrigir.</p>}
       <EditBox
+        startOpen
         what="lançamento"
         fields={[
           ...(locked ? [] : [{ k: 'amount', label: 'Valor (R$) (edição)', v: init.amount }]),
@@ -80,7 +85,7 @@ function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
       {t.installment_group_id && <p className="text-sm">Excluir apaga todas as parcelas.</p>}
       {t.attachment_id && <Receipt id={t.attachment_id} />}
       <button type="button" className="mt-2 block underline" onClick={onClose}>Fechar</button>
-    </Card>
+    </div>
   )
 }
 

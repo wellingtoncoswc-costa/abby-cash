@@ -152,8 +152,8 @@ export const br = (d: string) => d.split('-').reverse().join('/')
 
 type EF = { k: string; label: string; v: string; type?: string; options?: [string, string][] }
 /** Editar/excluir inline: campos em texto; o chamador converte em `save`. */
-export function EditBox({ fields, save, remove, what, canEdit = true }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string; canEdit?: boolean }) {
-  const [open, setOpen] = useState(false)
+export function EditBox({ fields, save, remove, what, canEdit = true, startOpen = false }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string; canEdit?: boolean; startOpen?: boolean }) {
+  const [open, setOpen] = useState(startOpen)
   const [v, setV] = useState(() => Object.fromEntries(fields.map((f) => [f.k, f.v])))
   const sv = useSend(() => save(v), () => setOpen(false))
   const del = useSend(remove)
@@ -177,3 +177,23 @@ export function EditBox({ fields, save, remove, what, canEdit = true }: { fields
 
 /** Centavos -> "1234,56" (campo de edição). */
 export const centsText = (c: number) => `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)},${String(Math.abs(c) % 100).padStart(2, '0')}`
+
+/** Janela modal: fecha com Esc, clique no fundo ou no botão Fechar; o foco entra no diálogo. */
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="my-8 w-full max-w-lg rounded-2xl border border-border bg-card p-4 shadow-xl md:p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <button type="button" aria-label="Fechar" className="rounded-md px-2 py-1 text-lg leading-none" onClick={onClose}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}

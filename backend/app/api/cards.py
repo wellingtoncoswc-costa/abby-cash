@@ -25,6 +25,7 @@ from app.domain.cards.service import (
     delete_card,
     invoice_statement,
     invoice_summary,
+    register_card_credit,
     register_card_purchase,
     register_invoice_total,
     settle_invoice,
@@ -93,6 +94,23 @@ async def purchase(
         category_id=body.category_id, origin="web",
     )  # fmt: skip
     return [row(t) for t in txs]
+
+
+class CreditIn(BaseModel):
+    amount_cents: Cents
+    occurred_on: date | None = None  # padrão: hoje no fuso do usuário
+    description: str = Field(default="", max_length=500)
+
+
+@router.post("/cards/{card_id}/credits", status_code=201, response_model=TransactionOut)
+async def card_credit(
+    card_id: UUID, body: CreditIn, user: CurrentUser, session: Session
+) -> dict[str, Any]:
+    tx = await register_card_credit(
+        session, actor_id=user.id, card_id=card_id, amount_cents=body.amount_cents,
+        occurred_on=body.occurred_on or local_today(user.tz), description=body.description,
+    )  # fmt: skip
+    return row(tx)
 
 
 class InvoiceTotalIn(BaseModel):

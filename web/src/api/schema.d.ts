@@ -431,6 +431,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{card_id}/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Card Credit */
+        post: operations["card_credit_cards__card_id__credits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{card_id}/invoice-totals": {
         parameters: {
             query?: never;
@@ -680,6 +697,23 @@ export interface paths {
         patch: operations["patch_goals__goal_id__patch"];
         trace?: never;
     };
+    "/goals/{goal_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panel */
+        get: operations["panel_goals__goal_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/goals/{goal_id}/contributions": {
         parameters: {
             query?: never;
@@ -740,6 +774,23 @@ export interface paths {
         };
         /** Dashboard */
         get: operations["dashboard_spaces__space_id__investments_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/investments/{investment_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Asset Panel */
+        get: operations["asset_panel_investments__investment_id__panel_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -878,6 +929,23 @@ export interface paths {
         };
         /** Movements */
         get: operations["movements_pockets__pocket_id__movements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pockets/{pocket_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panel */
+        get: operations["panel_pockets__pocket_id__panel_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1368,16 +1436,6 @@ export interface components {
             /** Available Cents */
             available_cents: number;
         };
-        /** AccountPanelGoalOut */
-        AccountPanelGoalOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-        };
         /** AccountPanelOut */
         AccountPanelOut: {
             /**
@@ -1402,7 +1460,7 @@ export interface components {
             /** Pockets */
             pockets: components["schemas"]["AccountPanelPocketOut"][];
             /** Goals */
-            goals: components["schemas"]["AccountPanelGoalOut"][];
+            goals: components["schemas"]["PanelGoalOut"][];
         };
         /** AccountPanelPocketOut */
         AccountPanelPocketOut: {
@@ -1762,6 +1820,18 @@ export interface components {
             /** Occurred On */
             occurred_on?: string | null;
         };
+        /** CreditIn */
+        CreditIn: {
+            /** Amount Cents */
+            amount_cents: number;
+            /** Occurred On */
+            occurred_on?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
         /** DefaultAccountIn */
         DefaultAccountIn: {
             /**
@@ -1781,6 +1851,18 @@ export interface components {
         FamilyIn: {
             /** Name */
             name: string;
+        };
+        /** GoalContributionOut */
+        GoalContributionOut: {
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Direction */
+            direction: string;
+            /** Amount Cents */
+            amount_cents: number;
         };
         /** GoalIn */
         GoalIn: {
@@ -1827,6 +1909,45 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** GoalPanelItemOut */
+        GoalPanelItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+        };
+        /** GoalPanelOut */
+        GoalPanelOut: {
+            /** Total Cents */
+            total_cents: number;
+            /** Direct Cents */
+            direct_cents: number;
+            /** Accounts */
+            accounts: components["schemas"]["GoalPanelItemOut"][];
+            /** Pockets */
+            pockets: components["schemas"]["GoalPanelPocketOut"][];
+            /** Contributions */
+            contributions: components["schemas"]["GoalContributionOut"][];
+        };
+        /** GoalPanelPocketOut */
+        GoalPanelPocketOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Counted */
+            counted: boolean;
         };
         /** GoalPatch */
         GoalPatch: {
@@ -1922,6 +2043,27 @@ export interface components {
             /** Maturity On */
             maturity_on?: string | null;
         };
+        /** InvestmentMovementRowOut */
+        InvestmentMovementRowOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Quantity */
+            quantity: string | null;
+            /** Unit Price Cents */
+            unit_price_cents: number | null;
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** InvestmentOut */
         InvestmentOut: {
             /**
@@ -1946,6 +2088,25 @@ export interface components {
             rate_bp: number | null;
             /** Maturity On */
             maturity_on: string | null;
+        };
+        /** InvestmentPanelOut */
+        InvestmentPanelOut: {
+            /** Movements */
+            movements: components["schemas"]["InvestmentMovementRowOut"][];
+            /** Series */
+            series: components["schemas"]["InvestmentSeriesPointOut"][];
+        };
+        /** InvestmentSeriesPointOut */
+        InvestmentSeriesPointOut: {
+            /**
+             * On
+             * Format: date
+             */
+            on: string;
+            /** Value Cents */
+            value_cents: number;
+            /** Contributed Cents */
+            contributed_cents: number;
         };
         /** InvoiceDetailOut */
         InvoiceDetailOut: {
@@ -2253,6 +2414,16 @@ export interface components {
             /** Total Cents */
             total_cents: number;
         };
+        /** PanelGoalOut */
+        PanelGoalOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** PanelInvoiceOut */
         PanelInvoiceOut: {
             /**
@@ -2380,12 +2551,29 @@ export interface components {
             /** Month Yield Cents */
             month_yield_cents: number;
         };
+        /** PocketPanelOut */
+        PocketPanelOut: {
+            /** Yield By Month */
+            yield_by_month: components["schemas"]["PocketYieldMonthOut"][];
+            /** Goals */
+            goals: components["schemas"]["PanelGoalOut"][];
+        };
         /** PocketPatch */
         PocketPatch: {
             /** Name */
             name?: string | null;
             /** Cdi Bp */
             cdi_bp?: number | null;
+        };
+        /** PocketYieldMonthOut */
+        PocketYieldMonthOut: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Yield Cents */
+            yield_cents: number;
         };
         /** PurchaseIn */
         PurchaseIn: {
@@ -3656,6 +3844,43 @@ export interface operations {
             };
         };
     };
+    card_credit_cards__card_id__credits_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     invoice_total_in_cards__card_id__invoice_totals_post: {
         parameters: {
             query?: never;
@@ -4433,6 +4658,39 @@ export interface operations {
             };
         };
     };
+    panel_goals__goal_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalPanelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_contribution_goals__goal_id__contributions_post: {
         parameters: {
             query?: never;
@@ -4566,6 +4824,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asset_panel_investments__investment_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                investment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestmentPanelOut"];
                 };
             };
             /** @description Validation Error */
@@ -4916,6 +5207,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PocketMovementOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panel_pockets__pocket_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketPanelOut"];
                 };
             };
             /** @description Validation Error */

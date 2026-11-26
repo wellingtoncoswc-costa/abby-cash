@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -84,6 +85,21 @@ class PocketMovementOut(Out):
     occurred_on: date
     ref_date: date | None
     created_at: datetime
+
+
+class PanelGoalOut(Out):
+    id: UUID
+    name: str
+
+
+class PocketYieldMonthOut(Out):
+    month: date
+    yield_cents: int
+
+
+class PocketPanelOut(Out):
+    yield_by_month: list[PocketYieldMonthOut]
+    goals: list[PanelGoalOut]
 
 
 class CdiLatestOut(Out):
@@ -185,11 +201,6 @@ class AccountPanelPocketOut(Out):
     balance_cents: int
 
 
-class AccountPanelGoalOut(Out):
-    id: UUID
-    name: str
-
-
 class AccountPanelOut(Out):
     month: date
     is_default: bool
@@ -200,7 +211,7 @@ class AccountPanelOut(Out):
     by_category: list[PanelCategoryOut]
     recent: list[AccountMoveOut]
     pockets: list[AccountPanelPocketOut]
-    goals: list[AccountPanelGoalOut]
+    goals: list[PanelGoalOut]
 
 
 class InvoiceDetailOut(InvoiceOut):
@@ -263,6 +274,30 @@ class GoalOut(Out):
     created_at: datetime
 
 
+class GoalPanelItemOut(Out):
+    id: UUID
+    name: str
+    balance_cents: int
+
+
+class GoalPanelPocketOut(GoalPanelItemOut):
+    counted: bool
+
+
+class GoalContributionOut(Out):
+    occurred_on: date
+    direction: str
+    amount_cents: int
+
+
+class GoalPanelOut(Out):
+    total_cents: int
+    direct_cents: int
+    accounts: list[GoalPanelItemOut]
+    pockets: list[GoalPanelPocketOut]
+    contributions: list[GoalContributionOut]
+
+
 class GoalProgressOut(GoalOut):
     saved_cents: int
     monthly_needed_cents: int | None
@@ -280,3 +315,23 @@ class BudgetOut(Out):
     limit_cents: int
     spent_cents: int
     categories: list[BudgetCategoryOut]
+
+
+class InvestmentMovementRowOut(Out):
+    id: UUID
+    kind: str
+    occurred_on: date
+    quantity: Decimal | None
+    unit_price_cents: int | None
+    amount_cents: int
+
+
+class InvestmentSeriesPointOut(Out):
+    on: date
+    value_cents: int
+    contributed_cents: int
+
+
+class InvestmentPanelOut(Out):
+    movements: list[InvestmentMovementRowOut]
+    series: list[InvestmentSeriesPointOut]
