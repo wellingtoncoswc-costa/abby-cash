@@ -6,7 +6,7 @@ import { BankIcon, BankSelect } from '../bank-icon'
 import { BANK_LIST } from '../banks'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Btn, Card, EditBox, Err, Field, br, centsText, monthKey, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
+import { Btn, Card, EditBox, Err, Field, br, centsText, monthKey, useAccounts, useCatName, useGet, useIsOwner, useSend, Modal, PlusButton } from '../ui'
 
 const TYPE: Record<string, string> = { checking: 'Conta corrente', savings: 'Poupança', wallet: 'Carteira' }
 const pctOf = (v: number, max: number) => (max > 0 ? Math.round((v / max) * 100) : 0)
@@ -70,16 +70,18 @@ export function Accounts() {
   const owner = useIsOwner()
   const { spaceId } = useSpace()
   const accounts = useAccounts()
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ type: 'checking', name: '', balance: '', institution: '' })
   const bal = f.balance ? parseBRL(f.balance) : 0
   const add = useSend(
     () => api('POST', `/spaces/${spaceId}/accounts`, { type: f.type as 'checking', name: f.name, initial_balance_cents: bal ?? 0, institution: f.institution || null } satisfies AccountIn),
-    () => setF({ ...f, name: '', balance: '', institution: '' }),
+    () => { setF({ ...f, name: '', balance: '', institution: '' }); setAdding(false) },
   )
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Contas bancárias</h1>
-      <Card title="Nova conta">
+      <div className="mb-4"><PlusButton label="Nova conta" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova conta" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (bal !== null) add.mutate() }}>
           <Field label="Tipo"><select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}><option value="checking">Conta corrente</option><option value="savings">Poupança</option><option value="wallet">Carteira</option></select></Field>
           <Field label="Nome da conta"><input required maxLength={100} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
@@ -88,7 +90,7 @@ export function Accounts() {
           <Err e={add.error} />
           <Btn type="submit" disabled={add.isPending || bal === null}>Adicionar conta</Btn>
         </form>
-      </Card>
+      </Modal>}
       {!accounts.isLoading && accounts.data.length === 0 && <p className="mb-4">Nenhuma conta neste espaço.</p>}
       <div className="grid gap-4 md:grid-cols-2">{accounts.data.map((a) => <AccountTile key={a.id} a={a} owner={owner} />)}</div>
     </>

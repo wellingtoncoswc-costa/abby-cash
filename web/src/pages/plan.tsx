@@ -3,7 +3,7 @@ import { api, ApiError } from '../api/client'
 import type { Budget as BudgetT, Goal, GoalPanel, Pocket, S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, br, centsText, monthKey, today, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
+import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, br, centsText, monthKey, today, useAccounts, useCatName, useGet, useIsOwner, useSend, Modal, PlusButton } from '../ui'
 
 export function BudgetForm({ month }: { month: string }) {
   const { spaceId } = useSpace()
@@ -155,17 +155,19 @@ export function Goals() {
   const owner = useIsOwner()
   const { spaceId } = useSpace()
   const goals = useGet<Goal[]>(`/spaces/${spaceId}/goals`)
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ name: '', target: '', deadline: '' })
   const [links, setLinks] = useState<Links>({ accounts: [], pockets: [] })
   const cents = parseBRL(f.target)
   const create = useSend(
     () => api('POST', `/spaces/${spaceId}/goals`, { name: f.name, target_cents: cents!, deadline: f.deadline || null, account_ids: links.accounts, pocket_ids: links.pockets } satisfies S['GoalIn']),
-    () => { setF({ name: '', target: '', deadline: '' }); setLinks({ accounts: [], pockets: [] }) },
+    () => { setF({ name: '', target: '', deadline: '' }); setLinks({ accounts: [], pockets: [] }); setAdding(false) },
   )
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Metas</h1>
-      <Card title="Nova meta">
+      <div className="mb-4"><PlusButton label="Nova meta" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova meta" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
           <Field label="Nome"><input required maxLength={200} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
           <Field label="Valor alvo (R$)"><input inputMode="decimal" required value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} /></Field>
@@ -174,7 +176,7 @@ export function Goals() {
           <Err e={create.error} />
           <Btn type="submit" disabled={create.isPending || !cents}>Criar meta</Btn>
         </form>
-      </Card>
+      </Modal>}
       {(goals.data ?? []).map((g) => (
         <Card key={g.id} title={g.name}>
           <p>{formatBRL(g.saved_cents)} de {formatBRL(g.target_cents)}{g.deadline ? ` · até ${g.deadline.split('-').reverse().join('/')}` : ''}</p>

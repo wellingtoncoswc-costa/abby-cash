@@ -487,3 +487,24 @@ test('fixos: modal pergunta "Sai de" na despesa e "Entra em" na receita e envia'
   expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'income', description: 'Salário', amount_cents: 500000, account_id: 'a1', rule: { kind: 'monthly', day: 5 } })
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 })
+
+test.each([
+  ['/contas-bancarias', 'Nova conta', 'Nome da conta'],
+  ['/cartoes', 'Novo cartão', 'Nome do cartão'],
+  ['/metas', 'Nova meta', 'Valor alvo (R$)'],
+  ['/caixinhas', 'Nova caixinha', 'Nome'],
+  ['/categorias', 'Nova categoria', 'Nome da nova categoria'],
+  ['/contas', 'Nova conta a pagar', 'Descrição'],
+  ['/financiamentos', 'Novo financiamento ou consórcio', 'Valor da parcela (R$)'],
+  ['/investimentos', 'Novo ativo', 'Nome'],
+])('padrão "+" e modal em %s', async (path, plus, field) => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J({ assets: [], by_kind: [], series: [], contributed_cents: 0, current_cents: 0, profit_cents: 0, profit_bp: null })
+  go(path)
+  const btn = await screen.findByRole('button', { name: plus })
+  expect(screen.queryByLabelText(field)).toBeNull() // sem formulário solto na tela
+  await userEvent.click(btn)
+  const dlg = await screen.findByRole('dialog', { name: plus })
+  expect(within(dlg).getAllByLabelText(field).length).toBeGreaterThan(0)
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+})

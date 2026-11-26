@@ -4,7 +4,7 @@ import type { Account, Cdi, Pocket, PocketPanel } from '../api/types'
 import { BankIcon } from '../bank-icon'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useSend } from '../ui'
+import { Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useSend, Modal, PlusButton } from '../ui'
 
 /** "120" | "112,5" -> cdi_bp inteiro (12000 | 11250), sem float; null se inválido (faixa 1..100000). */
 /** "14.9000000000" -> "14,90" (só exibição, sem float). */
@@ -108,9 +108,10 @@ export function Pockets() {
   const accounts = useAccounts()
   const pockets = useGet<Pocket[]>(`/spaces/${spaceId}/pockets`)
   const cdi = useGet<Cdi>('/cdi/latest')
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ name: '', account: '', pct: '100' })
   const bp = parsePct(f.pct)
-  const create = useSend(() => api('POST', `/spaces/${spaceId}/pockets`, { account_id: f.account, name: f.name, cdi_bp: bp! }), () => setF({ ...f, name: '' }))
+  const create = useSend(() => api('POST', `/spaces/${spaceId}/pockets`, { account_id: f.account, name: f.name, cdi_bp: bp! }), () => { setF({ ...f, name: '' }); setAdding(false) })
   const list = pockets.data ?? []
   return (
     <>
@@ -118,7 +119,8 @@ export function Pockets() {
       {cdi.data && <p className="mb-3 text-sm text-muted-foreground">CDI hoje: {pct2(cdi.data.annual_pct)}% a.a.</p>}
       {!pockets.isLoading && !list.length && <p className="mb-4">Você ainda não tem caixinhas. Crie a primeira para separar um dinheiro que rende pelo CDI.</p>}
       <div className="grid gap-4 md:grid-cols-2">{list.map((p) => <PocketTile key={p.id} p={p} acc={accounts.data.find((a) => a.id === p.account_id)} />)}</div>
-      <Card title="Nova caixinha">
+      <div className="mb-4"><PlusButton label="Nova caixinha" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova caixinha" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (bp && f.account) create.mutate() }}>
           <Field label="Nome"><input required maxLength={200} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
           <Field label="Conta">
@@ -131,7 +133,7 @@ export function Pockets() {
           <Err e={create.error} />
           <Btn type="submit" disabled={create.isPending || !bp || !f.account}>Criar caixinha</Btn>
         </form>
-      </Card>
+      </Modal>}
       <Err e={pockets.error} />
     </>
   )

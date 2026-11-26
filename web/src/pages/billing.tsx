@@ -3,7 +3,7 @@ import { api, ApiError } from '../api/client'
 import type { Bill, Card as CardT, CardPanel, Invoice, S, Statement } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useCatName, useGet, useIsOwner, useSend, Modal, PlusButton } from '../ui'
 
 /** Formulário de pagamento: conta de origem obrigatória; valor vazio = o que falta (só contas). */
 function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultCents?: number; requireAmount?: boolean }) {
@@ -27,17 +27,19 @@ export function Billing() {
   const { spaceId } = useSpace()
   const bills = useGet<Bill[]>(`/spaces/${spaceId}/bills`)
   const [open, setOpen] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ description: '', amount: '', due_on: today() })
   const cents = parseBRL(f.amount)
   const create = useSend(
     () => api('POST', `/spaces/${spaceId}/bills`, { description: f.description, amount_cents: cents!, due_on: f.due_on } satisfies S['BillIn']),
-    () => setF({ ...f, description: '', amount: '' }),
+    () => { setF({ ...f, description: '', amount: '' }); setAdding(false) },
   )
   const label: Record<string, string> = { open: 'Em aberto', partial: 'Parcial', paid: 'Paga' }
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Contas a pagar</h1>
-      <Card title="Nova conta">
+      <div className="mb-4"><PlusButton label="Nova conta a pagar" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova conta a pagar" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
           <Field label="Descrição"><input required maxLength={200} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
           <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
@@ -45,7 +47,7 @@ export function Billing() {
           <Err e={create.error} />
           <Btn type="submit" disabled={create.isPending || !cents}>Adicionar</Btn>
         </form>
-      </Card>
+      </Modal>}
       <Card>
         {(bills.data ?? []).length === 0 ? <p>Nenhuma conta cadastrada.</p> : (
           <ul className="divide-y divide-border">
@@ -212,16 +214,18 @@ export function Cards() {
   const { spaceId } = useSpace()
   const cards = useGet<CardT[]>('/cards')
   const mine = (cards.data ?? []).filter((c) => c.space_id === spaceId)
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ name: '', closing_day: '5', due_day: '12', limit: '' })
   const lim = f.limit ? parseBRL(f.limit) : null
   const create = useSend(
     () => api('POST', `/spaces/${spaceId}/cards`, { name: f.name, closing_day: Number(f.closing_day), due_day: Number(f.due_day), limit_cents: lim } satisfies S['CardIn']),
-    () => setF({ ...f, name: '', limit: '' }),
+    () => { setF({ ...f, name: '', limit: '' }); setAdding(false) },
   )
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Cartões e faturas</h1>
-      <Card title="Novo cartão"><CardForm f={f} setF={setF} onSubmit={() => create.mutate()} err={create.error} busy={create.isPending} lim={lim} /></Card>
+      <div className="mb-4"><PlusButton label="Novo cartão" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Novo cartão" onClose={() => setAdding(false)}><CardForm f={f} setF={setF} onSubmit={() => create.mutate()} err={create.error} busy={create.isPending} lim={lim} /></Modal>}
       {!cards.isLoading && mine.length === 0 && <p className="mb-4">Nenhum cartão neste espaço.</p>}
       <div className="grid gap-4 md:grid-cols-2">{mine.map((c) => <CardTile key={c.id} c={c} owner={owner} />)}</div>
       <Err e={cards.error} />
