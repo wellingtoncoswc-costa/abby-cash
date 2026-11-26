@@ -409,3 +409,18 @@ test('lançamento: abre em modal já em edição e fecha com Esc', async () => {
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('dialog')).toBeNull()
 })
+
+test('cartões: lançar crédito e fatura negativa em destaque', async () => {
+  const NEG = { ...PANEL, invoice: { ...PANEL.invoice, total_cents: -5000, remaining_cents: -5000 } }
+  routes['/cards/k1/panel'] = () => J(NEG)
+  routes['/cards/k1/invoices'] = () => J([NEG.invoice])
+  routes['/cards/k1/credits'] = () => J({ id: 't1' }, 201)
+  go('/cartoes')
+  const card = await tile()
+  expect(await card.findByText(/crédito a seu favor/)).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Lançar crédito' }))
+  await userEvent.type(card.getByLabelText('Valor do crédito (R$)'), '50,00')
+  await userEvent.click(card.getByRole('button', { name: 'Registrar crédito' }))
+  const post = calls.find(([u]) => u === '/cards/k1/credits')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ amount_cents: 5000 })
+})

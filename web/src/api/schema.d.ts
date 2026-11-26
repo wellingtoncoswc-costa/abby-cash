@@ -431,6 +431,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{card_id}/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Card Credit */
+        post: operations["card_credit_cards__card_id__credits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{card_id}/invoice-totals": {
         parameters: {
             query?: never;
@@ -1802,6 +1819,18 @@ export interface components {
             amount_cents: number;
             /** Occurred On */
             occurred_on?: string | null;
+        };
+        /** CreditIn */
+        CreditIn: {
+            /** Amount Cents */
+            amount_cents: number;
+            /** Occurred On */
+            occurred_on?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
         };
         /** DefaultAccountIn */
         DefaultAccountIn: {
@@ -3802,6 +3831,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    card_credit_cards__card_id__credits_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
                 };
             };
             /** @description Validation Error */

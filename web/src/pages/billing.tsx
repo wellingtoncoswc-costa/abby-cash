@@ -139,6 +139,21 @@ function PurchaseForm({ card, done }: { card: CardT; done: () => void }) {
   )
 }
 
+function CreditForm({ card, done }: { card: CardT; done: () => void }) {
+  const [f, setF] = useState({ amount: '', description: '', occurred_on: today() })
+  const cents = parseBRL(f.amount)
+  const send = useSend(() => api('POST', `/cards/${card.id}/credits`, { amount_cents: cents!, description: f.description, occurred_on: f.occurred_on }), done)
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (cents) send.mutate() }}>
+      <Field label="Valor do crédito (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+      <Field label="Data"><input type="date" value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+      <Field label="Descrição (ex.: estorno)"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !cents}>Registrar crédito</Btn>
+    </form>
+  )
+}
+
 function InvoiceTotalForm({ card, done }: { card: CardT; done: () => void }) {
   const [f, setF] = useState({ month: '', total: '' })
   const cents = parseBRL(f.total)
@@ -154,30 +169,32 @@ function InvoiceTotalForm({ card, done }: { card: CardT; done: () => void }) {
 }
 
 function CardTile({ c, owner }: { c: CardT; owner: boolean }) {
-  const [open, setOpen] = useState<'purchase' | 'invoice' | 'panel' | null>(null)
+  const [open, setOpen] = useState<'purchase' | 'credit' | 'invoice' | 'panel' | null>(null)
   const [pick, setPick] = useState<string | null>(null)
   const [invId, setInvId] = useState<string | null>(null)
   const sum = useGet<CardPanel>(`/cards/${c.id}/panel`)
   const invoices = useGet<Invoice[]>(`/cards/${c.id}/invoices`)
-  const toggle = (k: 'purchase' | 'invoice' | 'panel') => setOpen(open === k ? null : k)
+  const toggle = (k: 'purchase' | 'credit' | 'invoice' | 'panel') => setOpen(open === k ? null : k)
   const cur = sum.data?.invoice
   return (
     <Card title={c.name}>
       <p>Fecha dia {c.closing_day} · vence dia {c.due_day}</p>
-      {cur && <p>Fatura atual {formatBRL(cur.total_cents)} · vence {br(cur.due_on)}{cur.status === 'paid' ? ' · paga' : ''}</p>}
+      {cur && <p>Fatura atual <span className={cur.total_cents < 0 ? 'text-destructive' : ''}>{formatBRL(cur.total_cents)}</span>{cur.total_cents < 0 ? ' (crédito a seu favor)' : ` · vence ${br(cur.due_on)}`}{cur.status === 'paid' ? ' · paga' : ''}</p>}
       {sum.data?.limit_cents != null && <p>Limite {formatBRL(sum.data.limit_cents)} · usado {formatBRL(sum.data.used_cents)} · Disponível {formatBRL(sum.data.available_cents ?? 0)}</p>}
       <div className="my-2 flex flex-wrap gap-2">
         <Btn type="button" onClick={() => toggle('purchase')}>Nova compra</Btn>
+        <Btn type="button" onClick={() => toggle('credit')}>Lançar crédito</Btn>
         <Btn type="button" onClick={() => toggle('invoice')}>Cadastrar fatura</Btn>
         <Btn type="button" onClick={() => toggle('panel')} className="bg-muted-foreground hover:bg-muted-foreground/90">{open === 'panel' ? 'Ocultar painel' : 'Ver painel'}</Btn>
       </div>
       {open === 'purchase' && <PurchaseForm card={c} done={() => setOpen(null)} />}
+      {open === 'credit' && <CreditForm card={c} done={() => setOpen(null)} />}
       {open === 'invoice' && <InvoiceTotalForm card={c} done={() => setOpen(null)} />}
       {open === 'panel' && <CardPanelView card={c} invoiceId={pick} onPick={setPick} />}
       {(invoices.data ?? []).map((i) => (
         <div key={i.id} className="border-t border-border py-2">
           <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
-            <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}{i.status === 'paid' && <> · <span>paga</span></>}</span><span>{formatBRL(i.total_cents)}</span>
+            <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}{i.status === 'paid' && <> · <span>paga</span></>}</span><span className={i.total_cents < 0 ? 'text-destructive' : ''}>{formatBRL(i.total_cents)}{i.total_cents < 0 ? ' (crédito)' : ''}</span>
           </button>
           {invId === i.id && <InvoiceView id={i.id} />}
         </div>
