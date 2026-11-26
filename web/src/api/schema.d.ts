@@ -886,6 +886,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pockets/{pocket_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panel */
+        get: operations["panel_pockets__pocket_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cdi/latest": {
         parameters: {
             query?: never;
@@ -1368,16 +1385,6 @@ export interface components {
             /** Available Cents */
             available_cents: number;
         };
-        /** AccountPanelGoalOut */
-        AccountPanelGoalOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-        };
         /** AccountPanelOut */
         AccountPanelOut: {
             /**
@@ -1402,7 +1409,7 @@ export interface components {
             /** Pockets */
             pockets: components["schemas"]["AccountPanelPocketOut"][];
             /** Goals */
-            goals: components["schemas"]["AccountPanelGoalOut"][];
+            goals: components["schemas"]["PanelGoalOut"][];
         };
         /** AccountPanelPocketOut */
         AccountPanelPocketOut: {
@@ -2253,6 +2260,16 @@ export interface components {
             /** Total Cents */
             total_cents: number;
         };
+        /** PanelGoalOut */
+        PanelGoalOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** PanelInvoiceOut */
         PanelInvoiceOut: {
             /**
@@ -2380,12 +2397,29 @@ export interface components {
             /** Month Yield Cents */
             month_yield_cents: number;
         };
+        /** PocketPanelOut */
+        PocketPanelOut: {
+            /** Yield By Month */
+            yield_by_month: components["schemas"]["PocketYieldMonthOut"][];
+            /** Goals */
+            goals: components["schemas"]["PanelGoalOut"][];
+        };
         /** PocketPatch */
         PocketPatch: {
             /** Name */
             name?: string | null;
             /** Cdi Bp */
             cdi_bp?: number | null;
+        };
+        /** PocketYieldMonthOut */
+        PocketYieldMonthOut: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Yield Cents */
+            yield_cents: number;
         };
         /** PurchaseIn */
         PurchaseIn: {
@@ -4916,6 +4950,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PocketMovementOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panel_pockets__pocket_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pocket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PocketPanelOut"];
                 };
             };
             /** @description Validation Error */

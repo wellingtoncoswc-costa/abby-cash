@@ -32,3 +32,4 @@ export type InvAsset = { id: string; name: string; kind: 'stock' | 'fii' | 'cdb'
 export type InvDashboard = { assets: InvAsset[]; by_kind: { kind: string; value_cents: number }[]; series: { on: string; value_cents: number; contributed_cents: number }[]; contributed_cents: number; current_cents: number; profit_cents: number; profit_bp: number | null }
 export type CardPanel = S['CardPanelOut']
 export type AccountPanel = S['AccountPanelOut']
+export type PocketPanel = S['PocketPanelOut']

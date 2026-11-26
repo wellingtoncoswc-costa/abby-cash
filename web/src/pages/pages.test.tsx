@@ -351,3 +351,17 @@ test('contas: tornar padrão chama a API', async () => {
   const put = calls.find(([u]) => u === `/spaces/${SP}/default-account`)!
   expect(JSON.parse(put[1].body as string)).toEqual({ account_id: 'a1' })
 })
+
+test('caixinhas: um card por caixinha com painel de rendimento', async () => {
+  routes[`/spaces/${SP}/pockets`] = () => J([{ id: 'p1', space_id: SP, account_id: 'a1', name: 'Reserva', cdi_bp: 10000, balance_cents: 15000, pending_yield_cents: 0, month_yield_cents: 120, created_at: '2026-11-01T00:00:00Z', closed_at: null }])
+  routes['/cdi/latest'] = () => J({ on_date: '2026-11-24', daily_pct: '0.05', annual_pct: '14.90' })
+  routes['/pockets/p1/panel'] = () => J({ yield_by_month: [{ month: '2026-10-01', yield_cents: 70 }, { month: '2026-11-01', yield_cents: 120 }], goals: [{ id: 'g1', name: 'Viagem' }] })
+  routes['/pockets/p1/movements'] = () => J([{ id: 'm1', pocket_id: 'p1', kind: 'deposit', amount_cents: 15000, occurred_on: '2026-11-12', ref_date: null, created_at: '2026-11-12T00:00:00Z' }])
+  go('/caixinhas')
+  const card = within((await screen.findByRole('heading', { name: 'Reserva' })).closest('section')!)
+  expect(card.getByText('R$ 150,00')).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Viagem')).toBeInTheDocument()
+  expect(card.getByText(/Depósito/)).toBeInTheDocument()
+  expect(card.getByLabelText('11/26: R$ 1,20')).toBeInTheDocument()
+})
