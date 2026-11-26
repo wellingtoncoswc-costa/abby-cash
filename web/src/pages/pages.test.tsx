@@ -379,3 +379,13 @@ test('metas: painel mostra a composição e o histórico de aportes', async () =
   expect(card.getByText(/10\/11\/2026 Aporte/)).toBeInTheDocument()
   routes[`/spaces/${SP}/goals`] = () => J([])
 })
+
+test('investimentos: painel do ativo lista as movimentações', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  routes['/investments/i1/panel'] = () => J({ movements: [{ id: 'm1', kind: 'buy', occurred_on: '2026-01-14', quantity: '10', unit_price_cents: 3800, amount_cents: 38000 }], series: [{ on: '2026-01-14', value_cents: 38000, contributed_cents: 38000 }, { on: '2026-01-15', value_cents: 38500, contributed_cents: 38000 }] })
+  go('/investimentos')
+  const card = within((await screen.findByRole('heading', { name: /Petrobras/ })).closest('section')!)
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText(/10 cotas a R\$ 38,00/)).toBeInTheDocument()
+  expect(card.getByRole('img', { name: 'Evolução de PETR4' })).toBeInTheDocument()
+})

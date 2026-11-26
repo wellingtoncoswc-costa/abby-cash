@@ -765,6 +765,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/investments/{investment_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Asset Panel */
+        get: operations["asset_panel_investments__investment_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/investments/{investment_id}/buys": {
         parameters: {
             query?: never;
@@ -1997,6 +2014,27 @@ export interface components {
             /** Maturity On */
             maturity_on?: string | null;
         };
+        /** InvestmentMovementRowOut */
+        InvestmentMovementRowOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Quantity */
+            quantity: string | null;
+            /** Unit Price Cents */
+            unit_price_cents: number | null;
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** InvestmentOut */
         InvestmentOut: {
             /**
@@ -2021,6 +2059,25 @@ export interface components {
             rate_bp: number | null;
             /** Maturity On */
             maturity_on: string | null;
+        };
+        /** InvestmentPanelOut */
+        InvestmentPanelOut: {
+            /** Movements */
+            movements: components["schemas"]["InvestmentMovementRowOut"][];
+            /** Series */
+            series: components["schemas"]["InvestmentSeriesPointOut"][];
+        };
+        /** InvestmentSeriesPointOut */
+        InvestmentSeriesPointOut: {
+            /**
+             * On
+             * Format: date
+             */
+            on: string;
+            /** Value Cents */
+            value_cents: number;
+            /** Contributed Cents */
+            contributed_cents: number;
         };
         /** InvoiceDetailOut */
         InvoiceDetailOut: {
@@ -4701,6 +4758,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asset_panel_investments__investment_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                investment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestmentPanelOut"];
                 };
             };
             /** @description Validation Error */
