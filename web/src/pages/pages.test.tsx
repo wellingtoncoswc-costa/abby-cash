@@ -158,6 +158,7 @@ test('edição de contas: só o dono vê o botão', async () => {
   go('/onboarding')
   await screen.findByText('Nubank', { exact: false })
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Editar conta' })).toBeNull())
+  routes[`/spaces/${SP}/members`] = () => J([{ user_id: 'u1', name: 'Ana', role: 'owner', joined_at: '2026-11-01T00:00:00Z' }])
 })
 
 test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
@@ -450,4 +451,39 @@ test('lançamentos: salvar um lançamento envia e fecha o modal', async () => {
   const post = calls.find(([u, i]) => u === `/spaces/${SP}/transactions` && i.method === 'POST')!
   expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'expense', amount_cents: 4500, account_id: 'a1' })
   delete routes['/spaces/s1/transactions']
+})
+
+const FIXO = { id: 'r1', space_id: SP, type: 'expense', description: 'Aluguel', amount_cents: 150000, account_id: 'a1', category_id: null, rule: { kind: 'monthly', day: 5, month: null, n: 1 }, starts_on: '2026-11-01', ends_on: null, active: true, next_due_on: '2026-12-05' }
+const PROJ = {
+  months: [{ month: '2026-11-01', income_cents: 500000, expense_cents: 150000, net_cents: 350000, projected_balance_cents: 1350000 }, { month: '2026-12-01', income_cents: 500000, expense_cents: 150000, net_cents: 350000, projected_balance_cents: 1700000 }],
+  upcoming: [{ due_on: '2026-12-05', description: 'Aluguel', type: 'expense', amount_cents: 150000, account_id: 'a1', account_name: 'Nubank' }],
+}
+
+test('fixos: projeção, cards com a conta e botão +', async () => {
+  routes[`/spaces/${SP}/recurring`] = () => J([FIXO])
+  routes[`/spaces/${SP}/recurring/projection`] = () => J(PROJ)
+  go('/fixos')
+  const card = within((await screen.findByRole('heading', { name: 'Aluguel' })).closest('section')!)
+  expect(await card.findByText('Sai de Nubank')).toBeInTheDocument()
+  expect(card.getByText(/Próxima data: 05\/12\/2026/)).toBeInTheDocument()
+  expect(await screen.findByText(/Saldo projetado R\$ 17\.000,00/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Novo fixo' })).toBeInTheDocument()
+})
+
+test('fixos: modal pergunta "Sai de" na despesa e "Entra em" na receita e envia', async () => {
+  routes[`/spaces/${SP}/recurring`] = (init) => (init.method === 'POST' ? J(FIXO, 201) : J([]))
+  routes[`/spaces/${SP}/recurring/projection`] = () => J({ months: [], upcoming: [] })
+  go('/fixos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Novo fixo' }))
+  const dlg = within(await screen.findByRole('dialog', { name: 'Novo fixo' }))
+  expect(dlg.getByLabelText('Sai de')).toBeInTheDocument()
+  await userEvent.selectOptions(dlg.getByLabelText('Tipo'), 'income')
+  expect(dlg.getByLabelText('Entra em')).toBeInTheDocument()
+  await userEvent.type(dlg.getByLabelText('Descrição'), 'Salário')
+  await userEvent.type(dlg.getByLabelText('Valor (R$)'), '5000,00')
+  await userEvent.selectOptions(dlg.getByLabelText('Entra em'), 'a1')
+  await userEvent.click(dlg.getByRole('button', { name: 'Salvar fixo' }))
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/recurring` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'income', description: 'Salário', amount_cents: 500000, account_id: 'a1', rule: { kind: 'monthly', day: 5 } })
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 })

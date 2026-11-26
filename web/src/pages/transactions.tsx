@@ -4,8 +4,7 @@ import { api, ApiError, apiPage, fetchBlob } from '../api/client'
 import type { Card as CardT, Member, S, Tx } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Plus } from 'lucide-react'
-import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, Modal, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, Modal, PlusButton, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
 import { TxList } from './dashboard'
 
 const PAGE = 20
@@ -204,10 +203,7 @@ export function Transactions() {
       <h1 className="mb-3 text-xl font-bold">Lançamentos</h1>
       <div className="mb-4 flex gap-3" role="group" aria-label="Novo registro">
         {([['tx', 'Novo lançamento'], ['transfer', 'Nova transferência'], ['purchase', 'Nova compra no cartão']] as const).map(([k, label]) => (
-          <button key={k} type="button" aria-label={label} title={label} onClick={() => setModal(k)}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
-            <Plus aria-hidden="true" />
-          </button>
+          <PlusButton key={k} label={label} onClick={() => setModal(k)} />
         ))}
       </div>
       {modal === 'tx' && <Modal title="Novo lançamento" onClose={() => setModal(null)}><NewTxForm onDone={() => setModal(null)} /></Modal>}

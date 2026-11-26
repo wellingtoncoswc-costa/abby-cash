@@ -971,6 +971,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{space_id}/recurring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List */
+        get: operations["list__spaces__space_id__recurring_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_spaces__space_id__recurring_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{space_id}/recurring/projection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projection */
+        get: operations["projection_spaces__space_id__recurring_projection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{space_id}/recurring/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_spaces__space_id__recurring__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch */
+        patch: operations["patch_spaces__space_id__recurring__item_id__patch"];
+        trace?: never;
+    };
     "/spaces/{space_id}/loans": {
         parameters: {
             query?: never;
@@ -2575,6 +2628,29 @@ export interface components {
             /** Yield Cents */
             yield_cents: number;
         };
+        /** ProjectionMonthOut */
+        ProjectionMonthOut: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Net Cents */
+            net_cents: number;
+            /** Projected Balance Cents */
+            projected_balance_cents: number;
+        };
+        /** ProjectionOut */
+        ProjectionOut: {
+            /** Months */
+            months: components["schemas"]["ProjectionMonthOut"][];
+            /** Upcoming */
+            upcoming: components["schemas"]["UpcomingOut"][];
+        };
         /** PurchaseIn */
         PurchaseIn: {
             /**
@@ -2618,6 +2694,90 @@ export interface components {
              */
             n: number;
         };
+        /** RecurringIn */
+        RecurringIn: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "expense" | "income";
+            /** Description */
+            description: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Category Id */
+            category_id?: string | null;
+            rule: components["schemas"]["RuleIn"];
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on?: string | null;
+        };
+        /** RecurringOut */
+        RecurringOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Space Id
+             * Format: uuid
+             */
+            space_id: string;
+            /** Type */
+            type: string;
+            /** Description */
+            description: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Category Id */
+            category_id: string | null;
+            /** Rule */
+            rule: {
+                [key: string]: unknown;
+            };
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on: string | null;
+            /** Active */
+            active: boolean;
+            /** Next Due On */
+            next_due_on: string | null;
+        };
+        /** RecurringPatch */
+        RecurringPatch: {
+            /** Description */
+            description?: string | null;
+            /** Amount Cents */
+            amount_cents?: number | null;
+            /** Account Id */
+            account_id?: string | null;
+            /** Category Id */
+            category_id?: string | null;
+            rule?: components["schemas"]["RuleIn"] | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /** Active */
+            active?: boolean | null;
+        };
         /** RegisterIn */
         RegisterIn: {
             /**
@@ -2631,6 +2791,23 @@ export interface components {
             password: string;
             /** Invite Code */
             invite_code: string;
+        };
+        /** RuleIn */
+        RuleIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "monthly" | "yearly" | "every_n_months";
+            /** Day */
+            day: number;
+            /** Month */
+            month?: number | null;
+            /**
+             * N
+             * @default 1
+             */
+            n: number;
         };
         /**
          * SettingsIn
@@ -2804,6 +2981,27 @@ export interface components {
             due_on: string;
             /** Amount Cents */
             amount_cents: number;
+        };
+        /** UpcomingOut */
+        UpcomingOut: {
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Description */
+            description: string;
+            /** Type */
+            type: string;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -5271,6 +5469,179 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CdiLatestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list__spaces__space_id__recurring_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_spaces__space_id__recurring_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    projection_spaces__space_id__recurring_projection_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_spaces__space_id__recurring__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_spaces__space_id__recurring__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOut"];
                 };
             };
             /** @description Validation Error */

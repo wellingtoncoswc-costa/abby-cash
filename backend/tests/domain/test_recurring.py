@@ -125,3 +125,28 @@ async def test_account_in_use_and_delete_item(session):
         await delete_account(session, actor_id=a.id, account_id=acc.id)
     await delete_item(session, actor_id=a.id, space_id=item.space_id, item_id=item.id)
     await delete_account(session, actor_id=a.id, account_id=acc.id)
+
+
+async def test_privacy_purge_removes_investments_and_recurring_items(session):
+    from sqlalchemy import func, select
+
+    from app.domain import privacy
+    from app.domain.investments import service as inv_svc
+    from app.domain.investments.models import Investment
+    from app.domain.recurring.models import RecurringItem
+
+    a = await make_user(session, "gone@x.com")
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    await _item(session, a, acc)
+    cdb = await inv_svc.create_investment(
+        session, actor_id=a.id, space_id=a.default_space_id, kind="cdb", name="CDB",
+        rate_type="fixed", rate_bp=1250, today=D,
+    )  # fmt: skip
+    await inv_svc.buy(
+        session, actor_id=a.id, investment_id=cdb.id, account_id=acc.id, on=D,
+        amount_cents=10_000, today=D,
+    )  # fmt: skip
+    await privacy.delete_account(session, a)
+    await session.commit()
+    for model in (RecurringItem, Investment):
+        assert await session.scalar(select(func.count()).select_from(model)) == 0

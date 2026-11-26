@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { api, ApiError } from './api/client'
 import { spaceLabel, useSpace } from './space'
@@ -197,3 +198,11 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     </div>
   )
 }
+
+/** Botão redondo só com o "+": o formulário de cadastro abre num Modal. */
+export const PlusButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
+  <button type="button" aria-label={label} title={label} onClick={onClick}
+    className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
+    <Plus aria-hidden="true" />
+  </button>
+)
