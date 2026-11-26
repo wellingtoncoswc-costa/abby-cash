@@ -1,12 +1,14 @@
 import { Link } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
+import { useState, type ReactNode } from 'react'
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { ApiError } from '../api/client'
 import type { Account, Bill, Budget, Goal, Tx } from '../api/types'
-import { Anel, useCountUp } from '../anim'
+import { Anel, podeAnimar, useCountUp, useNovos } from '../anim'
+import { MapaCalor } from '../heatmap'
+import { gastoPorDia, insights } from '../lib/insights'
 import { formatBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { Bar, br, Err, monthKey, useCatName, useGet } from '../ui'
+import { Bar, br, Err, Esqueleto, monthKey, today, useCatName, useGet } from '../ui'
 
 const COLORS = [1, 2, 3, 4, 5].map((n) => `var(--chart-${n})`).concat([1, 2, 3].map((n) => `color-mix(in oklab, var(--chart-${n}) 60%, transparent)`))
 
@@ -18,6 +20,8 @@ export function Dashboard() {
   const catName = useCatName()
   const budget = useGet<Budget>(`/spaces/${spaceId}/budgets/${month}`)
   const txs = useGet<Tx[]>(`/spaces/${spaceId}/transactions?start=${month}-01&end=${month}-${last}&limit=500`)
+  const ant = new Date(y, m - 2, 1)
+  const prevTxs = useGet<Tx[]>(`/spaces/${spaceId}/transactions?start=${monthKey(ant)}-01&end=${monthKey(ant)}-${new Date(y, m - 1, 0).getDate()}&limit=500`)
   const bills = useGet<Bill[]>(`/spaces/${spaceId}/bills?status=open`)
   const goals = useGet<Goal[]>(`/spaces/${spaceId}/goals`)
   const accounts = useGet<Account[]>('/accounts')
@@ -31,6 +35,11 @@ export function Dashboard() {
   const limit = budget.data?.limit_cents ?? 0
   const pct = limit > 0 ? Math.min(100, Math.floor((spent * 100) / limit)) : 0
   const gasto = useCountUp(spent)
+  const [foco, setFoco] = useState<string | null>(null)
+  const emFoco = pie.find((p) => p.name === foco)
+  const total = pie.reduce((a, p) => a + p.value, 0)
+  const ate = today().startsWith(month) ? Number(today().slice(8)) : last
+  const dicas = insights(txs.data ?? [], prevTxs.data ?? [], ate, ant.toLocaleDateString('pt-BR', { month: 'long' }), catName)
   const cor = spent > limit ? 'oklch(0.75 0.17 25)' : pct >= 80 ? 'oklch(0.82 0.15 80)' : 'var(--luz)'
   return (
     <>
@@ -57,37 +66,46 @@ export function Dashboard() {
           </div>
         ) : <Err e={budget.error} />}
       </section>
+      {dicas.length > 0 && <ul aria-label="Insights do mês" className="mb-8 grid gap-2 md:grid-cols-2">{dicas.map((d) => <li key={d} className="rounded-2xl bg-muted p-3 text-sm">{d}</li>)}</ul>}
       <div className="grid gap-x-10 gap-y-8 md:grid-cols-2">
         <Secao title="Por categoria">
-          {pie.length === 0 ? <p className="text-muted-foreground">Nenhum gasto neste mês.</p> : (
+          {!txs.data ? <Esqueleto rotulo="categorias" /> : pie.length === 0 ? <p className="text-muted-foreground">Nenhum gasto neste mês.</p> : (
             <>
-              <div className="h-44" aria-hidden="true">
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie data={pie} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={2} stroke="none" isAnimationActive={false}>{pie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie>
-                    <Tooltip formatter={(v) => formatBRL(Number(v))} />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="relative h-44">
+                <div className="h-full" aria-hidden="true">
+                  <ResponsiveContainer>
+                    <PieChart>
+                      <Pie data={pie} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={2} stroke="none" isAnimationActive={podeAnimar()} animationDuration={1100} animationEasing="ease-out">{pie.map((p, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={foco && p.name !== foco ? 0.3 : 1} style={{ transition: 'fill-opacity .2s' }} />)}</Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div data-testid="centro-rosca" className="pointer-events-none absolute inset-0 grid place-content-center text-center">
+                  <span className="max-w-24 truncate text-xs text-muted-foreground">{emFoco ? emFoco.name : 'Total'}</span>
+                  <span className="tabular text-sm font-semibold">{formatBRL(emFoco ? emFoco.value : total)}</span>
+                </div>
               </div>
-              <ul className="mt-2 divide-y divide-border">{pie.map((p, i) => <li key={p.name} className="flex justify-between py-2"><span><span className="mr-2 inline-block size-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />{p.name}</span><span className="tabular font-medium">{formatBRL(p.value)}</span></li>)}</ul>
+              <ul className="mt-2 divide-y divide-border">{pie.map((p, i) => <li key={p.name} tabIndex={0} aria-label={`${p.name} ${formatBRL(p.value)}`} onMouseEnter={() => setFoco(p.name)} onMouseLeave={() => setFoco(null)} onFocus={() => setFoco(p.name)} onBlur={() => setFoco(null)} className="flex justify-between py-2"><span><span className="mr-2 inline-block size-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />{p.name}</span><span className="tabular font-medium">{formatBRL(p.value)}</span></li>)}</ul>
             </>
           )}
         </Secao>
         <div className="grid content-start gap-8">
           <Secao title="Próximas contas">
-            {(bills.data ?? []).length === 0 ? <p className="text-muted-foreground">Nenhuma conta em aberto.</p> : (
+            {!bills.data ? <Esqueleto rotulo="contas" /> : bills.data.length === 0 ? <p className="text-muted-foreground">Nenhuma conta em aberto.</p> : (
               <ul className="divide-y divide-border">{[...(bills.data ?? [])].sort((a, b) => a.due_on.localeCompare(b.due_on)).slice(0, 5).map((b) => <li key={b.id} className="flex justify-between py-2"><span>{b.description} <span className="text-muted-foreground">· {b.due_on.split('-').reverse().join('/')}</span></span><span className="tabular font-medium">{formatBRL(b.amount_cents)}</span></li>)}</ul>
             )}
           </Secao>
           <Secao title="Metas">
-            {(goals.data ?? []).length === 0 ? <p className="text-muted-foreground">Nenhuma meta.</p> : (goals.data ?? []).map((g) => (
-              <div key={g.id} className="mb-3"><div className="mb-1 flex justify-between"><span>{g.name}</span><span className="tabular text-sm text-muted-foreground">{formatBRL(g.saved_cents)} / {formatBRL(g.target_cents)}</span></div><Bar value={g.saved_cents} max={g.target_cents} /></div>
+            {!goals.data ? <Esqueleto rotulo="metas" /> : goals.data.length === 0 ? <p className="text-muted-foreground">Nenhuma meta.</p> : goals.data.map((g) => (
+              <div key={g.id} className="mb-3"><div className="mb-1 flex justify-between"><span>{g.name}</span><span className="tabular text-sm text-muted-foreground">{g.saved_cents >= g.target_cents && <span className="brilho mr-2 inline-flex items-center gap-1 font-medium text-foreground"><span className="size-2 rounded-full bg-luz" />Meta batida</span>}{formatBRL(g.saved_cents)} / {formatBRL(g.target_cents)}</span></div><Bar value={g.saved_cents} max={g.target_cents} /></div>
             ))}
           </Secao>
         </div>
+        <Secao title="Gastos por dia">
+          {!txs.data ? <Esqueleto rotulo="gastos por dia" /> : <MapaCalor ano={y} mes={m} gastos={gastoPorDia(txs.data)} />}
+        </Secao>
         <div className="md:col-span-2">
           <Secao title="Últimos lançamentos">
-            {(txs.data ?? []).length === 0 ? <p className="text-muted-foreground">Nenhum lançamento.</p> : <TxList items={(txs.data ?? []).slice(0, 5)} />}
+            {!txs.data ? <Esqueleto rotulo="lançamentos" /> : txs.data.length === 0 ? <p className="text-muted-foreground">Nenhum lançamento.</p> : <TxList items={txs.data.slice(0, 5)} />}
             <Link to="/lancamentos" className="mt-3 inline-block font-medium underline">Ver todos</Link>
           </Secao>
         </div>
@@ -106,6 +124,7 @@ const Secao = ({ title, children }: { title: string; children: ReactNode }) => (
 export const TxList = ({ items, onSelect }: { items: Tx[]; onSelect?: (t: Tx) => void }) => {
   const catName = useCatName()
   const accounts = useGet<Account[]>('/accounts')
+  const novos = useNovos(items.map((t) => t.id))
   const accName = (id: string | null) => accounts.data?.find((a) => a.id === id)?.name ?? 'Conta'
   return (
     <ul className="divide-y divide-border">
@@ -114,7 +133,7 @@ export const TxList = ({ items, onSelect }: { items: Tx[]; onSelect?: (t: Tx) =>
         const title = transfer ? `Transferência · ${accName(t.account_id)} → ${accName(t.counter_account_id)}` : t.description || t.merchant || 'Lançamento'
         const body = <>{title}{t.installment_total ? ` (${t.installment_number}/${t.installment_total})` : ''}<br /><small>{br(t.occurred_on)} · {transfer ? t.description || 'Entre contas' : catName(t.category_id)}</small></>
         return (
-          <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
+          <li key={t.id} className={`flex items-center justify-between gap-3 py-2.5 ${novos.has(t.id) ? 'novo' : ''}`}>
             {onSelect ? <button type="button" className="text-left underline-offset-2 hover:underline" aria-label={`Abrir ${title}`} onClick={() => onSelect(t)}>{body}</button> : <span>{body}</span>}
             <span className={`tabular shrink-0 font-medium ${t.type === 'income' ? 'text-success' : ''}`}>{t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}{formatBRL(t.amount_cents)}</span>
           </li>

@@ -7,6 +7,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dates import local_today
 from app.domain.accounts.models import Account
 from app.domain.audit import audit
 from app.domain.bills.models import Bill
@@ -32,7 +33,9 @@ async def provision_user(session: AsyncSession, user: User) -> None:
     space = Space(type="personal", name="Pessoal", owner_id=user.id)
     session.add(space)
     await session.flush()
-    wallet = Account(space_id=space.id, type="wallet", name="Carteira")
+    wallet = Account(
+        space_id=space.id, type="wallet", name="Carteira", opened_on=local_today(user.tz)
+    )
     session.add(wallet)
     _seed_categories(session, space.id)
     await session.flush()

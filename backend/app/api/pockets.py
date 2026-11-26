@@ -7,12 +7,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import CdiLatestOut, Cents, PocketMovementOut, PocketOut
+from app.api.schemas import CdiLatestOut, Cents, PocketMovementOut, PocketOut, PocketPanelOut
 from app.core.config import get_settings
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.pockets.cdi import annual_pct, latest_cdi
 from app.domain.pockets.models import Pocket
+from app.domain.pockets.panel import pocket_panel
 from app.domain.pockets.service import (
     create_pocket,
     delete_pocket,
@@ -116,6 +117,11 @@ async def add_withdraw(
 async def movements(pocket_id: UUID, user: CurrentUser, session: Session) -> list[dict[str, Any]]:
     mvs = await list_movements(session, viewer_id=user.id, pocket_id=pocket_id)
     return [row(m) for m in mvs]
+
+
+@router.get("/pockets/{pocket_id}/panel", response_model=PocketPanelOut)
+async def panel(pocket_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    return await pocket_panel(session, user.id, pocket_id, today=local_today(user.tz))
 
 
 @router.get("/cdi/latest", response_model=CdiLatestOut)

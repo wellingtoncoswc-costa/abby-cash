@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeRouter } from '../router'
 
@@ -32,6 +32,7 @@ test('transferir: destino exclui a origem, mostra disponível, envia no espaço 
   const accounts = [acc('a1', 'Nubank', 's1', 100000), acc('a2', 'Itaú', 's1', 5000), acc('a3', 'Conjunta', 's2', 0)]
   const spaces = [{ id: 's1', type: 'personal', name: 'x' }, { id: 's2', type: 'family', name: 'Casa' }]
   go('/lancamentos', accounts, spaces, (u, i) => (u === '/spaces/s1/transactions' && i.method === 'POST' ? J({ ...TX }, 201) : null))
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova transferência' }))
   await userEvent.selectOptions(await screen.findByLabelText('Conta de origem'), 'a1')
   expect(screen.getByText('Disponível na origem: R$ 1.000,00')).toBeInTheDocument()
   const dest = screen.getByLabelText('Conta de destino')
@@ -41,11 +42,12 @@ test('transferir: destino exclui a origem, mostra disponível, envia no espaço 
   await userEvent.click(screen.getByRole('button', { name: 'Transferir' }))
   const post = calls.find(([u, i]) => u === '/spaces/s1/transactions' && i.method === 'POST')!
   expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'transfer', amount_cents: 30000, account_id: 'a1', counter_account_id: 'a3' })
-  expect(await screen.findByText('Transferido.')).toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()) // concluiu: o modal fecha
 })
 
 test('transferir: avisa e bloqueia quando excede o disponível com caixinhas', async () => {
   go('/lancamentos', [acc('a1', 'Nubank', 's1', 100000, 80000), acc('a2', 'Itaú', 's1', 0)])
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova transferência' }))
   await userEvent.selectOptions(await screen.findByLabelText('Conta de origem'), 'a1')
   await userEvent.selectOptions(screen.getByLabelText('Conta de destino'), 'a2')
   await userEvent.type(screen.getByLabelText('Valor da transferência (R$)'), '250')
@@ -55,6 +57,7 @@ test('transferir: avisa e bloqueia quando excede o disponível com caixinhas', a
 
 test('transferir: erro do servidor aparece em português', async () => {
   go('/lancamentos', [acc('a1', 'Nubank', 's1', 100), acc('a2', 'Itaú', 's1', 0)], undefined, (u, i) => (u.includes('/transactions') && i.method === 'POST' ? J({ detail: 'insufficient_available' }, 409) : null))
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova transferência' }))
   await userEvent.selectOptions(await screen.findByLabelText('Conta de origem'), 'a1')
   await userEvent.selectOptions(screen.getByLabelText('Conta de destino'), 'a2')
   await userEvent.type(screen.getByLabelText('Valor da transferência (R$)'), '5')

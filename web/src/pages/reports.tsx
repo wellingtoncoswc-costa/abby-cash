@@ -5,7 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Area, AreaChart, Bar, CartesianGrid, Cell, ComposedChart, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client'
 import type { OverviewOut, ReportTotals, Tx } from '../api/types'
-import { useCountUp } from '../anim'
+import { podeAnimar, useCountUp } from '../anim'
 import { downloadCsv, type Filters, listQuery, monthRange, parseFilters, PERIODS, pctChange, reportQuery, resolveRange, toCsv, wholeMonth } from '../lib/reports'
 import { formatBRL } from '../lib/money'
 import { useSpace } from '../space'
@@ -16,7 +16,7 @@ import { TxDetail } from './transactions'
 const SERIES = [1, 2, 3, 4, 5].map((n) => `var(--chart-${n})`).concat([1, 2, 3].map((n) => `color-mix(in oklab, var(--chart-${n}) 60%, transparent)`))
 const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const DOW = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
-const animar = typeof matchMedia === 'function' && !matchMedia('(prefers-reduced-motion: reduce)').matches
+const animar = podeAnimar()
 const mesCurto = (m: string) => `${MES[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`
 const pct1 = (bp: number) => `${Math.trunc(bp / 100)},${Math.trunc((bp % 100) / 10)}%`
 /** Rótulo de eixo em milhares (aproximado, só para o eixo; valores exatos ficam no tooltip e na tabela). */

@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -10,9 +11,10 @@ from app.domain.accounts.models import Account
 from app.domain.audit import audit, snap
 from app.domain.cards.models import CreditCard
 from app.domain.errors import DomainError
-from app.domain.goals.models import Goal
+from app.domain.goals.models import GoalAccount
 from app.domain.loans.models import Loan
 from app.domain.pockets.models import Pocket
+from app.domain.recurring.models import RecurringItem
 from app.domain.spaces.access import require_member, require_owner
 from app.domain.spaces.models import SpaceMember
 from app.domain.transactions.models import Transaction
@@ -22,7 +24,7 @@ ACCOUNT_TYPES = {"checking", "wallet", "savings"}
 
 async def create_account(
     session: AsyncSession, *, actor_id: UUID, space_id: UUID, type: str, name: str,
-    initial_balance_cents: int = 0, institution: str | None = None,
+    initial_balance_cents: int = 0, institution: str | None = None, opened_on: date | None = None,
 ) -> Account:  # fmt: skip
     await require_member(session, actor_id, space_id)
     if type not in ACCOUNT_TYPES:
@@ -35,6 +37,7 @@ async def create_account(
         name=name,
         initial_balance_cents=initial_balance_cents,
         institution=institution,
+        opened_on=opened_on,
     )
     session.add(acc)
     await session.flush()
@@ -93,8 +96,9 @@ async def delete_account(session: AsyncSession, *, actor_id: UUID, account_id: U
                 or_(Transaction.account_id == acc.id, Transaction.counter_account_id == acc.id)
             )
             | exists().where(CreditCard.payment_account_id == acc.id)
-            | exists().where(Goal.account_id == acc.id)
+            | exists().where(GoalAccount.account_id == acc.id)
             | exists().where(Pocket.account_id == acc.id)
+            | exists().where(RecurringItem.account_id == acc.id)
             | exists().where(Loan.account_id == acc.id)
         )
     )

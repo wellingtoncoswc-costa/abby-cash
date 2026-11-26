@@ -7,15 +7,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents, GoalOut, GoalProgressOut, TransactionOut
+from app.api.schemas import Cents, GoalOut, GoalPanelOut, GoalProgressOut, TransactionOut
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.goals.models import Goal
+from app.domain.goals.panel import goal_panel
 from app.domain.goals.service import (
     GoalProgress,
     contribute,
     create_goal,
     delete_goal,
+    goal_links,
     goal_progress,
     update_goal,
     visible_goal,
@@ -32,7 +34,8 @@ class GoalIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     target_cents: Cents
     deadline: date | None = None
-    account_id: UUID | None = None
+    account_ids: list[UUID] = Field(default_factory=list)
+    pocket_ids: list[UUID] = Field(default_factory=list)
 
 
 class ContributionIn(BaseModel):
@@ -45,6 +48,11 @@ class WithdrawalIn(BaseModel):
     to_account_id: UUID
     amount_cents: Cents
     occurred_on: date | None = Field(default=None, ge=MIN_DATE, le=MAX_DATE)
+
+
+async def _links(session: Session, goal_id: UUID) -> dict[str, Any]:
+    accs, pks = await goal_links(session, goal_id)
+    return {"account_ids": accs, "pocket_ids": pks}
 
 
 def _progress(p: GoalProgress) -> dict[str, Any]:
@@ -60,10 +68,11 @@ async def create(
 ) -> dict[str, Any]:
     goal = await create_goal(
         session, actor_id=user.id, space_id=space_id, name=body.name,
-        target_cents=body.target_cents, deadline=body.deadline, account_id=body.account_id,
+        target_cents=body.target_cents, deadline=body.deadline,
+        account_ids=body.account_ids, pocket_ids=body.pocket_ids,
         created_on=local_today(user.tz),
     )  # fmt: skip
-    return row(goal)
+    return row(goal) | await _links(session, goal.id)
 
 
 @router.get("/spaces/{space_id}/goals", response_model=list[GoalProgressOut])
@@ -73,14 +82,23 @@ async def list_goals(space_id: UUID, user: CurrentUser, session: Session) -> lis
         select(Goal).where(Goal.space_id == space_id).order_by(Goal.created_at)
     )
     # ponytail: progresso por meta = 1 query cada (N+1); ok p/ poucas metas, agregar se crescer
-    return [row(g) | _progress(await goal_progress(session, g.id, today=local_today(user.tz)))
-            for g in goals]  # fmt: skip
+    today, out = local_today(user.tz), []
+    for g in goals:
+        out.append(row(g) | await _links(session, g.id)
+                   | _progress(await goal_progress(session, g.id, today=today)))  # fmt: skip
+    return out
 
 
 @router.get("/goals/{goal_id}", response_model=GoalProgressOut)
 async def get_goal(goal_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
     goal = await visible_goal(session, user.id, goal_id)
-    return row(goal) | _progress(await goal_progress(session, goal.id, today=local_today(user.tz)))
+    prog = await goal_progress(session, goal.id, today=local_today(user.tz))
+    return row(goal) | await _links(session, goal.id) | _progress(prog)
+
+
+@router.get("/goals/{goal_id}/panel", response_model=GoalPanelOut)
+async def panel(goal_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    return await goal_panel(session, user.id, goal_id, today=local_today(user.tz))
 
 
 @router.post("/goals/{goal_id}/contributions", status_code=201, response_model=TransactionOut)
@@ -109,6 +127,8 @@ class GoalPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     target_cents: Cents | None = None
     deadline: date | None = None  # null remove o prazo
+    account_ids: list[UUID] | None = None
+    pocket_ids: list[UUID] | None = None
 
 
 @router.patch("/goals/{goal_id}", response_model=GoalProgressOut)
@@ -116,11 +136,12 @@ async def patch(
     goal_id: UUID, body: GoalPatch, user: CurrentUser, session: Session
 ) -> dict[str, Any]:
     fields = body.model_dump(exclude_unset=True)
-    for k in ("name", "target_cents"):
+    for k in ("name", "target_cents", "account_ids", "pocket_ids"):
         if k in fields and fields[k] is None:
             del fields[k]
     goal = await update_goal(session, actor_id=user.id, goal_id=goal_id, fields=fields)
-    return row(goal) | _progress(await goal_progress(session, goal.id, today=local_today(user.tz)))
+    prog = await goal_progress(session, goal.id, today=local_today(user.tz))
+    return row(goal) | await _links(session, goal.id) | _progress(prog)
 
 
 @router.delete("/goals/{goal_id}", status_code=204)

@@ -9,13 +9,14 @@ const J = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status
 const routes: Record<string, (init: RequestInit) => Response> = {
   '/auth/refresh': () => J({ access_token: 't' }),
   '/spaces': () => J([{ id: SP, type: 'personal', name: 'x' }]),
-  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank' }]),
+  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank', balance_cents: 100000, pockets_cents: 0, available_cents: 100000 }]),
   [`/spaces/${SP}/bills`]: () => J([{ id: 'b1', space_id: SP, kind: 'bill', description: 'Aluguel', amount_cents: 150000, due_on: '2026-12-05', status: 'open', invoice_id: null }]),
   [`/spaces/${SP}/goals`]: () => J([]),
   '/channels': () => J([]),
   '/me': () => J({ id: 'u1', name: 'Ana', email: 'a@x.com', tz: 'America/Sao_Paulo', default_space_id: SP, preferred_channel: null, reminder_time: '09:00:00', weekly_digest: false, is_admin: false, totp_enabled: false }),
   [`/spaces/${SP}/categories`]: () => J([{ id: 'c1', space_id: SP, kind: 'expense', name: 'Mercado', icon: null, color: null }]),
   [`/spaces/${SP}/members`]: () => J([{ user_id: 'u1', name: 'Ana', role: 'owner', joined_at: '2026-11-01T00:00:00Z' }]),
+  '/cards/k1/panel': () => J({ invoice: null, limit_cents: null, used_cents: 0, available_cents: null, by_category: [], private_total_cents: 0, top: [], history: [] }),
   '/cards': () => J([{ id: 'k1', space_id: SP, name: 'Visa', closing_day: 5, due_day: 12, limit_cents: null, payment_account_id: null }]),
   [`/spaces/${SP}/card-purchases`]: () => J([1, 2].map((n) => ({ id: `p${n}`, invoice_id: `i${n}`, amount_cents: 5000, installment_number: n, installment_total: 2 })), 201),
   '/attachments/att1': () => new Response('x', { headers: { 'Content-Type': 'image/png' } }),
@@ -98,7 +99,7 @@ test('detalhe do lançamento: comprovante, edição e exclusão', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
   expect(await screen.findByAltText('Comprovante')).toHaveAttribute('src', 'blob:x')
   expect(calls.find(([u]) => u === '/attachments/att1')![1].headers).toMatchObject({ Authorization: 'Bearer t' })
-  await userEvent.click(screen.getByRole('button', { name: 'Editar lançamento' }))
+  expect(await screen.findByRole('dialog', { name: 'Editar lançamento' })).toBeInTheDocument()
   await userEvent.clear(screen.getByLabelText('Descrição (edição)'))
   await userEvent.type(screen.getByLabelText('Descrição (edição)'), 'Feira')
   await userEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
@@ -112,7 +113,6 @@ test('lançamento de cartão/parcelado: sem valor e data, com aviso', async () =
     go('/lancamentos')
     await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
     expect(await screen.findByRole('note')).toHaveTextContent('não podem ser editados')
-    await userEvent.click(screen.getByRole('button', { name: 'Editar lançamento' }))
     expect(screen.queryByLabelText('Valor (R$) (edição)')).toBeNull()
     expect(screen.queryByLabelText('Data (edição)')).toBeNull()
   } finally { txExtra = {} }
@@ -120,6 +120,7 @@ test('lançamento de cartão/parcelado: sem valor e data, com aviso', async () =
 
 test('compra parcelada mostra o impacto nas faturas', async () => {
   go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova compra no cartão' }))
   await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   await userEvent.type(screen.getByLabelText('Valor total (R$)'), '100,00')
   await userEvent.clear(screen.getByLabelText('Parcelas'))
@@ -157,6 +158,7 @@ test('edição de contas: só o dono vê o botão', async () => {
   go('/onboarding')
   await screen.findByText('Nubank', { exact: false })
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Editar conta' })).toBeNull())
+  routes[`/spaces/${SP}/members`] = () => J([{ user_id: 'u1', name: 'Ana', role: 'owner', joined_at: '2026-11-01T00:00:00Z' }])
 })
 
 test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
@@ -172,4 +174,388 @@ test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Gerar novo QR' }))
   expect(await screen.findByRole('button', { name: 'Desconectar número' })).toBeInTheDocument()
   await waitFor(() => expect(screen.queryByAltText('QR code para parear o WhatsApp')).toBeNull())
+})
+
+test('painel: passar o mouse numa categoria troca o centro da rosca', async () => {
+  go('/')
+  const centro = await screen.findByTestId('centro-rosca')
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+  await userEvent.hover(await screen.findByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Mercado')).toBeInTheDocument()
+  await userEvent.unhover(screen.getByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+})
+
+test('painel: seção mostra esqueleto enquanto carrega', async () => {
+  routes[`/spaces/${SP}/goals`] = () => new Promise(() => {}) as unknown as Response
+  go('/')
+  expect(await screen.findByLabelText('Carregando metas')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+test('painel: mapa de calor mostra o gasto de cada dia', async () => {
+  go('/')
+  const mapa = await screen.findByRole('img', { name: /Gastos por dia/ })
+  expect(within(mapa).getByLabelText('20/11: R$ 1.234,56')).toBeInTheDocument()
+})
+
+test('painel: meta batida ganha o selo', async () => {
+  routes[`/spaces/${SP}/goals`] = () => J([{ id: 'g1', name: 'Viagem', saved_cents: 100000, target_cents: 100000 }])
+  go('/')
+  expect(await screen.findByText('Meta batida')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+const FATURA = { id: 'i1', card_id: 'k1', closing_on: '2026-08-05', due_on: '2026-08-12', total_cents: 20000, paid_cents: 0, remaining_cents: 20000, status: 'open' }
+
+test('fatura antiga: marcar como paga antes do cadastro e desfazer', async () => {
+  routes['/cards/k1/invoices'] = () => J([FATURA])
+  let baixada = false
+  const estado = () => (baixada ? { ...FATURA, status: 'paid', remaining_cents: 0 } : FATURA)
+  routes['/invoices/i1'] = () => J({ ...estado(), statement: { items: [], private_total_cents: 0, total_cents: 20000 } })
+  routes['/invoices/i1/settle'] = (init) => { baixada = init.method === 'POST'; return J(estado()) }
+  go('/cartoes')
+  await userEvent.click(await screen.findByRole('button', { name: /Fatura 05\/08\/2026/ }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Marcar como paga (paga antes do cadastro)' }))
+  const post = calls.find(([u, i]) => u === '/invoices/i1/settle' && i.method === 'POST')
+  expect(post).toBeDefined()
+  expect(await screen.findByRole('button', { name: 'Desfazer baixa' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Desfazer baixa' }))
+  expect(calls.some(([u, i]) => u === '/invoices/i1/settle' && i.method === 'DELETE')).toBe(true)
+})
+
+test('fatura paga aparece com o status na lista', async () => {
+  routes['/cards/k1/invoices'] = () => J([{ ...FATURA, status: 'paid', remaining_cents: 0 }])
+  go('/cartoes')
+  expect(await screen.findByText('paga')).toBeInTheDocument()
+})
+
+test('metas: conta já ligada a outra meta fica desabilitada', async () => {
+  const base = { saved_cents: 0, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem', account_ids: ['a1'] }, { ...base, id: 'g2', name: 'Carro', account_ids: [] }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  go('/metas')
+  const carro = within((await screen.findByRole('heading', { name: 'Carro' })).closest('section')!)
+  expect(await carro.findByLabelText(/Nubank/)).toBeDisabled()
+  expect(carro.getByText(/já na meta Viagem/)).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+const INV = {
+  assets: [{ id: 'i1', name: 'Petrobras', kind: 'stock', ticker: 'PETR4', quantity: '10', avg_price_cents: 3800, price_cents: 3850, quote_date: '2026-01-15', day_change_bp: 131, contributed_cents: 38000, value_cents: 38500, profit_cents: 500, profit_bp: 131 }],
+  by_kind: [{ kind: 'stock', value_cents: 38500 }],
+  series: [{ on: '2026-01-14', value_cents: 38000, contributed_cents: 38000 }, { on: '2026-01-15', value_cents: 38500, contributed_cents: 38000 }],
+  contributed_cents: 38000, current_cents: 38500, profit_cents: 500, profit_bp: 131,
+}
+
+test('investimentos: mostra totais, rentabilidade e ativos', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  go('/investimentos')
+  expect(await screen.findByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+  expect(screen.getAllByText(/R\$ 385,00/).length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/\+1,31%/).length).toBeGreaterThan(0)
+})
+
+test('investimentos: aportar em ação envia quantidade e conta', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  routes['/investments/i1/buys'] = () => J({ id: 'm1' }, 201)
+  go('/investimentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Aportar em PETR4' }))
+  await userEvent.selectOptions(screen.getByLabelText('Conta'), 'a1')
+  await userEvent.type(screen.getByLabelText('Quantidade'), '10')
+  await userEvent.click(screen.getByRole('button', { name: 'Confirmar aporte' }))
+  const post = calls.find(([u]) => u === '/investments/i1/buys')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ account_id: 'a1', quantity: '10' })
+})
+
+test('investimentos: ativo recém-cadastrado aparece com o caminho para aportar', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J({
+    assets: [{ ...INV.assets[0], quantity: '0', avg_price_cents: null, contributed_cents: 0, value_cents: 0, profit_cents: 0, profit_bp: null }],
+    by_kind: [], series: [], contributed_cents: 0, current_cents: 0, profit_cents: 0, profit_bp: null,
+  })
+  go('/investimentos')
+  expect(await screen.findByText(/Sem aportes ainda/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+})
+
+const PANEL = {
+  invoice: { id: 'i1', card_id: 'k1', closing_on: '2026-12-05', due_on: '2026-12-12', total_cents: 50000, paid_cents: 0, remaining_cents: 50000, status: 'open' },
+  limit_cents: 200000, used_cents: 50000, available_cents: 150000,
+  by_category: [{ category_id: 'c1', total_cents: 50000 }], private_total_cents: 0,
+  top: [{ description: 'Supermercado', merchant: null, amount_cents: 30000, occurred_on: '2026-11-20' }],
+  history: [{ invoice_id: 'i1', closing_on: '2026-12-05', due_on: '2026-12-12', total_cents: 50000 }],
+}
+const tile = async () => within((await screen.findByRole('heading', { name: 'Visa' })).closest('section')!)
+
+test('cartões: um card por cartão com resumo, limite e painel', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([PANEL.invoice])
+  go('/cartoes')
+  const card = await tile()
+  expect(await card.findByText(/Disponível R\$ 1\.500,00/)).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Mercado')).toBeInTheDocument()
+  expect(card.getByText(/Supermercado/)).toBeInTheDocument()
+})
+
+test('cartões: cadastrar fatura pelo total envia mês e valor', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([PANEL.invoice])
+  routes['/cards/k1/invoice-totals'] = () => J(PANEL.invoice, 201)
+  go('/cartoes')
+  const card = await tile()
+  await userEvent.click(await card.findByRole('button', { name: 'Cadastrar fatura' }))
+  await userEvent.type(card.getByLabelText('Mês de fechamento'), '2026-08')
+  await userEvent.type(card.getByLabelText('Valor total (R$)'), '1234,56')
+  await userEvent.click(card.getByRole('button', { name: 'Salvar fatura' }))
+  const post = calls.find(([u]) => u === '/cards/k1/invoice-totals')!
+  expect(JSON.parse(post[1].body as string)).toEqual({ month: '2026-08', total_cents: 123456 })
+})
+
+test('cartões: nova compra no cartão', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([])
+  go('/cartoes')
+  const card = await tile()
+  await userEvent.click(await card.findByRole('button', { name: 'Nova compra' }))
+  await userEvent.type(card.getByLabelText('Valor (R$)'), '45,00')
+  await userEvent.click(card.getByRole('button', { name: 'Registrar compra' }))
+  const post = calls.find(([u]) => u === `/spaces/${SP}/card-purchases`)!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ card_id: 'k1', amount_cents: 4500, installments: 1 })
+})
+
+const ACC_PANEL = {
+  month: '2026-11-01', is_default: false, income_cents: 500000, expense_cents: 40000, transfer_net_cents: -20000, private_total_cents: 0,
+  by_category: [{ category_id: 'c1', total_cents: 40000 }],
+  recent: [{ occurred_on: '2026-11-08', type: 'transfer', description: 'p/ outra', merchant: null, amount_cents: -20000 }],
+  pockets: [{ id: 'p1', name: 'Reserva', balance_cents: 15000 }], goals: [{ id: 'g1', name: 'Viagem' }],
+}
+const accTile = async () => within((await screen.findByRole('heading', { name: 'Nubank' })).closest('section')!)
+
+test('contas: um card por conta com saldo e painel do mês', async () => {
+  routes['/accounts/a1/panel'] = () => J(ACC_PANEL)
+  go('/contas-bancarias')
+  const card = await accTile()
+  await userEvent.click(await card.findByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Mercado')).toBeInTheDocument()
+  expect(card.getByText(/Reserva/)).toBeInTheDocument()
+  expect(card.getByText(/Viagem/)).toBeInTheDocument()
+  expect(card.getByText(/R\$ 5\.000,00/)).toBeInTheDocument()
+})
+
+test('contas: tornar padrão chama a API', async () => {
+  routes['/accounts/a1/panel'] = () => J(ACC_PANEL)
+  routes[`/spaces/${SP}/default-account`] = () => new Response(null, { status: 204 })
+  go('/contas-bancarias')
+  const card = await accTile()
+  await userEvent.click(await card.findByRole('button', { name: 'Tornar padrão' }))
+  const put = calls.find(([u]) => u === `/spaces/${SP}/default-account`)!
+  expect(JSON.parse(put[1].body as string)).toEqual({ account_id: 'a1' })
+})
+
+test('caixinhas: um card por caixinha com painel de rendimento', async () => {
+  routes[`/spaces/${SP}/pockets`] = () => J([{ id: 'p1', space_id: SP, account_id: 'a1', name: 'Reserva', cdi_bp: 10000, balance_cents: 15000, pending_yield_cents: 0, month_yield_cents: 120, created_at: '2026-11-01T00:00:00Z', closed_at: null }])
+  routes['/cdi/latest'] = () => J({ on_date: '2026-11-24', daily_pct: '0.05', annual_pct: '14.90' })
+  routes['/pockets/p1/panel'] = () => J({ yield_by_month: [{ month: '2026-10-01', yield_cents: 70 }, { month: '2026-11-01', yield_cents: 120 }], goals: [{ id: 'g1', name: 'Viagem' }] })
+  routes['/pockets/p1/movements'] = () => J([{ id: 'm1', pocket_id: 'p1', kind: 'deposit', amount_cents: 15000, occurred_on: '2026-11-12', ref_date: null, created_at: '2026-11-12T00:00:00Z' }])
+  go('/caixinhas')
+  const card = within((await screen.findByRole('heading', { name: 'Reserva' })).closest('section')!)
+  expect(card.getByText('R$ 150,00')).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Viagem')).toBeInTheDocument()
+  expect(card.getByText(/Depósito/)).toBeInTheDocument()
+  expect(card.getByLabelText('11/26: R$ 1,20')).toBeInTheDocument()
+})
+
+test('metas: painel mostra a composição e o histórico de aportes', async () => {
+  const base = { saved_cents: 8000, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, account_ids: [], pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem' }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  routes['/goals/g1/panel'] = () => J({ total_cents: 58000, direct_cents: 8000, accounts: [{ id: 'a1', name: 'Ligada', balance_cents: 50000 }], pockets: [{ id: 'p1', name: 'Reserva', balance_cents: 20000, counted: false }], contributions: [{ occurred_on: '2026-11-10', direction: 'in', amount_cents: 10000 }] })
+  go('/metas')
+  const card = within((await screen.findByRole('heading', { name: 'Viagem' })).closest('section')!)
+  await userEvent.click(await card.findByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText(/Conta Ligada/)).toBeInTheDocument()
+  expect(card.getByText(/Reserva \(já na conta\)/)).toBeInTheDocument()
+  expect(card.getByText(/10\/11\/2026 Aporte/)).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+test('investimentos: painel do ativo lista as movimentações', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  routes['/investments/i1/panel'] = () => J({ movements: [{ id: 'm1', kind: 'buy', occurred_on: '2026-01-14', quantity: '10', unit_price_cents: 3800, amount_cents: 38000 }], series: [{ on: '2026-01-14', value_cents: 38000, contributed_cents: 38000 }, { on: '2026-01-15', value_cents: 38500, contributed_cents: 38000 }] })
+  go('/investimentos')
+  const card = within((await screen.findByRole('heading', { name: /Petrobras/ })).closest('section')!)
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText(/10 cotas a R\$ 38,00/)).toBeInTheDocument()
+  expect(card.getByRole('img', { name: 'Evolução de PETR4' })).toBeInTheDocument()
+})
+
+test('contas: nome do banco, saldo sem caixinhas e saldo negativo em destaque', async () => {
+  routes['/accounts'] = () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Principal', initial_balance_cents: 0, institution: 'nubank', balance_cents: 10000, pockets_cents: 15000, available_cents: -5000 }])
+  routes['/accounts/a1/panel'] = () => J({ month: '2026-11-01', is_default: false, income_cents: 0, expense_cents: 0, transfer_net_cents: 0, private_total_cents: 0, by_category: [], recent: [], pockets: [], goals: [] })
+  go('/contas-bancarias')
+  const card = within((await screen.findByRole('heading', { name: 'Principal' })).closest('section')!)
+  expect(card.getByText(/Nubank/)).toBeInTheDocument()
+  expect(card.getByText('-R$ 50,00')).toHaveClass('text-destructive')
+  expect(card.getByText(/Guardado em caixinhas \(fora do saldo\)/)).toBeInTheDocument()
+  expect(card.getByRole('note')).toHaveTextContent('Saldo negativo')
+  routes['/accounts'] = () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank', balance_cents: 100000, pockets_cents: 0, available_cents: 100000 }])
+})
+
+test('lançamento: abre em modal já em edição e fecha com Esc', async () => {
+  go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
+  expect(await screen.findByRole('dialog', { name: 'Editar lançamento' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Descrição (edição)')).toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('cartões: lançar crédito e fatura negativa em destaque', async () => {
+  const NEG = { ...PANEL, invoice: { ...PANEL.invoice, total_cents: -5000, remaining_cents: -5000 } }
+  routes['/cards/k1/panel'] = () => J(NEG)
+  routes['/cards/k1/invoices'] = () => J([NEG.invoice])
+  routes['/cards/k1/credits'] = () => J({ id: 't1' }, 201)
+  go('/cartoes')
+  const card = await tile()
+  expect(await card.findByText(/crédito a seu favor/)).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Lançar crédito' }))
+  await userEvent.type(card.getByLabelText('Valor do crédito (R$)'), '50,00')
+  await userEvent.click(card.getByRole('button', { name: 'Registrar crédito' }))
+  const post = calls.find(([u]) => u === '/cards/k1/credits')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ amount_cents: 5000 })
+})
+
+test('lançamentos: só os botões + na tela; o formulário abre em modal', async () => {
+  go('/lancamentos')
+  const novo = await screen.findByRole('button', { name: 'Novo lançamento' })
+  expect(screen.getByRole('button', { name: 'Nova transferência' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Nova compra no cartão' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('Valor (R$)')).toBeNull() // sem formulário solto na página
+  await userEvent.click(novo)
+  expect(await screen.findByRole('dialog', { name: 'Novo lançamento' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Valor (R$)')).toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('lançamentos: salvar um lançamento envia e fecha o modal', async () => {
+  routes['/spaces/s1/transactions'] = (init) => init.method !== 'POST' ? J([]) : J({ id: 't9', space_id: SP, type: 'expense', amount_cents: 4500, occurred_on: '2026-11-25', description: '', merchant: null, category_id: null, account_id: 'a1', counter_account_id: null, installment_total: null }, 201)
+  go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Novo lançamento' }))
+  await userEvent.type(await screen.findByLabelText('Valor (R$)'), '45,00')
+  await userEvent.selectOptions(screen.getByLabelText('Conta'), 'a1')
+  await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/transactions` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'expense', amount_cents: 4500, account_id: 'a1' })
+  delete routes['/spaces/s1/transactions']
+})
+
+const FIXO = { id: 'r1', space_id: SP, type: 'expense', description: 'Aluguel', amount_cents: 150000, account_id: 'a1', category_id: null, rule: { kind: 'monthly', day: 5, month: null, n: 1 }, starts_on: '2026-11-01', ends_on: null, active: true, next_due_on: '2026-12-05' }
+
+test('contas a pagar: fixas e recorrentes aparecem em cards com a conta', async () => {
+  routes[`/spaces/${SP}/recurring`] = () => J([FIXO])
+  routes[`/spaces/${SP}/bills`] = () => J([])
+  go('/contas')
+  const card = within((await screen.findByRole('heading', { name: 'Aluguel' })).closest('section')!)
+  expect(await card.findByText('Sai de Nubank')).toBeInTheDocument()
+  expect(card.getByText(/Próxima data: 05\/12\/2026/)).toBeInTheDocument()
+  expect(card.getByText(/fixo, sem término/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Nova conta ou receita' })).toBeInTheDocument()
+})
+
+async function abrirNovaConta() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova conta ou receita' }))
+  return within(await screen.findByRole('dialog', { name: 'Nova conta ou receita' }))
+}
+const setDate = async (el: HTMLElement, v: string) => { await userEvent.clear(el); await userEvent.type(el, v) }
+
+test('contas a pagar: despesa única vira conta a pagar avulsa', async () => {
+  routes[`/spaces/${SP}/bills`] = (init) => (init.method === 'POST' ? J({ id: 'b9' }, 201) : J([]))
+  routes[`/spaces/${SP}/recurring`] = () => J([])
+  go('/contas')
+  const dlg = await abrirNovaConta()
+  expect(dlg.queryByLabelText('Sai de')).toBeNull() // conta única não precisa de conta
+  await userEvent.type(dlg.getByLabelText('Descrição'), 'Dentista')
+  await userEvent.type(dlg.getByLabelText('Valor (R$)'), '300,00')
+  await setDate(dlg.getByLabelText('Vencimento'), '2026-12-10')
+  await userEvent.click(dlg.getByRole('button', { name: 'Salvar' }))
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/bills` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ description: 'Dentista', amount_cents: 30000, due_on: '2026-12-10' })
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  routes[`/spaces/${SP}/bills`] = () => J([])
+})
+
+test('contas a pagar: despesa que repete, sem término, é fixa e pede "Sai de"', async () => {
+  routes[`/spaces/${SP}/recurring`] = (init) => (init.method === 'POST' ? J(FIXO, 201) : J([]))
+  go('/contas')
+  const dlg = await abrirNovaConta()
+  await userEvent.selectOptions(dlg.getByLabelText('Repetição'), 'monthly')
+  expect(dlg.getByLabelText('Sai de')).toBeInTheDocument()
+  await userEvent.type(dlg.getByLabelText('Descrição'), 'Aluguel')
+  await userEvent.type(dlg.getByLabelText('Valor (R$)'), '1500,00')
+  await setDate(dlg.getByLabelText('Início'), '2026-12-05')
+  await userEvent.selectOptions(dlg.getByLabelText('Sai de'), 'a1')
+  await userEvent.click(dlg.getByRole('button', { name: 'Salvar' }))
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/recurring` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'expense', account_id: 'a1', starts_on: '2026-12-05', ends_on: null, rule: { kind: 'monthly', day: 5 } })
+})
+
+test('contas a pagar: receita com término é um período e pede "Entra em"', async () => {
+  routes[`/spaces/${SP}/recurring`] = (init) => (init.method === 'POST' ? J(FIXO, 201) : J([]))
+  go('/contas')
+  const dlg = await abrirNovaConta()
+  await userEvent.selectOptions(dlg.getByLabelText('Tipo'), 'income')
+  expect(dlg.getByLabelText('Entra em')).toBeInTheDocument()
+  await userEvent.selectOptions(dlg.getByLabelText('Repetição'), 'every_n_months')
+  await userEvent.clear(dlg.getByLabelText('A cada quantos meses'))
+  await userEvent.type(dlg.getByLabelText('A cada quantos meses'), '3')
+  await userEvent.type(dlg.getByLabelText('Descrição'), 'Aluguel recebido')
+  await userEvent.type(dlg.getByLabelText('Valor (R$)'), '900,00')
+  await setDate(dlg.getByLabelText('Início'), '2026-12-15')
+  await setDate(dlg.getByLabelText('Término (vazio = fixo)'), '2027-12-15')
+  await userEvent.selectOptions(dlg.getByLabelText('Entra em'), 'a1')
+  await userEvent.click(dlg.getByRole('button', { name: 'Salvar' }))
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/recurring` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'income', amount_cents: 90000, starts_on: '2026-12-15', ends_on: '2027-12-15', rule: { kind: 'every_n_months', day: 15, n: 3 } })
+})
+
+const mes = (m: string, extra: Record<string, number | null> = {}) => ({ month: m, income_fixed_cents: 500000, income_estimated_cents: 30000, expense_fixed_cents: 150000, expense_loans_cents: 80000, expense_cards_cents: 30000, expense_bills_cents: 10000, expense_estimated_cents: 60000, net_committed_cents: 230000, net_cents: 200000, projected_balance_committed_cents: 1230000, projected_balance_cents: 1200000, commitment_bp: 5400, ...extra })
+const PROJECOES = {
+  current_balance_cents: 1000000,
+  months: [mes('2026-11-01'), mes('2026-12-01', { projected_balance_cents: 1400000 })],
+  history: Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String(i === 11 ? 12 : i + 1).padStart(2, '0')}`, income_cents: 400000, expense_cents: 300000, net_cents: 100000, balance_cents: 900000 + i * 1000 })),
+  loans_ending: [{ loan_id: 'l1', name: 'Carro', kind: 'financing', last_due_on: '2027-11-10', installment_cents: 80000, remaining_count: 12 }],
+  averages: { estimated_income_cents: 30000, estimated_expense_cents: 60000, history_income_cents: 400000, history_expense_cents: 300000 },
+}
+
+test('projeções: resumo, tabela mês a mês e fim dos financiamentos', async () => {
+  routes[`/spaces/${SP}/projections`] = () => J(PROJECOES)
+  go('/projecoes')
+  expect(await screen.findByText(/Saldo atual: R\$ 10\.000,00/)).toBeInTheDocument()
+  expect(screen.getByText(/Carro: termina em 10\/11\/2027/)).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: /Receitas e despesas/ })).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: /Saldo real e saldo projetado/ })).toBeInTheDocument()
+  const tabela = within(screen.getByRole('table'))
+  expect(tabela.getAllByText('R$ 5.300,00').length).toBe(2) // receitas com estimativa, 2 meses
+  expect(screen.getByText(/Financiamentos e consórcios R\$ 1\.600,00/)).toBeInTheDocument()
+})
+
+test('projeções: esconder a estimativa muda os totais e o horizonte vai na API', async () => {
+  routes[`/spaces/${SP}/projections`] = () => J(PROJECOES)
+  go('/projecoes')
+  await screen.findByText(/Saldo atual/)
+  await userEvent.click(screen.getByRole('checkbox', { name: /estimativa de variáveis/ }))
+  expect(within(screen.getByRole('table')).getAllByText('R$ 5.000,00').length).toBe(2)
+  expect(screen.queryByText(/Variáveis \(estimado\)/)).toBeNull()
+  await userEvent.selectOptions(screen.getByLabelText('Horizonte'), '6')
+  await waitFor(() => expect(calls.some(([u]) => u === `/spaces/${SP}/projections?months=6`)).toBe(true))
+})
+
+test('/fixos antigo redireciona para Contas a pagar', async () => {
+  routes[`/spaces/${SP}/recurring`] = () => J([])
+  go('/fixos')
+  expect(await screen.findByRole('heading', { name: 'Contas a pagar' })).toBeInTheDocument()
 })

@@ -1,9 +1,9 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, select
+from sqlalchemy import case, exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,16 +79,29 @@ async def visible_invoice(
 
 
 async def invoice_total(session: AsyncSession, invoice_id: UUID) -> int:
-    """Soma das compras da fatura (inclui as de espaços privados para quem vê)."""
+    """Compras menos créditos/estornos da fatura (inclui os de espaços privados para quem vê).
+    Pode ser negativo (crédito a favor); pagamentos (transferências) não entram."""
+    signed = case((Transaction.type == "expense", Transaction.amount_cents),
+                  else_=-Transaction.amount_cents)  # fmt: skip
     total = await session.scalar(
-        select(func.coalesce(func.sum(Transaction.amount_cents), 0)).where(
-            Transaction.invoice_id == invoice_id, Transaction.type == "expense"
+        select(func.coalesce(func.sum(signed), 0)).where(
+            Transaction.invoice_id == invoice_id, Transaction.type.in_(("expense", "income"))
         )
     )
     return int(total or 0)
 
 
+async def _settled(session: AsyncSession, invoice_id: UUID) -> bool:
+    return bool(
+        await session.scalar(
+            select(Bill.settled_historical_at).where(Bill.invoice_id == invoice_id)
+        )
+    )
+
+
 async def invoice_remaining(session: AsyncSession, invoice_id: UUID) -> int:
+    if await _settled(session, invoice_id):  # baixa histórica: nada a pagar
+        return 0
     return await invoice_total(session, invoice_id) - await invoice_paid(session, invoice_id)
 
 
@@ -96,8 +109,9 @@ async def invoice_summary(session: AsyncSession, invoice: Invoice) -> dict[str, 
     total = await invoice_total(session, invoice.id)
     paid = await invoice_paid(session, invoice.id)
     bill = await session.scalar(select(Bill).where(Bill.invoice_id == invoice.id))
+    settled = bill is not None and bill.settled_historical_at is not None
     return {
-        "total_cents": total, "paid_cents": paid, "remaining_cents": total - paid,
+        "total_cents": total, "paid_cents": paid, "remaining_cents": 0 if settled else total - paid,
         "status": bill.status if bill else "open",
     }  # fmt: skip
 
@@ -138,9 +152,47 @@ async def sync_invoice_bill(session: AsyncSession, invoice: Invoice) -> None:
         .execution_options(populate_existing=True)
     )  # trava antes de somar: compras simultâneas não sobrescrevem o total com valor velho
     assert bill is not None
-    bill.amount_cents = await invoice_total(session, invoice.id)
+    bill.amount_cents = max(0, await invoice_total(session, invoice.id))  # crédito: nada a pagar
     bill.due_on = invoice.due_on
     await refresh_status(session, bill)
+
+
+async def _locked_invoice_bill(
+    session: AsyncSession, actor_id: UUID, invoice_id: UUID
+) -> tuple[Invoice, Bill]:
+    inv, _ = await visible_invoice(session, actor_id, invoice_id)  # 404 se não for membro
+    bill = await session.scalar(
+        select(Bill)
+        .where(Bill.invoice_id == inv.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    assert bill is not None
+    return inv, bill
+
+
+async def settle_invoice(session: AsyncSession, *, actor_id: UUID, invoice_id: UUID) -> Invoice:
+    """Baixa histórica: a fatura já estava paga antes do cadastro; sem lançamento. Idempotente."""
+    inv, bill = await _locked_invoice_bill(session, actor_id, invoice_id)
+    if bill.settled_historical_at is None:
+        if await invoice_paid(session, inv.id) > 0:
+            raise HTTPException(status_code=409, detail="invoice_paid_real")
+        bill.settled_historical_at = datetime.now(UTC)
+        bill.status = "paid"
+        audit(session, actor_id, "invoice.settle", "invoice", inv.id, {})
+        await session.commit()
+    return inv
+
+
+async def unsettle_invoice(session: AsyncSession, *, actor_id: UUID, invoice_id: UUID) -> Invoice:
+    """Desfaz a baixa histórica (volta a aberta). Idempotente."""
+    inv, bill = await _locked_invoice_bill(session, actor_id, invoice_id)
+    if bill.settled_historical_at is not None:
+        bill.settled_historical_at = None
+        await refresh_status(session, bill)
+        audit(session, actor_id, "invoice.unsettle", "invoice", inv.id, {})
+        await session.commit()
+    return inv
 
 
 async def register_card_purchase(
@@ -193,15 +245,60 @@ async def register_card_purchase(
     return txs
 
 
+async def register_card_credit(
+    session: AsyncSession, *, actor_id: UUID, card_id: UUID, amount_cents: int,
+    occurred_on: date, description: str = "",
+) -> Transaction:  # fmt: skip
+    """Estorno/crédito no cartão: abate a fatura do dia (pode deixá-la negativa)."""
+    card = await use_card(session, actor_id, card_id)
+    await check_common(
+        session, actor_id=actor_id, space_id=card.space_id, type="income",
+        amount_cents=amount_cents, category_id=None, occurred_on=occurred_on,
+    )  # fmt: skip
+    dates = invoice_dates_for_purchase(card.closing_day, card.due_day, occurred_on)
+    inv = await get_or_create_invoice(session, card, dates)
+    tx = Transaction(
+        space_id=card.space_id, type="income", amount_cents=amount_cents, occurred_on=occurred_on,
+        description=description or "Crédito no cartão", card_id=card.id, invoice_id=inv.id,
+        created_by=actor_id, origin="web",
+    )  # fmt: skip
+    session.add(tx)
+    await session.flush()
+    await sync_invoice_bill(session, inv)
+    audit(session, actor_id, "card.credit", "card", card.id,
+          {"space_id": str(card.space_id), "amount_cents": amount_cents})  # fmt: skip
+    await session.commit()
+    return tx
+
+
+async def register_invoice_total(
+    session: AsyncSession, *, actor_id: UUID, card_id: UUID, year: int, month: int,
+    total_cents: int,
+) -> Invoice:  # fmt: skip
+    """Fatura pelo total: uma compra "Fatura MM/AAAA" no dia do fechamento (compra no dia do
+    fechamento cai na fatura que fecha). `month` = mês de FECHAMENTO."""
+    card = await use_card(session, actor_id, card_id)
+    dates = invoice_dates_for_month(card.closing_day, card.due_day, year, month)
+    txs = await register_card_purchase(
+        session, actor_id=actor_id, space_id=card.space_id, card_id=card.id,
+        amount_cents=total_cents, occurred_on=dates.closing,
+        description=f"Fatura {month:02d}/{year}",
+    )  # fmt: skip
+    inv = await session.get(Invoice, txs[0].invoice_id)
+    assert inv is not None
+    return inv
+
+
 async def invoice_statement(session: AsyncSession, viewer_id: UUID, invoice_id: UUID) -> Statement:
     """Compras da fatura; as de espaços de que o visualizador não é membro viram agregado."""
     inv, _ = await visible_invoice(session, viewer_id, invoice_id)
     txs = await session.scalars(
         select(Transaction)
-        .where(Transaction.invoice_id == inv.id, Transaction.type == "expense")
+        .where(Transaction.invoice_id == inv.id, Transaction.type.in_(("expense", "income")))
         .order_by(Transaction.occurred_on, Transaction.created_at)
-    )
-    return await build_statement(session, viewer_id, [(t, t.amount_cents) for t in txs])
+    )  # crédito/estorno entra com sinal negativo
+    rows = [(t, t.amount_cents if t.type == "expense" else -t.amount_cents) for t in txs]
+    return await build_statement(session, viewer_id, rows)
 
 
 async def update_card(

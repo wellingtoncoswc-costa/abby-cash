@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -86,6 +87,21 @@ class PocketMovementOut(Out):
     created_at: datetime
 
 
+class PanelGoalOut(Out):
+    id: UUID
+    name: str
+
+
+class PocketYieldMonthOut(Out):
+    month: date
+    yield_cents: int
+
+
+class PocketPanelOut(Out):
+    yield_by_month: list[PocketYieldMonthOut]
+    goals: list[PanelGoalOut]
+
+
 class CdiLatestOut(Out):
     on_date: date
     daily_pct: str
@@ -139,6 +155,63 @@ class InvoiceOut(Out):
     paid_cents: int
     remaining_cents: int
     status: str
+
+
+class PanelCategoryOut(Out):
+    category_id: UUID | None
+    total_cents: int
+
+
+class PanelPurchaseOut(Out):
+    description: str
+    merchant: str | None
+    amount_cents: int
+    occurred_on: date
+
+
+class PanelInvoiceOut(Out):
+    invoice_id: UUID
+    closing_on: date
+    due_on: date
+    total_cents: int
+
+
+class CardPanelOut(Out):
+    invoice: InvoiceOut | None
+    limit_cents: int | None
+    used_cents: int
+    available_cents: int | None
+    by_category: list[PanelCategoryOut]
+    private_total_cents: int
+    top: list[PanelPurchaseOut]
+    history: list[PanelInvoiceOut]
+
+
+class AccountMoveOut(Out):
+    occurred_on: date
+    type: str
+    description: str
+    merchant: str | None
+    amount_cents: int
+
+
+class AccountPanelPocketOut(Out):
+    id: UUID
+    name: str
+    balance_cents: int
+
+
+class AccountPanelOut(Out):
+    month: date
+    is_default: bool
+    income_cents: int
+    expense_cents: int
+    transfer_net_cents: int
+    private_total_cents: int
+    by_category: list[PanelCategoryOut]
+    recent: list[AccountMoveOut]
+    pockets: list[AccountPanelPocketOut]
+    goals: list[PanelGoalOut]
 
 
 class InvoiceDetailOut(InvoiceOut):
@@ -195,9 +268,34 @@ class GoalOut(Out):
     name: str
     target_cents: int
     deadline: date | None
-    account_id: UUID | None
+    account_ids: list[UUID]
+    pocket_ids: list[UUID]
     created_on: date
     created_at: datetime
+
+
+class GoalPanelItemOut(Out):
+    id: UUID
+    name: str
+    balance_cents: int
+
+
+class GoalPanelPocketOut(GoalPanelItemOut):
+    counted: bool
+
+
+class GoalContributionOut(Out):
+    occurred_on: date
+    direction: str
+    amount_cents: int
+
+
+class GoalPanelOut(Out):
+    total_cents: int
+    direct_cents: int
+    accounts: list[GoalPanelItemOut]
+    pockets: list[GoalPanelPocketOut]
+    contributions: list[GoalContributionOut]
 
 
 class GoalProgressOut(GoalOut):
@@ -217,3 +315,23 @@ class BudgetOut(Out):
     limit_cents: int
     spent_cents: int
     categories: list[BudgetCategoryOut]
+
+
+class InvestmentMovementRowOut(Out):
+    id: UUID
+    kind: str
+    occurred_on: date
+    quantity: Decimal | None
+    unit_price_cents: int | None
+    amount_cents: int
+
+
+class InvestmentSeriesPointOut(Out):
+    on: date
+    value_cents: int
+    contributed_cents: int
+
+
+class InvestmentPanelOut(Out):
+    movements: list[InvestmentMovementRowOut]
+    series: list[InvestmentSeriesPointOut]

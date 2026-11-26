@@ -4,7 +4,7 @@ import { api, ApiError } from '../api/client'
 import type { Installment, Loan, S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useSend } from '../ui'
+import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useSend, Modal, PlusButton } from '../ui'
 
 const KIND: Record<string, string> = { financing: 'Financiamento', consortium: 'Consórcio' }
 const empty = { kind: 'financing', name: '', inst: '', total: '', first: '', paid: '0' }
@@ -119,12 +119,13 @@ function Installments({ loan }: { loan: Loan }) {
 export function Loans() {
   const { spaceId } = useSpace()
   const loans = useGet<Loan[]>(`/spaces/${spaceId}/loans`)
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState(empty)
   const cents = parseBRL(f.inst)
   const total = /^\d{1,3}$/.test(f.total) ? Number(f.total) : 0
   const paid = /^\d{1,3}$/.test(f.paid) ? Number(f.paid) : -1
   const ok = !!cents && total >= 1 && total <= 480 && !!f.first && paid >= 0 && paid <= total
-  const create = useSend(() => api('POST', `/spaces/${spaceId}/loans`, { kind: f.kind, name: f.name, installment_cents: cents!, installments_total: total, first_due_on: f.first, paid_installments: paid }), () => setF(empty))
+  const create = useSend(() => api('POST', `/spaces/${spaceId}/loans`, { kind: f.kind, name: f.name, installment_cents: cents!, installments_total: total, first_due_on: f.first, paid_installments: paid }), () => { setF(empty); setAdding(false) })
   const list = loans.data ?? []
   return (
     <>
@@ -147,7 +148,8 @@ export function Loans() {
           />
         </Card>
       ))}
-      <Card title="Cadastrar financiamento ou consórcio">
+      <div className="mb-4"><PlusButton label="Novo financiamento ou consórcio" caption="Financiamento" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Novo financiamento ou consórcio" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (ok) create.mutate() }}>
           <Field label="Tipo">
             <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
@@ -165,7 +167,7 @@ export function Loans() {
           <Err e={create.error} />
           <Btn type="submit" disabled={create.isPending || !ok}>Cadastrar</Btn>
         </form>
-      </Card>
+      </Modal>}
       <Err e={loans.error} />
     </>
   )

@@ -15,10 +15,13 @@ from app.api import (
     categories,
     channel_links,
     goals,
+    investments,
     loans,
     me,
     pockets,
     privacy,
+    projections,
+    recurring,
     reports,
     spaces,
     transactions,
@@ -41,7 +44,10 @@ app.include_router(bills.router)
 app.include_router(budgets.router)
 app.include_router(reports.router)
 app.include_router(goals.router)
+app.include_router(investments.router)
 app.include_router(pockets.router)
+app.include_router(projections.router)
+app.include_router(recurring.router)
 app.include_router(loans.router)
 app.include_router(categories.router)
 app.include_router(me.router)

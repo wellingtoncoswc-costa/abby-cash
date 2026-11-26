@@ -9,10 +9,11 @@ async def test_goal_flow_over_http(client, session):
     r = await client.post(
         f"/spaces/{sp}/goals", headers=h,
         json={"name": "Viagem", "target_cents": 120_000, "deadline": "2099-07-15",
-              "account_id": str(acc.id)},
+              "account_ids": [str(acc.id)]},
     )  # fmt: skip
     assert r.status_code == 201
     goal = r.json()
+    assert goal["account_ids"] == [str(acc.id)] and goal["pocket_ids"] == []
     assert goal["target_cents"] == 120_000 and goal["created_on"] == local_today(a.tz).isoformat()
     c = await client.post(
         f"/goals/{goal['id']}/contributions", headers=h,
@@ -21,7 +22,7 @@ async def test_goal_flow_over_http(client, session):
     assert c.status_code == 201
     assert (c.json()["type"], c.json()["goal_id"]) == ("transfer", goal["id"])
     got = (await client.get(f"/goals/{goal['id']}", headers=h)).json()
-    assert (got["saved_cents"], got["target_cents"]) == (25_000, 120_000)
+    assert (got["saved_cents"], got["target_cents"]) == (100_000, 120_000)
     assert isinstance(got["monthly_needed_cents"], int) and got["behind"] is False
     assert (await client.get(f"/accounts/{acc.id}", headers=h)).json()["balance_cents"] == 75_000
     w = await client.post(
@@ -30,7 +31,7 @@ async def test_goal_flow_over_http(client, session):
     )  # fmt: skip
     assert w.status_code == 201 and w.json()["counter_account_id"] == str(acc.id)
     listed = (await client.get(f"/spaces/{sp}/goals", headers=h)).json()
-    assert [(g["id"], g["saved_cents"]) for g in listed] == [(goal["id"], 20_000)]
+    assert [(g["id"], g["saved_cents"]) for g in listed] == [(goal["id"], 100_000)]
     over = await client.post(
         f"/goals/{goal['id']}/withdrawals", headers=h,
         json={"to_account_id": str(acc.id), "amount_cents": 20_001},
@@ -81,3 +82,48 @@ async def test_goal_edit_and_delete_are_owner_only(client, session):
         await client.patch(f"/goals/{gid}", headers=auth(a), json={"name": "X"})
     ).status_code == 200
     assert (await client.delete(f"/goals/{gid}", headers=auth(a))).status_code == 204
+
+
+async def test_goal_links_conflict_over_http(client, session):
+    a = await make_user(session, "a@x.com")
+    h, sp = auth(a), str(a.default_space_id)
+    acc = await make_account(session, a.default_space_id)
+    g1 = (
+        await client.post(
+            f"/spaces/{sp}/goals",
+            headers=h,
+            json={"name": "A", "target_cents": 1000, "account_ids": [str(acc.id)]},
+        )
+    ).json()
+    r = await client.post(
+        f"/spaces/{sp}/goals",
+        headers=h,
+        json={"name": "B", "target_cents": 1000, "account_ids": [str(acc.id)]},
+    )
+    assert r.status_code == 422 and r.json() == {"detail": "already_linked"}
+    p = await client.patch(f"/goals/{g1['id']}", headers=h, json={"account_ids": []})
+    assert p.status_code == 200 and p.json()["account_ids"] == []
+
+
+async def test_goal_panel_over_http(client, session):
+    a = await make_user(session, "gp@x.com")
+    h, sp = auth(a), str(a.default_space_id)
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    g = (
+        await client.post(
+            f"/spaces/{sp}/goals", headers=h, json={"name": "V", "target_cents": 50_000}
+        )
+    ).json()
+    await client.post(
+        f"/goals/{g['id']}/contributions",
+        headers=h,
+        json={"from_account_id": str(acc.id), "amount_cents": 5_000},
+    )
+    p = await client.get(f"/goals/{g['id']}/panel", headers=h)
+    assert p.status_code == 200 and p.json()["direct_cents"] == 5_000
+    assert [c["direction"] for c in p.json()["contributions"]] == ["in"]
+    other = await make_user(session, "gq@x.com")
+    assert (await client.get(f"/goals/{g['id']}/panel", headers=auth(other))).status_code in (
+        403,
+        404,
+    )

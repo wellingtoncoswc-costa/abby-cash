@@ -296,3 +296,77 @@ async def test_bill_status_matches_invoice_payments(session):
         bill = await session.scalar(select(Bill).where(Bill.invoice_id == buy.invoice_id))
         assert bill.status == status
     assert await invoice_paid(session, buy.invoice_id) == 10_000
+
+
+async def _past_invoice(session, a, card):
+    [tx] = await register_card_purchase(
+        session, actor_id=a.id, space_id=a.default_space_id, card_id=card.id,
+        amount_cents=30_000, occurred_on=date(2026, 8, 5),
+    )  # fmt: skip
+    return tx.invoice_id
+
+
+async def test_settle_invoice_historical_marks_paid_without_payment(session):
+    from app.domain.cards.service import invoice_remaining, invoice_summary, settle_invoice
+
+    a = await make_user(session, "a@x.com")
+    card = await make_card(session, a, a.default_space_id)
+    inv_id = await _past_invoice(session, a, card)
+    await settle_invoice(session, actor_id=a.id, invoice_id=inv_id)
+    inv = await session.get(Invoice, inv_id)
+    summary = await invoice_summary(session, inv)
+    assert (summary["status"], summary["remaining_cents"], summary["total_cents"]) == (
+        "paid", 0, 30_000,
+    )  # fmt: skip
+    assert await invoice_remaining(session, inv_id) == 0
+    await settle_invoice(session, actor_id=a.id, invoice_id=inv_id)  # idempotente
+
+
+async def test_unsettle_invoice_reopens_it(session):
+    from app.domain.cards.service import invoice_summary, settle_invoice, unsettle_invoice
+
+    a = await make_user(session, "a@x.com")
+    card = await make_card(session, a, a.default_space_id)
+    inv_id = await _past_invoice(session, a, card)
+    await settle_invoice(session, actor_id=a.id, invoice_id=inv_id)
+    await unsettle_invoice(session, actor_id=a.id, invoice_id=inv_id)
+    s = await invoice_summary(session, await session.get(Invoice, inv_id))
+    assert (s["status"], s["remaining_cents"]) == ("open", 30_000)
+
+
+async def test_settle_refused_after_a_real_payment_or_for_non_members(session):
+    from app.domain.cards.service import settle_invoice
+    from app.domain.payments import pay_invoice
+    from tests.factories import make_account
+
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    card = await make_card(session, a, a.default_space_id)
+    inv_id = await _past_invoice(session, a, card)
+    with pytest.raises(HTTPException) as e:
+        await settle_invoice(session, actor_id=b.id, invoice_id=inv_id)
+    assert e.value.status_code == 404
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    await pay_invoice(
+        session, actor_id=a.id, invoice_id=inv_id, account_id=acc.id, paid_on=date(2026, 9, 1),
+        amount_cents=10_000,
+    )  # fmt: skip
+    with pytest.raises(HTTPException) as e2:
+        await settle_invoice(session, actor_id=a.id, invoice_id=inv_id)
+    assert e2.value.status_code == 409
+
+
+async def test_settled_invoice_cannot_be_paid_again(session):
+    from app.domain.cards.service import settle_invoice
+    from app.domain.payments import pay_invoice
+    from tests.factories import make_account
+
+    a = await make_user(session, "a@x.com")
+    card = await make_card(session, a, a.default_space_id)
+    inv_id = await _past_invoice(session, a, card)
+    await settle_invoice(session, actor_id=a.id, invoice_id=inv_id)
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    with pytest.raises(DomainError):
+        await pay_invoice(
+            session, actor_id=a.id, invoice_id=inv_id, account_id=acc.id,
+            paid_on=date(2026, 9, 1), amount_cents=10_000,
+        )  # fmt: skip

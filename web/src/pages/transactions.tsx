@@ -4,7 +4,7 @@ import { api, ApiError, apiPage, fetchBlob } from '../api/client'
 import type { Card as CardT, Member, S, Tx } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, Modal, PlusButton, br, centsText, today, useAccounts, useAllAccounts, useCategories, useGet, useSend } from '../ui'
 import { TxList } from './dashboard'
 
 const PAGE = 20
@@ -28,20 +28,24 @@ function TransferDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
   const name = (id: string | null) => { const a = data.find((x) => x.id === id); return a ? label(a) : 'Conta' }
   const del = useSend(() => api('DELETE', `/transactions/${t.id}`), onClose)
   return (
-    <Card title="Detalhes da transferência">
+    <div>
       <p>Transferência · {name(t.account_id)} → {name(t.counter_account_id)} · {formatBRL(t.amount_cents)} · {br(t.occurred_on)}</p>
       {t.description && <p>{t.description}</p>}
       <p className="text-sm">Transferências não podem ser editadas. Exclua e lance de novo para corrigir.</p>
       <Err e={del.error} />
       <Btn type="button" className="mt-2 bg-destructive hover:bg-destructive/90" disabled={del.isPending} onClick={() => { if (confirm('Excluir transferência?')) del.mutate() }}>Excluir transferência</Btn>
       <button type="button" className="mt-2 ml-3 underline" onClick={onClose}>Fechar</button>
-    </Card>
+    </div>
   )
 }
 
 export function TxDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
-  if (t.type === 'transfer') return <TransferDetail t={t} onClose={onClose} />
-  return <ExpenseDetail t={t} onClose={onClose} />
+  const transfer = t.type === 'transfer'
+  return (
+    <Modal title={transfer ? 'Detalhes da transferência' : 'Editar lançamento'} onClose={onClose}>
+      {transfer ? <TransferDetail t={t} onClose={onClose} /> : <ExpenseDetail t={t} onClose={onClose} />}
+    </Modal>
+  )
 }
 
 function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
@@ -62,10 +66,11 @@ function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
     return Object.keys(body).length ? api('PATCH', `/transactions/${t.id}`, body) : Promise.resolve()
   }
   return (
-    <Card title="Detalhes do lançamento">
+    <div>
       <p>{t.description || t.merchant || 'Lançamento'} · {formatBRL(t.amount_cents)}{t.installment_total ? ` · parcela ${t.installment_number}/${t.installment_total}` : ''}</p>
       {locked && <p role="note" className="text-sm">Valor e data de compras no cartão ou parceladas não podem ser editados aqui (afetam a fatura). Exclua e lance de novo para corrigir.</p>}
       <EditBox
+        startOpen
         what="lançamento"
         fields={[
           ...(locked ? [] : [{ k: 'amount', label: 'Valor (R$) (edição)', v: init.amount }]),
@@ -80,11 +85,11 @@ function ExpenseDetail({ t, onClose }: { t: Tx; onClose: () => void }) {
       {t.installment_group_id && <p className="text-sm">Excluir apaga todas as parcelas.</p>}
       {t.attachment_id && <Receipt id={t.attachment_id} />}
       <button type="button" className="mt-2 block underline" onClick={onClose}>Fechar</button>
-    </Card>
+    </div>
   )
 }
 
-function TransferForm() {
+function TransferForm({ onDone }: { onDone: () => void }) {
   const { data: accounts, label } = useAllAccounts()
   const [f, setF] = useState({ from: '', to: '', amount: '', description: '', occurred_on: today() })
   const src = accounts.find((a) => a.id === f.from)
@@ -92,11 +97,11 @@ function TransferForm() {
   const over = !!src && src.pockets_cents > 0 && !!cents && cents > src.available_cents // sem caixinhas o saldo pode ficar negativo
   const send = useSend(
     () => api('POST', `/spaces/${src!.space_id}/transactions`, { type: 'transfer', amount_cents: cents!, description: f.description, account_id: f.from, counter_account_id: f.to, occurred_on: f.occurred_on } satisfies S['TransactionIn']),
-    () => setF({ ...f, amount: '', description: '' }),
+    () => { setF({ ...f, amount: '', description: '' }); onDone() },
   )
   const opts = (skip: string) => accounts.filter((a) => a.id !== skip).map((a) => <option key={a.id} value={a.id}>{label(a)}</option>)
   return (
-    <Card title="Transferir entre contas">
+    <>
       {accounts.length < 2 ? <p>Cadastre pelo menos duas contas para transferir.</p> : (
         <form onSubmit={(e) => { e.preventDefault(); send.reset(); if (cents && !over) send.mutate() }}>
           <Field label="Conta de origem"><select required value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, to: f.to === e.target.value ? '' : f.to })}><option value="">Selecione…</option>{opts('')}</select></Field>
@@ -112,7 +117,7 @@ function TransferForm() {
           {send.isSuccess && <p role="status" className="mt-2">Transferido.</p>}
         </form>
       )}
-    </Card>
+    </>
   )
 }
 
@@ -129,7 +134,7 @@ function PurchaseForm() {
   const r = buy.data
   const invoices = r ? new Set(r.map((t) => t.invoice_id)).size : 0
   return (
-    <Card title="Compra no cartão">
+    <>
       {mine.length === 0 ? <p>Cadastre um cartão primeiro.</p> : (
         <form onSubmit={(e) => { e.preventDefault(); if (cents) buy.mutate() }}>
           <Field label="Cartão"><select required value={f.card_id} onChange={(e) => setF({ ...f, card_id: e.target.value })}><option value="">Selecione…</option>{mine.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
@@ -138,12 +143,39 @@ function PurchaseForm() {
           <Field label="Descrição da compra"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
           <CategorySelect label="Categoria da compra" value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
           <Field label="Data da compra"><input type="date" required value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+          <p className="mb-2 text-sm text-muted-foreground">Compra antiga? Informe a data real: as parcelas já vencidas vão para as faturas passadas, que você marca como pagas em Cartões.</p>
           <Err e={buy.error} />
           <Btn type="submit" disabled={buy.isPending || !cents || !f.card_id}>Lançar compra</Btn>
         </form>
       )}
       {r && r.length > 0 && <p role="status" className="mt-2">Compra lançada em {r.length}x de {formatBRL(r[0].amount_cents)} (total {formatBRL(r.reduce((s, t) => s + t.amount_cents, 0))}), distribuída em {invoices} fatura(s).</p>}
-    </Card>
+    </>
+  )
+}
+
+function NewTxForm({ onDone }: { onDone: () => void }) {
+  const { spaceId } = useSpace()
+  const accounts = useAccounts()
+  const [f, setF] = useState({ type: 'expense' as S['TransactionIn']['type'], amount: '', description: '', account_id: '', category_id: '', occurred_on: today() })
+  const cents = parseBRL(f.amount)
+  const create = useSend(
+    () => api('POST', `/spaces/${spaceId}/transactions`, { type: f.type, amount_cents: cents!, description: f.description, account_id: f.account_id, category_id: f.category_id || null, occurred_on: f.occurred_on } satisfies S['TransactionIn']),
+    () => { setF({ ...f, amount: '', description: '' }); onDone() },
+  )
+  return (
+    <>
+    <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
+      <Field label="Tipo"><select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as typeof f.type })}><option value="expense">Despesa</option><option value="income">Receita</option></select></Field>
+      <Field label="Valor (R$)"><input inputMode="decimal" required placeholder="45,00" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+      <Field label="Descrição"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <CategorySelect value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
+      <Field label="Data"><input type="date" required value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+      <Field label="Conta"><AccountSelect accounts={accounts.data} value={f.account_id} onChange={(v) => setF({ ...f, account_id: v })} /></Field>
+      {f.amount && !cents && <p role="alert" className="text-sm text-destructive">Valor inválido.</p>}
+      <Err e={create.error} />
+      <Btn type="submit" disabled={create.isPending || !cents}>Salvar</Btn>
+    </form>
+    </>
   )
 }
 
@@ -156,16 +188,11 @@ export function Transactions() {
   const [flt, setFlt] = useState({ start: '', end: '', account_id: '', category_id: '', card_id: '', created_by: '' })
   const [page, setPage] = useState(0)
   const [sel, setSel] = useState<Tx | null>(null)
+  const [modal, setModal] = useState<'tx' | 'transfer' | 'purchase' | null>(null)
   const qs = new URLSearchParams(Object.entries(flt).filter(([, v]) => v)).toString()
   const path = `/spaces/${spaceId}/transactions?limit=${PAGE}&offset=${page * PAGE}${qs ? `&${qs}` : ''}`
   const list = useQuery({ queryKey: [path], queryFn: () => apiPage<Tx>(path) })
   const setF2 = (k: keyof typeof flt, v: string) => { setFlt({ ...flt, [k]: v }); setPage(0) }
-  const [f, setF] = useState({ type: 'expense' as S['TransactionIn']['type'], amount: '', description: '', account_id: '', category_id: '', occurred_on: today() })
-  const cents = parseBRL(f.amount)
-  const create = useSend(
-    () => api('POST', `/spaces/${spaceId}/transactions`, { type: f.type, amount_cents: cents!, description: f.description, account_id: f.account_id, category_id: f.category_id || null, occurred_on: f.occurred_on } satisfies S['TransactionIn']),
-    () => setF({ ...f, amount: '', description: '' }),
-  )
   const total = list.data?.total ?? 0
   const items = list.data?.items ?? []
   const sf = (k: keyof typeof flt, label: string, opts: [string, string][], all = 'Todos') => (
@@ -174,21 +201,14 @@ export function Transactions() {
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Lançamentos</h1>
-      <Card title="Novo lançamento">
-        <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
-          <Field label="Tipo"><select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as typeof f.type })}><option value="expense">Despesa</option><option value="income">Receita</option></select></Field>
-          <Field label="Valor (R$)"><input inputMode="decimal" required placeholder="45,00" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
-          <Field label="Descrição"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
-          <CategorySelect value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
-          <Field label="Data"><input type="date" required value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
-          <Field label="Conta"><AccountSelect accounts={accounts.data} value={f.account_id} onChange={(v) => setF({ ...f, account_id: v })} /></Field>
-          {f.amount && !cents && <p role="alert" className="text-sm text-destructive">Valor inválido.</p>}
-          <Err e={create.error} />
-          <Btn type="submit" disabled={create.isPending || !cents}>Salvar</Btn>
-        </form>
-      </Card>
-      <TransferForm />
-      <PurchaseForm />
+      <div className="mb-4 flex gap-3" role="group" aria-label="Novo registro">
+        {([['tx', 'Novo lançamento', 'Lançamento'], ['transfer', 'Nova transferência', 'Transferência'], ['purchase', 'Nova compra no cartão', 'Compra no cartão']] as const).map(([k, label, caption]) => (
+          <PlusButton key={k} label={label} caption={caption} onClick={() => setModal(k)} />
+        ))}
+      </div>
+      {modal === 'tx' && <Modal title="Novo lançamento" onClose={() => setModal(null)}><NewTxForm onDone={() => setModal(null)} /></Modal>}
+      {modal === 'transfer' && <Modal title="Nova transferência" onClose={() => setModal(null)}><TransferForm onDone={() => setModal(null)} /></Modal>}
+      {modal === 'purchase' && <Modal title="Nova compra no cartão" onClose={() => setModal(null)}><PurchaseForm /></Modal>}
       <Card title="Filtros">
         <div className="grid grid-cols-2 gap-2">
           <Field label="De"><input type="date" value={flt.start} onChange={(e) => setF2('start', e.target.value)} /></Field>

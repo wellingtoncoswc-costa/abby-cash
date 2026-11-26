@@ -65,8 +65,10 @@ async def create_transaction(
         from app.domain.pockets.service import account_pockets_cents  # evita import circular
 
         await session.refresh(source, with_for_update=True)  # serializa saídas da mesma conta
-        if (pockets := await account_pockets_cents(session, account_id)) > 0 and (
-            amount_cents > await account_balance(session, account_id) - pockets
+        if (
+            not (source.opened_on and occurred_on < source.opened_on)  # histórico não mexe no saldo
+            and (pockets := await account_pockets_cents(session, account_id)) > 0
+            and amount_cents > await account_balance(session, account_id) - pockets
         ):  # só com dinheiro em caixinhas; sem elas o saldo pode ficar negativo
             raise HTTPException(status_code=409, detail="insufficient_available")
     elif counter_account_id is not None:
@@ -98,9 +100,10 @@ async def account_balance(session: AsyncSession, account_id: UUID) -> int:
         raise DomainError("account_not_found")
     rows = await session.scalars(
         select(Transaction).where(
-            or_(Transaction.account_id == account_id, Transaction.counter_account_id == account_id)
+            or_(Transaction.account_id == account_id, Transaction.counter_account_id == account_id),
+            *([Transaction.occurred_on >= acc.opened_on] if acc.opened_on else []),
         )
-    )
+    )  # antes da abertura da conta o lançamento já está dentro do saldo inicial
     # ponytail: soma em Python; usar SUM(CASE ...) no SQL se passar de ~10k lançamentos
     return acc.initial_balance_cents + sum(signed(t, account_id) for t in rows)
 

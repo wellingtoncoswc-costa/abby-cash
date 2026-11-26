@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Integer, case, cast, extract, func, select
+from sqlalchemy import Integer, case, cast, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dates import add_months
@@ -24,7 +24,9 @@ EXPENSE_ONLY = T.type == "expense"
 def _q(space_id: UUID, f: Filters, start: date, end: date, *cols: Any) -> Any:
     """Despesas e receitas do espaço pela data efetiva (mesma regra do teto), com os filtros."""
     q = _filtered(space_id, replace(f, start=start, end=end, effective=True, type=f.type))
-    return q.where(T.type.in_(("expense", "income"))).with_only_columns(
+    # crédito/estorno no cartão (receita com card_id) não é receita: fica fora dos totais
+    credit = (T.type == "income") & T.card_id.is_not(None)
+    return q.where(T.type.in_(("expense", "income")), ~credit).with_only_columns(
         *cols, maintain_column_froms=True
     )
 
@@ -56,13 +58,20 @@ async def balance_series(
     out_ = case((T.type == "income", T.amount_cents), else_=-T.amount_cents)  # + receita, − o resto
     stmt = (
         select(m.label("m"), func.sum(out_))
-        .where(T.account_id.in_(mine), T.occurred_on < add_months(months[-1], 1))
+        .join(Account, Account.id == T.account_id)
+        .where(
+            T.account_id.in_(mine),
+            T.occurred_on < add_months(months[-1], 1),
+            or_(Account.opened_on.is_(None), T.occurred_on >= Account.opened_on),
+        )
         .group_by(m)
     )
     into = (
         select(m.label("m"), func.sum(T.amount_cents))
+        .join(Account, Account.id == T.counter_account_id)
         .where(T.type == "transfer", T.counter_account_id.in_(mine),
-               T.occurred_on < add_months(months[-1], 1))
+               T.occurred_on < add_months(months[-1], 1),
+               or_(Account.opened_on.is_(None), T.occurred_on >= Account.opened_on))
         .group_by(m)
     )  # fmt: skip
     delta: dict[date, int] = {}

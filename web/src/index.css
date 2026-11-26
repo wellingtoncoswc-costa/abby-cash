@@ -140,7 +140,7 @@
 }
 
 @layer base {
-  input, select { @apply w-full rounded-md border border-input bg-card px-3 py-2 text-base; }
+  input:not([type=checkbox]):not([type=radio]), select { @apply w-full rounded-md border border-input bg-card px-3 py-2 text-base; }
   label { @apply block text-sm font-medium; }
   a { @apply text-primary; }
 }
@@ -161,6 +161,13 @@
   input[type=checkbox], input[type=radio] { accent-color: var(--primary); }
 }
 
+@keyframes destaque { from { background-color: color-mix(in oklab, var(--luz) 30%, transparent); } to { background-color: transparent; } }
+@keyframes brilho { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--luz) 60%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+.brilho > span:first-child { animation: brilho 1.4s ease-out 2; }
+.novo { animation: destaque 1.8s ease-out; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
+
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

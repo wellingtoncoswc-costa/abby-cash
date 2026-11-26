@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { api, ApiError } from './api/client'
 import { spaceLabel, useSpace } from './space'
@@ -52,6 +53,13 @@ export const Field = ({ label, children }: { label: string; children: ReactNode 
     <span className="mb-1 block">{label}</span>
     {children}
   </label>
+)
+
+/** Espaço reservado enquanto a seção carrega (some sozinho quando os dados chegam). */
+export const Esqueleto = ({ rotulo, linhas = 3 }: { rotulo: string; linhas?: number }) => (
+  <div role="status" aria-label={`Carregando ${rotulo}`} className="grid gap-2">
+    {Array.from({ length: linhas }, (_, i) => <div key={i} className="h-5 animate-pulse rounded-md bg-muted" style={{ width: `${100 - i * 12}%` }} />)}
+  </div>
 )
 
 export const Bar = ({ value, max }: { value: number; max: number }) => {
@@ -145,8 +153,8 @@ export const br = (d: string) => d.split('-').reverse().join('/')
 
 type EF = { k: string; label: string; v: string; type?: string; options?: [string, string][] }
 /** Editar/excluir inline: campos em texto; o chamador converte em `save`. */
-export function EditBox({ fields, save, remove, what, canEdit = true }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string; canEdit?: boolean }) {
-  const [open, setOpen] = useState(false)
+export function EditBox({ fields, save, remove, what, canEdit = true, startOpen = false }: { fields: EF[]; save: (v: Record<string, string>) => Promise<unknown>; remove: () => Promise<unknown>; what: string; canEdit?: boolean; startOpen?: boolean }) {
+  const [open, setOpen] = useState(startOpen)
   const [v, setV] = useState(() => Object.fromEntries(fields.map((f) => [f.k, f.v])))
   const sv = useSend(() => save(v), () => setOpen(false))
   const del = useSend(remove)
@@ -170,3 +178,33 @@ export function EditBox({ fields, save, remove, what, canEdit = true }: { fields
 
 /** Centavos -> "1234,56" (campo de edição). */
 export const centsText = (c: number) => `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)},${String(Math.abs(c) % 100).padStart(2, '0')}`
+
+/** Janela modal: fecha com Esc, clique no fundo ou no botão Fechar; o foco entra no diálogo. */
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="my-8 w-full max-w-lg rounded-2xl border border-border bg-card p-4 shadow-xl md:p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <button type="button" aria-label="Fechar" className="rounded-md px-2 py-1 text-lg leading-none" onClick={onClose}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/** Botão redondo com "+" e uma legenda curta; o formulário de cadastro abre num Modal. */
+export const PlusButton = ({ label, caption, onClick }: { label: string; caption?: string; onClick: () => void }) => (
+  <button type="button" aria-label={label} title={label} onClick={onClick} className="group flex w-24 flex-col items-center gap-1 text-center">
+    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm group-hover:bg-primary/90">
+      <Plus aria-hidden="true" />
+    </span>
+    <span aria-hidden="true" className="text-xs leading-tight">{caption ?? label}</span>
+  </button>
+)

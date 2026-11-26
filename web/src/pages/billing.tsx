@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { Bill, Card as CardT, Invoice, S, Statement } from '../api/types'
+import type { Bill, Card as CardT, CardPanel, Invoice, S, Statement } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, EditBox, Err, Field, br, centsText, today, useAccounts, useGet, useIsOwner, useSend } from '../ui'
+import { RecurringSection } from './recurring'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useCatName, useCategories, useGet, useIsOwner, useSend, Modal, PlusButton } from '../ui'
 
 /** Formulário de pagamento: conta de origem obrigatória; valor vazio = o que falta (só contas). */
 function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultCents?: number; requireAmount?: boolean }) {
@@ -23,29 +24,58 @@ function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultC
   )
 }
 
+const REPEAT: Record<string, string> = { none: 'Única (não repete)', monthly: 'Mensal', yearly: 'Anual', every_n_months: 'A cada N meses' }
+
+/** Conta única (bill) ou fixa/receita (recurring): sem término = fixo; com término = período. */
+function NewEntry({ onDone }: { onDone: () => void }) {
+  const { spaceId } = useSpace()
+  const accounts = useAccounts()
+  const cats = useCategories()
+  const [f, setF] = useState({ type: 'expense', description: '', amount: '', repeat: 'none', n: '2', account_id: '', category_id: '', start: today(), end: '' })
+  const set = (k: keyof typeof f, v: string) => setF({ ...f, [k]: v })
+  const cents = parseBRL(f.amount)
+  const single = f.type === 'expense' && f.repeat === 'none' // vira conta a pagar avulsa
+  const needsAccount = !single
+  const body = single
+    ? { description: f.description, amount_cents: cents!, due_on: f.start, category_id: f.category_id || null }
+    : {
+        type: f.type, description: f.description, amount_cents: cents!, account_id: f.account_id, category_id: f.category_id || null,
+        rule: { kind: f.repeat === 'none' ? 'monthly' : f.repeat, day: Number(f.start.slice(8, 10)), ...(f.repeat === 'yearly' ? { month: Number(f.start.slice(5, 7)) } : {}), ...(f.repeat === 'every_n_months' ? { n: Number(f.n) } : {}) },
+        starts_on: f.start, ends_on: f.repeat === 'none' ? f.start : f.end || null,
+      }
+  const send = useSend(() => api('POST', `/spaces/${spaceId}/${single ? 'bills' : 'recurring'}`, body), onDone)
+  const ok = !!cents && (!needsAccount || !!f.account_id)
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (ok) send.mutate() }}>
+      <Field label="Tipo"><select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value, category_id: '' })}><option value="expense">Despesa</option><option value="income">Receita</option></select></Field>
+      <Field label="Descrição"><input required maxLength={200} value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
+      <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => set('amount', e.target.value)} /></Field>
+      <Field label="Repetição"><select value={f.repeat} onChange={(e) => set('repeat', e.target.value)}>{Object.entries(REPEAT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+      {f.repeat === 'every_n_months' && <Field label="A cada quantos meses"><input type="number" min={1} max={120} required value={f.n} onChange={(e) => set('n', e.target.value)} /></Field>}
+      <div className="grid grid-cols-2 gap-2">
+        <Field label={f.repeat === 'none' ? 'Vencimento' : 'Início'}><input type="date" required value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
+        {f.repeat !== 'none' && <Field label="Término (vazio = fixo)"><input type="date" value={f.end} onChange={(e) => set('end', e.target.value)} /></Field>}
+      </div>
+      {needsAccount && <Field label={f.type === 'income' ? 'Entra em' : 'Sai de'}><AccountSelect accounts={accounts.data} value={f.account_id} onChange={(v) => set('account_id', v)} /></Field>}
+      <Field label="Categoria"><select value={f.category_id} onChange={(e) => set('category_id', e.target.value)}><option value="">Sem categoria</option>{cats.data.filter((c) => c.kind === f.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+      <p className="mb-2 text-sm text-muted-foreground">{single ? 'Conta única: fica em aberto até você pagar.' : 'Fixas e receitas são lançadas sozinhas na conta, no dia.'}</p>
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !ok}>Salvar</Btn>
+    </form>
+  )
+}
+
 export function Billing() {
   const { spaceId } = useSpace()
   const bills = useGet<Bill[]>(`/spaces/${spaceId}/bills`)
   const [open, setOpen] = useState<string | null>(null)
-  const [f, setF] = useState({ description: '', amount: '', due_on: today() })
-  const cents = parseBRL(f.amount)
-  const create = useSend(
-    () => api('POST', `/spaces/${spaceId}/bills`, { description: f.description, amount_cents: cents!, due_on: f.due_on } satisfies S['BillIn']),
-    () => setF({ ...f, description: '', amount: '' }),
-  )
+  const [adding, setAdding] = useState(false)
   const label: Record<string, string> = { open: 'Em aberto', partial: 'Parcial', paid: 'Paga' }
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Contas a pagar</h1>
-      <Card title="Nova conta">
-        <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
-          <Field label="Descrição"><input required maxLength={200} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
-          <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
-          <Field label="Vencimento"><input type="date" required value={f.due_on} onChange={(e) => setF({ ...f, due_on: e.target.value })} /></Field>
-          <Err e={create.error} />
-          <Btn type="submit" disabled={create.isPending || !cents}>Adicionar</Btn>
-        </form>
-      </Card>
+      <div className="mb-4"><PlusButton label="Nova conta ou receita" caption="Conta ou receita" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova conta ou receita" onClose={() => setAdding(false)}><NewEntry onDone={() => setAdding(false)} /></Modal>}
       <Card>
         {(bills.data ?? []).length === 0 ? <p>Nenhuma conta cadastrada.</p> : (
           <ul className="divide-y divide-border">
@@ -60,21 +90,151 @@ export function Billing() {
         )}
         <Err e={bills.error} />
       </Card>
+      <RecurringSection />
     </>
   )
 }
 
 function InvoiceView({ id }: { id: string }) {
   const inv = useGet<Invoice & { statement: Statement }>(`/invoices/${id}`)
+  const settle = useSend((on: boolean) => api(on ? 'POST' : 'DELETE', `/invoices/${id}/settle`))
   if (!inv.data) return <p>Carregando…</p>
   const { statement: st } = inv.data
+  const baixa = inv.data.status === 'paid' && inv.data.paid_cents === 0 && inv.data.total_cents > 0 // sem pagamento real: veio da baixa histórica
   return (
     <div>
       <p>Total {formatBRL(inv.data.total_cents)} · pago {formatBRL(inv.data.paid_cents)} · restante {formatBRL(inv.data.remaining_cents)}</p>
       <ul>{st.items.map((i) => <li key={i.id} className="flex justify-between"><span>{br(i.occurred_on)} {i.description || i.merchant}</span><span>{formatBRL(i.amount_cents)}</span></li>)}</ul>
       {st.private_total_cents !== 0 && <p className="flex justify-between font-medium"><span>Outros lançamentos (privados)</span><span>{formatBRL(st.private_total_cents)}</span></p>}
+      {baixa && <Btn type="button" disabled={settle.isPending} onClick={() => settle.mutate(false)}>Desfazer baixa</Btn>}
+      {!baixa && inv.data.paid_cents === 0 && inv.data.total_cents > 0 && <Btn type="button" disabled={settle.isPending} onClick={() => settle.mutate(true)}>Marcar como paga (paga antes do cadastro)</Btn>}
+      <Err e={settle.error} />
       {inv.data.remaining_cents > 0 && <PayForm path={`/invoices/${id}/payments`} defaultCents={inv.data.remaining_cents} requireAmount />}
     </div>
+  )
+}
+
+const pctOf = (v: number, max: number) => (max > 0 ? Math.round((v / max) * 100) : 0)
+
+function CardPanelView({ card, invoiceId, onPick }: { card: CardT; invoiceId: string | null; onPick: (id: string) => void }) {
+  const p = useGet<CardPanel>(`/cards/${card.id}/panel${invoiceId ? `?invoice=${invoiceId}` : ''}`)
+  const catName = useCatName()
+  if (!p.data) return <p>Carregando…</p>
+  const d = p.data
+  const maxCat = Math.max(1, ...d.by_category.map((c) => c.total_cents))
+  const maxH = Math.max(1, ...d.history.map((h) => h.total_cents))
+  return (
+    <div className="mt-2">
+      <h3 className="font-semibold">Gastos por categoria{d.invoice ? ` · fatura ${br(d.invoice.closing_on)}` : ''}</h3>
+      {d.by_category.length === 0 && <p>Sem compras nesta fatura.</p>}
+      <ul>{d.by_category.map((c) => (
+        <li key={c.category_id ?? 'none'}>
+          <div className="flex justify-between"><span>{catName(c.category_id)}</span><span>{formatBRL(c.total_cents)}</span></div>
+          <div className="h-2 rounded bg-muted"><div className="h-2 rounded bg-primary" style={{ width: `${pctOf(c.total_cents, maxCat)}%` }} /></div>
+        </li>
+      ))}</ul>
+      {d.private_total_cents !== 0 && <p>Outros lançamentos (privados): {formatBRL(d.private_total_cents)}</p>}
+      <h3 className="mt-3 font-semibold">Últimas faturas</h3>
+      <div className="flex items-end gap-2" role="group" aria-label="Últimas faturas">
+        {d.history.map((h) => (
+          <button key={h.invoice_id} type="button" aria-label={`Fatura ${br(h.closing_on)}: ${formatBRL(h.total_cents)}`} aria-pressed={d.invoice?.id === h.invoice_id}
+            className="flex flex-col items-center text-xs" onClick={() => onPick(h.invoice_id)}>
+            <span className="w-8 rounded-t bg-primary" style={{ height: `${Math.max(4, pctOf(h.total_cents, maxH) * 0.8)}px` }} />
+            <span>{h.closing_on.slice(5, 7)}/{h.closing_on.slice(2, 4)}</span>
+          </button>
+        ))}
+      </div>
+      <h3 className="mt-3 font-semibold">Maiores compras</h3>
+      <ul>{d.top.map((t, i) => <li key={i} className="flex justify-between"><span>{br(t.occurred_on)} {t.description || t.merchant}</span><span>{formatBRL(t.amount_cents)}</span></li>)}</ul>
+    </div>
+  )
+}
+
+function PurchaseForm({ card, done }: { card: CardT; done: () => void }) {
+  const [f, setF] = useState({ amount: '', installments: '1', description: '', category_id: '', occurred_on: today() })
+  const cents = parseBRL(f.amount)
+  const send = useSend(
+    () => api('POST', `/spaces/${card.space_id}/card-purchases`, { card_id: card.id, amount_cents: cents!, installments: Number(f.installments), description: f.description, category_id: f.category_id || null, occurred_on: f.occurred_on } satisfies S['PurchaseIn']),
+    done,
+  )
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (cents) send.mutate() }}>
+      <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+      <Field label="Parcelas"><input type="number" min={1} max={48} value={f.installments} onChange={(e) => setF({ ...f, installments: e.target.value })} /></Field>
+      <Field label="Data"><input type="date" value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+      <Field label="Descrição"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <CategorySelect value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !cents}>Registrar compra</Btn>
+    </form>
+  )
+}
+
+function CreditForm({ card, done }: { card: CardT; done: () => void }) {
+  const [f, setF] = useState({ amount: '', description: '', occurred_on: today() })
+  const cents = parseBRL(f.amount)
+  const send = useSend(() => api('POST', `/cards/${card.id}/credits`, { amount_cents: cents!, description: f.description, occurred_on: f.occurred_on }), done)
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (cents) send.mutate() }}>
+      <Field label="Valor do crédito (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+      <Field label="Data"><input type="date" value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+      <Field label="Descrição (ex.: estorno)"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !cents}>Registrar crédito</Btn>
+    </form>
+  )
+}
+
+function InvoiceTotalForm({ card, done }: { card: CardT; done: () => void }) {
+  const [f, setF] = useState({ month: '', total: '' })
+  const cents = parseBRL(f.total)
+  const send = useSend(() => api('POST', `/cards/${card.id}/invoice-totals`, { month: f.month, total_cents: cents! }), done)
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (cents && f.month) send.mutate() }}>
+      <Field label="Mês de fechamento"><input type="month" required value={f.month} onChange={(e) => setF({ ...f, month: e.target.value })} /></Field>
+      <Field label="Valor total (R$)"><input inputMode="decimal" required value={f.total} onChange={(e) => setF({ ...f, total: e.target.value })} /></Field>
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !cents || !f.month}>Salvar fatura</Btn>
+    </form>
+  )
+}
+
+function CardTile({ c, owner }: { c: CardT; owner: boolean }) {
+  const [open, setOpen] = useState<'purchase' | 'credit' | 'invoice' | 'panel' | null>(null)
+  const [pick, setPick] = useState<string | null>(null)
+  const [invId, setInvId] = useState<string | null>(null)
+  const sum = useGet<CardPanel>(`/cards/${c.id}/panel`)
+  const invoices = useGet<Invoice[]>(`/cards/${c.id}/invoices`)
+  const toggle = (k: 'purchase' | 'credit' | 'invoice' | 'panel') => setOpen(open === k ? null : k)
+  const cur = sum.data?.invoice
+  return (
+    <Card title={c.name}>
+      <p>Fecha dia {c.closing_day} · vence dia {c.due_day}</p>
+      {cur && <p>Fatura atual <span className={cur.total_cents < 0 ? 'text-destructive' : ''}>{formatBRL(cur.total_cents)}</span>{cur.total_cents < 0 ? ' (crédito a seu favor)' : ` · vence ${br(cur.due_on)}`}{cur.status === 'paid' ? ' · paga' : ''}</p>}
+      {sum.data?.limit_cents != null && <p>Limite {formatBRL(sum.data.limit_cents)} · usado {formatBRL(sum.data.used_cents)} · Disponível {formatBRL(sum.data.available_cents ?? 0)}</p>}
+      <div className="my-2 flex flex-wrap gap-2">
+        <Btn type="button" onClick={() => toggle('purchase')}>Nova compra</Btn>
+        <Btn type="button" onClick={() => toggle('credit')}>Lançar crédito</Btn>
+        <Btn type="button" onClick={() => toggle('invoice')}>Cadastrar fatura</Btn>
+        <Btn type="button" onClick={() => toggle('panel')} className="bg-muted-foreground hover:bg-muted-foreground/90">{open === 'panel' ? 'Ocultar painel' : 'Ver painel'}</Btn>
+      </div>
+      {open === 'purchase' && <PurchaseForm card={c} done={() => setOpen(null)} />}
+      {open === 'credit' && <CreditForm card={c} done={() => setOpen(null)} />}
+      {open === 'invoice' && <InvoiceTotalForm card={c} done={() => setOpen(null)} />}
+      {open === 'panel' && <CardPanelView card={c} invoiceId={pick} onPick={setPick} />}
+      {(invoices.data ?? []).map((i) => (
+        <div key={i.id} className="border-t border-border py-2">
+          <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
+            <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}{i.status === 'paid' && <> · <span>paga</span></>}</span><span className={i.total_cents < 0 ? 'text-destructive' : ''}>{formatBRL(i.total_cents)}{i.total_cents < 0 ? ' (crédito)' : ''}</span>
+          </button>
+          {invId === i.id && <InvoiceView id={i.id} />}
+        </div>
+      ))}
+      <Err e={invoices.error} />
+      <EditBox what="cartão" canEdit={owner} fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
+        save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
+        remove={() => api('DELETE', `/cards/${c.id}`)} />
+    </Card>
   )
 }
 
@@ -83,37 +243,21 @@ export function Cards() {
   const { spaceId } = useSpace()
   const cards = useGet<CardT[]>('/cards')
   const mine = (cards.data ?? []).filter((c) => c.space_id === spaceId)
-  const [sel, setSel] = useState('')
-  const [invId, setInvId] = useState<string | null>(null)
-  const invoices = useGet<Invoice[]>(sel ? `/cards/${sel}/invoices` : null)
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ name: '', closing_day: '5', due_day: '12', limit: '' })
   const lim = f.limit ? parseBRL(f.limit) : null
   const create = useSend(
     () => api('POST', `/spaces/${spaceId}/cards`, { name: f.name, closing_day: Number(f.closing_day), due_day: Number(f.due_day), limit_cents: lim } satisfies S['CardIn']),
-    () => setF({ ...f, name: '', limit: '' }),
+    () => { setF({ ...f, name: '', limit: '' }); setAdding(false) },
   )
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Cartões e faturas</h1>
-      <Card title="Novo cartão"><CardForm f={f} setF={setF} onSubmit={() => create.mutate()} err={create.error} busy={create.isPending} lim={lim} /></Card>
-      <Card title="Meus cartões">
-        {mine.length === 0 ? <p>Nenhum cartão neste espaço.</p> : (
-          <Field label="Cartão"><select value={sel} onChange={(e) => { setSel(e.target.value); setInvId(null) }}><option value="">Selecione…</option>{mine.map((c) => <option key={c.id} value={c.id}>{c.name} (fecha {c.closing_day}, vence {c.due_day})</option>)}</select></Field>
-        )}
-        {sel && mine.find((c) => c.id === sel) && (() => { const c = mine.find((x) => x.id === sel)!; return (
-          <EditBox key={c.id} what="cartão" canEdit={owner} fields={[{ k: 'name', label: 'Nome do cartão (edição)', v: c.name }, { k: 'closing_day', label: 'Dia do fechamento (edição)', v: String(c.closing_day), type: 'number' }, { k: 'due_day', label: 'Dia do vencimento (edição)', v: String(c.due_day), type: 'number' }, { k: 'limit', label: 'Limite (R$, vazio = sem limite)', v: c.limit_cents ? centsText(c.limit_cents) : '' }]}
-            save={(v) => { const l = v.limit ? parseBRL(v.limit) : null; return v.limit && !l ? Promise.reject(new ApiError(422, 'invalid_amount')) : api('PATCH', `/cards/${c.id}`, { name: v.name, closing_day: Number(v.closing_day), due_day: Number(v.due_day), limit_cents: l } satisfies S['CardPatch']) }}
-            remove={() => api('DELETE', `/cards/${c.id}`).then(() => setSel(''))} />) })()}
-        {(invoices.data ?? []).map((i) => (
-          <div key={i.id} className="border-t border-border py-2">
-            <button type="button" className="flex w-full justify-between text-left" aria-expanded={invId === i.id} onClick={() => setInvId(invId === i.id ? null : i.id)}>
-              <span>Fatura {br(i.closing_on)} · vence {br(i.due_on)}</span><span>{formatBRL(i.total_cents)}</span>
-            </button>
-            {invId === i.id && <InvoiceView id={i.id} />}
-          </div>
-        ))}
-        <Err e={invoices.error} />
-      </Card>
+      <div className="mb-4"><PlusButton label="Novo cartão" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Novo cartão" onClose={() => setAdding(false)}><CardForm f={f} setF={setF} onSubmit={() => create.mutate()} err={create.error} busy={create.isPending} lim={lim} /></Modal>}
+      {!cards.isLoading && mine.length === 0 && <p className="mb-4">Nenhum cartão neste espaço.</p>}
+      <div className="grid gap-4 md:grid-cols-2">{mine.map((c) => <CardTile key={c.id} c={c} owner={owner} />)}</div>
+      <Err e={cards.error} />
     </>
   )
 }

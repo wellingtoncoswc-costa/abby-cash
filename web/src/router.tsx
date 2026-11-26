@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute, createRoute, createRouter, type RouterHistory } from '@tanstack/react-router'
+import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
 import { AuthProvider } from './auth'
 import { Protected } from './layout'
 import { Login, Register } from './pages/auth'
@@ -6,6 +6,9 @@ import { Billing, Cards } from './pages/billing'
 import { Dashboard } from './pages/dashboard'
 import { Goals, Budget } from './pages/plan'
 import { Invite, Onboarding } from './pages/onboarding'
+import { Accounts } from './pages/accounts'
+import { Investments } from './pages/investments'
+import { ProjectionsPage } from './pages/projections'
 import { Pockets } from './pages/pockets'
 import { Loans } from './pages/loans'
 import { Categories } from './pages/categories'
@@ -24,11 +27,11 @@ const tree = root.addChildren([
   pub('/cadastro', Register),
   layout.addChildren([
     page('/', Dashboard), page('/onboarding', Onboarding), page('/lancamentos', Transactions),
-    page('/contas', Billing), page('/cartoes', Cards), page('/metas', Goals), page('/teto', Budget), page('/caixinhas', Pockets), page('/financiamentos', Loans),
+    page('/contas', Billing), page('/cartoes', Cards), page('/contas-bancarias', Accounts), page('/metas', Goals), page('/teto', Budget), page('/caixinhas', Pockets), page('/investimentos', Investments), createRoute({ getParentRoute: () => layout, path: '/fixos', beforeLoad: () => { throw redirect({ to: '/contas' }) } }), page('/projecoes', ProjectionsPage), page('/financiamentos', Loans),
     createRoute({ getParentRoute: () => layout, path: '/analises', component: Reports, validateSearch: parseFilters }),
     page('/espacos', Spaces), page('/categorias', Categories), page('/admin', Admin), page('/canais', Channels), page('/config', Settings), page('/invite/$token', Invite),
   ]),
 ])
 
-export const makeRouter = (history?: RouterHistory) => createRouter({ routeTree: tree, history })
+export const makeRouter = (history?: RouterHistory) => createRouter({ routeTree: tree, history, defaultViewTransition: true })
 declare module '@tanstack/react-router' { interface Register { router: ReturnType<typeof makeRouter> } }
