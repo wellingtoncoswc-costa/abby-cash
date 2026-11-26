@@ -30,7 +30,7 @@ async def card_panel(
         )
     )
     sums = {i.id: await invoice_summary(session, i) for i in invs}
-    used = sum(s["remaining_cents"] for s in sums.values())
+    used = sum(max(0, s["remaining_cents"]) for s in sums.values())
     if invoice_id is not None:
         sel = next((i for i in invs if i.id == invoice_id), None)
         if sel is None:
