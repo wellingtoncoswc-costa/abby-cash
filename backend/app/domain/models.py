@@ -14,6 +14,7 @@ import app.domain.goals.models  # noqa: F401
 import app.domain.investments.models  # noqa: F401
 import app.domain.loans.models  # noqa: F401
 import app.domain.pockets.models  # noqa: F401
+import app.domain.recurring.models  # noqa: F401
 import app.domain.spaces.models  # noqa: F401
 import app.domain.transactions.models  # noqa: F401
 import app.domain.users.models  # noqa: F401

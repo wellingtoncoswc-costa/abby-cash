@@ -14,6 +14,7 @@ from app.domain.errors import DomainError
 from app.domain.goals.models import GoalAccount
 from app.domain.loans.models import Loan
 from app.domain.pockets.models import Pocket
+from app.domain.recurring.models import RecurringItem
 from app.domain.spaces.access import require_member, require_owner
 from app.domain.spaces.models import SpaceMember
 from app.domain.transactions.models import Transaction
@@ -97,6 +98,7 @@ async def delete_account(session: AsyncSession, *, actor_id: UUID, account_id: U
             | exists().where(CreditCard.payment_account_id == acc.id)
             | exists().where(GoalAccount.account_id == acc.id)
             | exists().where(Pocket.account_id == acc.id)
+            | exists().where(RecurringItem.account_id == acc.id)
             | exists().where(Loan.account_id == acc.id)
         )
     )

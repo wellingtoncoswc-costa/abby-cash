@@ -120,6 +120,7 @@ test('lançamento de cartão/parcelado: sem valor e data, com aviso', async () =
 
 test('compra parcelada mostra o impacto nas faturas', async () => {
   go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova compra no cartão' }))
   await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   await userEvent.type(screen.getByLabelText('Valor total (R$)'), '100,00')
   await userEvent.clear(screen.getByLabelText('Parcelas'))
@@ -157,6 +158,7 @@ test('edição de contas: só o dono vê o botão', async () => {
   go('/onboarding')
   await screen.findByText('Nubank', { exact: false })
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Editar conta' })).toBeNull())
+  routes[`/spaces/${SP}/members`] = () => J([{ user_id: 'u1', name: 'Ana', role: 'owner', joined_at: '2026-11-01T00:00:00Z' }])
 })
 
 test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
@@ -423,4 +425,92 @@ test('cartões: lançar crédito e fatura negativa em destaque', async () => {
   await userEvent.click(card.getByRole('button', { name: 'Registrar crédito' }))
   const post = calls.find(([u]) => u === '/cards/k1/credits')!
   expect(JSON.parse(post[1].body as string)).toMatchObject({ amount_cents: 5000 })
+})
+
+test('lançamentos: só os botões + na tela; o formulário abre em modal', async () => {
+  go('/lancamentos')
+  const novo = await screen.findByRole('button', { name: 'Novo lançamento' })
+  expect(screen.getByRole('button', { name: 'Nova transferência' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Nova compra no cartão' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('Valor (R$)')).toBeNull() // sem formulário solto na página
+  await userEvent.click(novo)
+  expect(await screen.findByRole('dialog', { name: 'Novo lançamento' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Valor (R$)')).toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('lançamentos: salvar um lançamento envia e fecha o modal', async () => {
+  routes['/spaces/s1/transactions'] = (init) => init.method !== 'POST' ? J([]) : J({ id: 't9', space_id: SP, type: 'expense', amount_cents: 4500, occurred_on: '2026-11-25', description: '', merchant: null, category_id: null, account_id: 'a1', counter_account_id: null, installment_total: null }, 201)
+  go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Novo lançamento' }))
+  await userEvent.type(await screen.findByLabelText('Valor (R$)'), '45,00')
+  await userEvent.selectOptions(screen.getByLabelText('Conta'), 'a1')
+  await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/transactions` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'expense', amount_cents: 4500, account_id: 'a1' })
+  delete routes['/spaces/s1/transactions']
+})
+
+const FIXO = { id: 'r1', space_id: SP, type: 'expense', description: 'Aluguel', amount_cents: 150000, account_id: 'a1', category_id: null, rule: { kind: 'monthly', day: 5, month: null, n: 1 }, starts_on: '2026-11-01', ends_on: null, active: true, next_due_on: '2026-12-05' }
+const PROJ = {
+  months: [{ month: '2026-11-01', income_cents: 500000, expense_cents: 150000, net_cents: 350000, projected_balance_cents: 1350000 }, { month: '2026-12-01', income_cents: 500000, expense_cents: 150000, net_cents: 350000, projected_balance_cents: 1700000 }],
+  upcoming: [{ due_on: '2026-12-05', description: 'Aluguel', type: 'expense', amount_cents: 150000, account_id: 'a1', account_name: 'Nubank' }],
+}
+
+test('fixos: projeção, cards com a conta e botão +', async () => {
+  routes[`/spaces/${SP}/recurring`] = () => J([FIXO])
+  routes[`/spaces/${SP}/recurring/projection`] = () => J(PROJ)
+  go('/fixos')
+  const card = within((await screen.findByRole('heading', { name: 'Aluguel' })).closest('section')!)
+  expect(await card.findByText('Sai de Nubank')).toBeInTheDocument()
+  expect(card.getByText(/Próxima data: 05\/12\/2026/)).toBeInTheDocument()
+  expect(await screen.findByText(/Saldo projetado R\$ 17\.000,00/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Novo fixo' })).toBeInTheDocument()
+})
+
+test('fixos: modal pergunta "Sai de" na despesa e "Entra em" na receita e envia', async () => {
+  routes[`/spaces/${SP}/recurring`] = (init) => (init.method === 'POST' ? J(FIXO, 201) : J([]))
+  routes[`/spaces/${SP}/recurring/projection`] = () => J({ months: [], upcoming: [] })
+  go('/fixos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Novo fixo' }))
+  const dlg = within(await screen.findByRole('dialog', { name: 'Novo fixo' }))
+  expect(dlg.getByLabelText('Sai de')).toBeInTheDocument()
+  await userEvent.selectOptions(dlg.getByLabelText('Tipo'), 'income')
+  expect(dlg.getByLabelText('Entra em')).toBeInTheDocument()
+  await userEvent.type(dlg.getByLabelText('Descrição'), 'Salário')
+  await userEvent.type(dlg.getByLabelText('Valor (R$)'), '5000,00')
+  await userEvent.selectOptions(dlg.getByLabelText('Entra em'), 'a1')
+  await userEvent.click(dlg.getByRole('button', { name: 'Salvar fixo' }))
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/recurring` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'income', description: 'Salário', amount_cents: 500000, account_id: 'a1', rule: { kind: 'monthly', day: 5 } })
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+})
+
+test.each([
+  ['/contas-bancarias', 'Nova conta', 'Nome da conta'],
+  ['/cartoes', 'Novo cartão', 'Nome do cartão'],
+  ['/metas', 'Nova meta', 'Valor alvo (R$)'],
+  ['/caixinhas', 'Nova caixinha', 'Nome'],
+  ['/categorias', 'Nova categoria', 'Nome da nova categoria'],
+  ['/contas', 'Nova conta a pagar', 'Descrição'],
+  ['/financiamentos', 'Novo financiamento ou consórcio', 'Valor da parcela (R$)'],
+  ['/investimentos', 'Novo ativo', 'Nome'],
+])('padrão "+" e modal em %s', async (path, plus, field) => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J({ assets: [], by_kind: [], series: [], contributed_cents: 0, current_cents: 0, profit_cents: 0, profit_bp: null })
+  go(path)
+  const btn = await screen.findByRole('button', { name: plus })
+  expect(screen.queryByLabelText(field)).toBeNull() // sem formulário solto na tela
+  await userEvent.click(btn)
+  const dlg = await screen.findByRole('dialog', { name: plus })
+  expect(within(dlg).getAllByLabelText(field).length).toBeGreaterThan(0)
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('lançamentos: cada botão + tem legenda curta visível', async () => {
+  go('/lancamentos')
+  await screen.findByRole('button', { name: 'Novo lançamento' })
+  for (const t of ['Lançamento', 'Transferência', 'Compra no cartão']) expect(screen.getByText(t)).toBeInTheDocument()
 })

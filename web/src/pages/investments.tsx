@@ -3,7 +3,7 @@ import { api } from '../api/client'
 import type { InvAsset, InvDashboard, InvestmentPanel } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, Err, Field, br, today, useAccounts, useGet, useSend } from '../ui'
+import { AccountSelect, Btn, Card, Err, Field, Modal, PlusButton, br, today, useAccounts, useGet, useSend } from '../ui'
 
 const KIND: Record<string, string> = { stock: 'Ações', fii: 'Fundos imobiliários', cdb: 'CDB', lci: 'LCI', lca: 'LCA' }
 const VARIAVEL = ['stock', 'fii']
@@ -142,7 +142,7 @@ function Ativo({ a }: { a: InvAsset }) {
   )
 }
 
-function NovoAtivo() {
+function NovoAtivo({ onDone }: { onDone: () => void }) {
   const { spaceId } = useSpace()
   const empty = { kind: 'stock', name: '', ticker: '', rateType: 'cdi_pct', rate: '', maturity: '' }
   const [f, setF] = useState(empty)
@@ -151,10 +151,10 @@ function NovoAtivo() {
     () => api('POST', `/spaces/${spaceId}/investments`, variavel
       ? { kind: f.kind, name: f.name, ticker: f.ticker }
       : { kind: f.kind, name: f.name, rate_type: f.rateType, rate_bp: toBp(f.rate), maturity_on: f.maturity || null }),
-    () => setF(empty),
+    () => { setF(empty); onDone() },
   )
   return (
-    <Card title="Novo ativo">
+    <>
       <form onSubmit={(e) => { e.preventDefault(); send.mutate() }}>
         <Field label="Tipo">
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
@@ -179,7 +179,7 @@ function NovoAtivo() {
         <Err e={send.error} />
         <Btn type="submit" disabled={send.isPending || (!variavel && !toBp(f.rate))}>Cadastrar ativo</Btn>
       </form>
-    </Card>
+    </>
   )
 }
 
@@ -187,13 +187,15 @@ export function Investments() {
   const { spaceId } = useSpace()
   const dash = useGet<InvDashboard>(`/spaces/${spaceId}/investments/dashboard`)
   const d = dash.data
+  const [adding, setAdding] = useState(false)
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Investimentos</h1>
       <Err e={dash.error} />
       {d && !d.assets.length && <p className="mb-4">Você ainda não tem investimentos. Cadastre o primeiro ativo e faça um aporte.</p>}
       {d && d.assets.length > 0 && (<><Resumo d={d} /><Evolucao d={d} /><Alocacao d={d} />{d.assets.map((a) => <Ativo key={a.id} a={a} />)}</>)}
-      <NovoAtivo />
+      <div className="mb-4"><PlusButton label="Novo ativo" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Novo ativo" onClose={() => setAdding(false)}><NovoAtivo onDone={() => setAdding(false)} /></Modal>}
     </>
   )
 }

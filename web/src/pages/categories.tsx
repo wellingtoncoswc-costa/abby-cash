@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { Category, S } from '../api/types'
 import { useSpace } from '../space'
-import { Btn, Card, EditBox, Err, Field, useCategories, useSend } from '../ui'
+import { Btn, Card, EditBox, Err, Field, useCategories, useSend, Modal, PlusButton } from '../ui'
 
 function Row({ c, others }: { c: Category; others: Category[] }) {
   const [to, setTo] = useState('')
@@ -27,19 +27,21 @@ function Row({ c, others }: { c: Category; others: Category[] }) {
 export function Categories() {
   const { spaceId } = useSpace()
   const cats = useCategories()
+  const [adding, setAdding] = useState(false)
   const [f, setF] = useState({ name: '', kind: 'expense' as S['CategoryIn']['kind'] })
-  const add = useSend(() => api('POST', `/spaces/${spaceId}/categories`, { name: f.name, kind: f.kind } satisfies S['CategoryIn']), () => setF({ ...f, name: '' }))
+  const add = useSend(() => api('POST', `/spaces/${spaceId}/categories`, { name: f.name, kind: f.kind } satisfies S['CategoryIn']), () => { setF({ ...f, name: '' }); setAdding(false) })
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Categorias</h1>
-      <Card title="Nova categoria">
+      <div className="mb-4"><PlusButton label="Nova categoria" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova categoria" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); add.mutate() }}>
           <Field label="Nome da nova categoria"><input required maxLength={60} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
           <Field label="Tipo da categoria"><select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as typeof f.kind })}><option value="expense">Despesa</option><option value="income">Receita</option></select></Field>
           <Err e={add.error} />
           <Btn type="submit" disabled={add.isPending}>Criar categoria</Btn>
         </form>
-      </Card>
+      </Modal>}
       {(['expense', 'income'] as const).map((k) => (
         <Card key={k} title={k === 'expense' ? 'Despesas' : 'Receitas'}>
           <ul className="divide-y divide-border">
