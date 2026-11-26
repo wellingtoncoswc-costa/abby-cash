@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet } from '@tanstack/react-router'
-import { ArrowLeftRight, ChartNoAxesCombined, CreditCard, Gauge, Landmark, LayoutDashboard, LogOut, type LucideIcon, Menu, MessageCircle, Moon, PiggyBank, Receipt, Rocket, Settings, Shield, Sun, Tags, Target, TrendingUp, Users, X } from 'lucide-react'
+import { ArrowLeftRight, ChartNoAxesCombined, CreditCard, Gauge, Landmark, LayoutDashboard, LogOut, type LucideIcon, Menu, MessageCircle, Moon, PiggyBank, Receipt, Rocket, Settings, Shield, Sun, Tags, Target, TrendingUp, Users, Wallet, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { logout } from './api/client'
 import type { Space } from './api/types'
@@ -12,7 +12,7 @@ import { Err, useGet, useMe } from './ui'
 type Item = readonly [to: string, label: string, Icon: LucideIcon]
 const PRINCIPAL: Item[] = [
   ['/', 'Painel', LayoutDashboard], ['/lancamentos', 'Lançamentos', ArrowLeftRight], ['/analises', 'Análises', ChartNoAxesCombined], ['/contas', 'Contas a pagar', Receipt],
-  ['/cartoes', 'Cartões', CreditCard], ['/metas', 'Metas', Target],
+  ['/contas-bancarias', 'Contas bancárias', Wallet], ['/cartoes', 'Cartões', CreditCard], ['/metas', 'Metas', Target],
   ['/caixinhas', 'Caixinhas', PiggyBank], ['/investimentos', 'Investimentos', TrendingUp], ['/financiamentos', 'Financiamentos e consórcios', Landmark],
 ]
 const MAIS: Item[] = [

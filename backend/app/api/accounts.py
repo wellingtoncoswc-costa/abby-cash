@@ -3,17 +3,18 @@ from datetime import date
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import AccountDetailOut, AccountOut, SignedCents
+from app.api.schemas import AccountDetailOut, AccountOut, AccountPanelOut, SignedCents
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.accounts.access import visible_account
 from app.domain.accounts.models import Account
+from app.domain.accounts.panel import account_panel
 from app.domain.accounts.service import (
     create_account,
     delete_account,
@@ -110,6 +111,16 @@ async def default_account(
     await set_default_account(
         session, actor_id=user.id, space_id=space_id, account_id=body.account_id
     )
+
+
+@router.get("/accounts/{account_id}/panel", response_model=AccountPanelOut)
+async def panel(
+    account_id: UUID, user: CurrentUser, session: Session,
+    month: Annotated[str | None, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")] = None,
+) -> dict[str, Any]:  # fmt: skip
+    today = local_today(user.tz)
+    first = date(int(month[:4]), int(month[5:]), 1) if month else today.replace(day=1)
+    return await account_panel(session, user.id, account_id, month=first, today=today)
 
 
 @router.get("/accounts/{account_id}/statement")
