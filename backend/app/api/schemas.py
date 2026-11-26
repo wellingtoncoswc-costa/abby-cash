@@ -171,6 +171,38 @@ class CardPanelOut(Out):
     history: list[PanelInvoiceOut]
 
 
+class AccountMoveOut(Out):
+    occurred_on: date
+    type: str
+    description: str
+    merchant: str | None
+    amount_cents: int
+
+
+class AccountPanelPocketOut(Out):
+    id: UUID
+    name: str
+    balance_cents: int
+
+
+class AccountPanelGoalOut(Out):
+    id: UUID
+    name: str
+
+
+class AccountPanelOut(Out):
+    month: date
+    is_default: bool
+    income_cents: int
+    expense_cents: int
+    transfer_net_cents: int
+    private_total_cents: int
+    by_category: list[PanelCategoryOut]
+    recent: list[AccountMoveOut]
+    pockets: list[AccountPanelPocketOut]
+    goals: list[AccountPanelGoalOut]
+
+
 class InvoiceDetailOut(InvoiceOut):
     statement: dict[str, Any]
 
