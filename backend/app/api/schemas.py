@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -314,3 +315,23 @@ class BudgetOut(Out):
     limit_cents: int
     spent_cents: int
     categories: list[BudgetCategoryOut]
+
+
+class InvestmentMovementRowOut(Out):
+    id: UUID
+    kind: str
+    occurred_on: date
+    quantity: Decimal | None
+    unit_price_cents: int | None
+    amount_cents: int
+
+
+class InvestmentSeriesPointOut(Out):
+    on: date
+    value_cents: int
+    contributed_cents: int
+
+
+class InvestmentPanelOut(Out):
+    movements: list[InvestmentMovementRowOut]
+    series: list[InvestmentSeriesPointOut]

@@ -45,3 +45,31 @@ async def test_validation_and_access(client, session):
     assert bad.status_code == 422 and bad.json() == {"detail": "invalid_investment"}
     r = await client.get(f"/spaces/{sp}/investments/dashboard", headers=auth(b))
     assert r.status_code in (403, 404)
+
+
+async def test_asset_panel_over_http(client, session, monkeypatch):
+    async def fake(ticker, days, transport=None):
+        return [Quote(date(2026, 1, 15), 3850)]
+
+    monkeypatch.setattr(svc, "fetch_quotes", fake)
+    a = await make_user(session, "pa@x.com")
+    h, sp = auth(a), str(a.default_space_id)
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    inv = (
+        await client.post(
+            f"/spaces/{sp}/investments",
+            headers=h,
+            json={"kind": "stock", "name": "P", "ticker": "PETR4"},
+        )
+    ).json()
+    await client.post(
+        f"/investments/{inv['id']}/buys",
+        headers=h,
+        json={"account_id": str(acc.id), "quantity": "2", "occurred_on": "2026-01-15"},
+    )
+    p = await client.get(f"/investments/{inv['id']}/panel", headers=h)
+    assert p.status_code == 200 and p.json()["movements"][0]["amount_cents"] == 7_700
+    other = await make_user(session, "pb@x.com")
+    assert (
+        await client.get(f"/investments/{inv['id']}/panel", headers=auth(other))
+    ).status_code in (403, 404)

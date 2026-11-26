@@ -68,3 +68,27 @@ async def test_dashboard_lists_assets_without_movements(session, quotes):  # noq
     stock = next(x for x in d["assets"] if x["ticker"] == "PETR4")
     assert stock["quantity"] == "0" and stock["price_cents"] == 3850
     assert d["series"] == [] and d["profit_bp"] is None
+
+
+async def test_investment_panel_only_this_asset(session, quotes):  # noqa: F811
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id, initial=1_000_000)
+    sp = a.default_space_id
+    stock = await svc.create_investment(
+        session, actor_id=a.id, space_id=sp, kind="stock", name="Petrobras", ticker="PETR4",
+        today=TODAY,
+    )  # fmt: skip
+    cdb = await svc.create_investment(
+        session, actor_id=a.id, space_id=sp, kind="cdb", name="CDB", rate_type="fixed",
+        rate_bp=1250, today=TODAY,
+    )  # fmt: skip
+    await svc.buy(session, actor_id=a.id, investment_id=stock.id, account_id=acc.id, on=D,
+                  quantity=Decimal("10"), today=TODAY)  # fmt: skip
+    await svc.buy(session, actor_id=a.id, investment_id=stock.id, account_id=acc.id, on=TODAY,
+                  quantity=Decimal("1"), today=TODAY)  # fmt: skip
+    await svc.buy(session, actor_id=a.id, investment_id=cdb.id, account_id=acc.id, on=D,
+                  amount_cents=100_000, today=TODAY)  # fmt: skip
+    p = await svc.investment_panel(session, a.id, stock.id, today=TODAY)
+    assert [m["occurred_on"] for m in p["movements"]] == [TODAY, D]  # mais recente primeiro
+    assert p["series"][0]["contributed_cents"] == 38_000  # só a ação, sem o CDB
+    assert p["series"][-1]["contributed_cents"] == 38_000 + 3_850

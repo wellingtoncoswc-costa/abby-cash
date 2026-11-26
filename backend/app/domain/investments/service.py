@@ -204,13 +204,15 @@ def _signed(m: InvestmentMovement) -> int:
 
 
 async def dashboard(
-    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, today: date, days: int = 365
-) -> dict[str, Any]:
+    session: AsyncSession, *, viewer_id: UUID, space_id: UUID, today: date, days: int = 365,
+    only: UUID | None = None,
+) -> dict[str, Any]:  # fmt: skip
     """Posição atual por ativo, totais, alocação por tipo e série diária (valor x aportado).
     # ponytail: série recalculada a cada chamada (O(dias x ativos)); cachear se passar de ~50 ativos
     """
     await require_member(session, viewer_id, space_id)
-    invs = list(await session.scalars(select(Investment).where(Investment.space_id == space_id)))
+    q = select(Investment).where(Investment.space_id == space_id)
+    invs = list(await session.scalars(q.where(Investment.id == only) if only else q))
     data = {i.id: await movements(session, i.id) for i in invs}
     firsts = [m[0].occurred_on for m in data.values() if m]
     start = max(min(firsts), today - timedelta(days=days)) if firsts else today
@@ -294,3 +296,27 @@ async def dashboard(
         "series": series, "contributed_cents": contributed, "current_cents": current,
         "profit_cents": current - contributed, "profit_bp": _bp(current - contributed, contributed),
     }  # fmt: skip
+
+
+async def investment_panel(
+    session: AsyncSession, viewer_id: UUID, investment_id: UUID, *, today: date
+) -> dict[str, Any]:
+    """Movimentos (mais recentes primeiro) e evolução só deste ativo."""
+    inv = await visible_investment(session, viewer_id, investment_id)
+    d = await dashboard(
+        session, viewer_id=viewer_id, space_id=inv.space_id, today=today, only=inv.id
+    )
+    return {
+        "movements": [
+            {
+                "id": m.id,
+                "kind": m.kind,
+                "occurred_on": m.occurred_on,
+                "quantity": m.quantity,
+                "unit_price_cents": m.unit_price_cents,
+                "amount_cents": m.amount_cents,
+            }
+            for m in reversed(await movements(session, inv.id))
+        ],  # fmt: skip
+        "series": d["series"],
+    }

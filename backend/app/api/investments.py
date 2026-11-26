@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exists, select
 
 from app.api.deps import CurrentUser, Session
-from app.api.schemas import Cents
+from app.api.schemas import Cents, InvestmentPanelOut
 from app.core.dates import local_today
 from app.core.serialize import row
 from app.domain.errors import DomainError
@@ -87,6 +87,11 @@ async def _move(
         unit_price_cents=body.unit_price_cents, today=today,
     )  # fmt: skip
     return row(mv)
+
+
+@router.get("/investments/{investment_id}/panel", response_model=InvestmentPanelOut)
+async def asset_panel(investment_id: UUID, user: CurrentUser, session: Session) -> dict[str, Any]:
+    return await svc.investment_panel(session, user.id, investment_id, today=local_today(user.tz))
 
 
 @router.post("/investments/{investment_id}/buys", status_code=201, response_model=MovementOut)
