@@ -21,8 +21,10 @@ from app.domain.categories.models import Category, CategoryRule
 from app.domain.channels.models import ChannelLink, InboundMessage, OutboundMessage
 from app.domain.errors import DomainError
 from app.domain.goals.models import Goal
+from app.domain.investments.models import Investment, InvestmentMovement
 from app.domain.loans.models import Loan
 from app.domain.pockets.models import Pocket, PocketMovement, PocketYieldPosting
+from app.domain.recurring.models import RecurringItem, RecurringPosting
 from app.domain.spaces.models import Space, SpaceInvite, SpaceMember
 from app.domain.transactions.models import Transaction
 from app.domain.users.models import RefreshToken, SignupInvite, User
@@ -30,7 +32,8 @@ from app.domain.users.models import RefreshToken, SignupInvite, User
 EXPORT_MODELS: dict[str, Any] = {
     "accounts": Account, "categories": Category, "cards": CreditCard,
     "transactions": Transaction, "bills": Bill, "goals": Goal, "budgets": Budget,
-    "pockets": Pocket, "loans": Loan,
+    "pockets": Pocket, "loans": Loan, "investments": Investment,
+    "recurring_items": RecurringItem,
 }  # fmt: skip
 CSV_COLUMNS = [
     "id", "space_id", "type", "amount_cents", "occurred_on", "description", "merchant",
@@ -155,6 +158,17 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
     )
     await session.execute(delete(PocketMovement).where(PocketMovement.pocket_id.in_(pockets)))
     await session.execute(delete(Pocket).where(Pocket.space_id == space_id))
+    # investimentos (movimentos apontam para lançamentos e contas) e fixos do espaço
+    invs = select(Investment.id).where(Investment.space_id == space_id)
+    await session.execute(
+        delete(InvestmentMovement).where(
+            or_(InvestmentMovement.investment_id.in_(invs), InvestmentMovement.account_id.in_(accs))
+        )
+    )  # ponytail: movimento de outro espaço em conta deste some junto; tornar account_id opcional
+    await session.execute(delete(Investment).where(Investment.space_id == space_id))
+    items = select(RecurringItem.id).where(RecurringItem.space_id == space_id)
+    await session.execute(delete(RecurringPosting).where(RecurringPosting.item_id.in_(items)))
+    await session.execute(delete(RecurringItem).where(RecurringItem.space_id == space_id))
     await session.execute(delete(Transaction).where(Transaction.space_id == space_id))
     for inv_id in foreign_invoices:
         inv = await session.get(Invoice, inv_id)

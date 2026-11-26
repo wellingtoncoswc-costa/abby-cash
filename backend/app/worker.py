@@ -15,6 +15,7 @@ from app.jobs.health import check_evolution_connection
 from app.jobs.inbound import process_inbound
 from app.jobs.investments import sync_quotes_job
 from app.jobs.pockets import sync_cdi_job
+from app.jobs.recurring import post_recurring_job
 from app.jobs.scheduler import purge_inbound_job, purge_refresh_tokens_job, worker_heartbeat
 
 
@@ -33,6 +34,7 @@ class WorkerSettings:
         cron(daily_bills_job, hour=6, minute=10),
         cron(sync_cdi_job, hour=set(range(11, 24)), minute=30),  # 08:30 em SP, de hora em hora
         cron(sync_quotes_job, hour=21, minute=30),  # 18:30 em SP, após o fechamento da B3
+        cron(post_recurring_job, hour=9, minute=20),  # 06:20 em SP
         cron(purge_inbound_job, hour=7, minute=30),
         cron(purge_refresh_tokens_job, hour=7, minute=35),
         cron(check_budget_thresholds, hour=11, minute=0),
