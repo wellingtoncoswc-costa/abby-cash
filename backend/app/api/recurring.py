@@ -64,7 +64,8 @@ class RecurringOut(BaseModel):
 class ProjectionMonthOut(BaseModel):
     month: date
     income_cents: int
-    expense_cents: int
+    expense_cents: int  # inclui financiamentos/consórcios
+    expense_loans_cents: int
     net_cents: int
     projected_balance_cents: int
 
