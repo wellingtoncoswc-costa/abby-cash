@@ -86,6 +86,21 @@ class PocketMovementOut(Out):
     created_at: datetime
 
 
+class PanelGoalOut(Out):
+    id: UUID
+    name: str
+
+
+class PocketYieldMonthOut(Out):
+    month: date
+    yield_cents: int
+
+
+class PocketPanelOut(Out):
+    yield_by_month: list[PocketYieldMonthOut]
+    goals: list[PanelGoalOut]
+
+
 class CdiLatestOut(Out):
     on_date: date
     daily_pct: str
@@ -185,11 +200,6 @@ class AccountPanelPocketOut(Out):
     balance_cents: int
 
 
-class AccountPanelGoalOut(Out):
-    id: UUID
-    name: str
-
-
 class AccountPanelOut(Out):
     month: date
     is_default: bool
@@ -200,7 +210,7 @@ class AccountPanelOut(Out):
     by_category: list[PanelCategoryOut]
     recent: list[AccountMoveOut]
     pockets: list[AccountPanelPocketOut]
-    goals: list[AccountPanelGoalOut]
+    goals: list[PanelGoalOut]
 
 
 class InvoiceDetailOut(InvoiceOut):
