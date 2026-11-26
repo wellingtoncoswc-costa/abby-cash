@@ -7,10 +7,13 @@ from app.domain.errors import DomainError
 from app.domain.goals.service import (
     contribute,
     create_goal,
+    goal_links,
     goal_progress,
+    update_goal,
     visible_goal,
     withdraw,
 )
+from app.domain.pockets.service import create_pocket, deposit
 from app.domain.transactions.service import account_balance
 from tests.factories import make_account, make_family, make_user
 
@@ -20,7 +23,7 @@ D = date(2026, 1, 15)
 async def _goal(session, user, *, target=120_000, deadline=None, created_on=D, space=None):
     return await create_goal(
         session, actor_id=user.id, space_id=space or user.default_space_id, name="Viagem",
-        target_cents=target, deadline=deadline, account_id=None, created_on=created_on,
+        target_cents=target, deadline=deadline, created_on=created_on,
     )  # fmt: skip
 
 
@@ -207,3 +210,70 @@ async def test_goal_limits_at_service_level(session):
             )  # fmt: skip
 
     await asyncio.wait_for(other(), 5)
+
+
+async def _pocket(session, user, acc, name="Reserva"):
+    return await create_pocket(
+        session, actor_id=user.id, space_id=acc.space_id, account_id=acc.id, name=name, cdi_bp=10000
+    )
+
+
+async def test_progress_sums_linked_account_and_pocket(session):
+    a = await make_user(session, "a@x.com")
+    sp = a.default_space_id
+    acc1 = await make_account(session, sp, initial=50_000)
+    acc2 = await make_account(session, sp, initial=100_000)
+    pk = await _pocket(session, a, acc2)
+    await deposit(session, actor_id=a.id, pocket_id=pk.id, amount_cents=30_000, on=D)
+    goal = await _goal(session, a)
+    await update_goal(
+        session, actor_id=a.id, goal_id=goal.id,
+        fields={"account_ids": [acc1.id], "pocket_ids": [pk.id]},
+    )  # fmt: skip
+    # acc1 inteira + só a caixinha de acc2; o resto de acc2 não conta
+    assert (await goal_progress(session, goal.id, today=D)).saved == 80_000
+
+
+async def test_pocket_of_linked_account_not_counted_twice(session):
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    pk = await _pocket(session, a, acc)
+    await deposit(session, actor_id=a.id, pocket_id=pk.id, amount_cents=30_000, on=D)
+    goal = await _goal(session, a)
+    await update_goal(
+        session, actor_id=a.id, goal_id=goal.id,
+        fields={"account_ids": [acc.id], "pocket_ids": [pk.id]},
+    )  # fmt: skip
+    assert (await goal_progress(session, goal.id, today=D)).saved == 100_000
+
+
+async def test_account_and_pocket_belong_to_one_goal(session):
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(session, a.default_space_id, initial=1_000)
+    other = await make_account(session, a.default_space_id, initial=1_000)
+    pk = await _pocket(session, a, acc)
+    g1, g2, g3 = await _goal(session, a), await _goal(session, a), await _goal(session, a)
+    await update_goal(session, actor_id=a.id, goal_id=g1.id, fields={"account_ids": [acc.id]})
+    with pytest.raises(DomainError, match="already_linked"):  # mesma conta
+        await update_goal(session, actor_id=a.id, goal_id=g2.id, fields={"account_ids": [acc.id]})
+    with pytest.raises(DomainError, match="already_linked"):  # caixinha de conta de outra meta
+        await update_goal(session, actor_id=a.id, goal_id=g2.id, fields={"pocket_ids": [pk.id]})
+    pk2 = await _pocket(session, a, other)
+    await update_goal(session, actor_id=a.id, goal_id=g2.id, fields={"pocket_ids": [pk2.id]})
+    with pytest.raises(DomainError, match="already_linked"):  # conta cuja caixinha está noutra meta
+        await update_goal(session, actor_id=a.id, goal_id=g3.id, fields={"account_ids": [other.id]})
+
+
+async def test_links_replace_and_require_access(session):
+    a, b = await make_user(session, "a@x.com"), await make_user(session, "b@x.com")
+    mine = await make_account(session, a.default_space_id)
+    theirs = await make_account(session, b.default_space_id)
+    goal = await _goal(session, a)
+    with pytest.raises(HTTPException) as e:
+        await update_goal(
+            session, actor_id=a.id, goal_id=goal.id, fields={"account_ids": [theirs.id]}
+        )
+    assert e.value.status_code == 403
+    await update_goal(session, actor_id=a.id, goal_id=goal.id, fields={"account_ids": [mine.id]})
+    await update_goal(session, actor_id=a.id, goal_id=goal.id, fields={"account_ids": []})
+    assert await goal_links(session, goal.id) == ([], [])

@@ -138,6 +138,7 @@ function PurchaseForm() {
           <Field label="Descrição da compra"><input maxLength={500} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
           <CategorySelect label="Categoria da compra" value={f.category_id} onChange={(v) => setF({ ...f, category_id: v })} />
           <Field label="Data da compra"><input type="date" required value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
+          <p className="mb-2 text-sm text-muted-foreground">Compra antiga? Informe a data real: as parcelas já vencidas vão para as faturas passadas, que você marca como pagas em Cartões.</p>
           <Err e={buy.error} />
           <Btn type="submit" disabled={buy.isPending || !cents || !f.card_id}>Lançar compra</Btn>
         </form>

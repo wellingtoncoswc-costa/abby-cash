@@ -182,3 +182,43 @@ async def test_whatsapp_origin_transaction_is_stored(session):
     await session.commit()
     got = await session.get(Transaction, tx.id, populate_existing=True)
     assert got.origin == "whatsapp_evolution"
+
+
+async def test_tx_before_account_opening_keeps_balance_but_still_counts(session):
+    a = await make_user(session, "a@x.com")
+    acc = await make_account(
+        session, a.default_space_id, initial=100_000, opened_on=date(2026, 11, 1)
+    )
+    await _tx(session, a, acc, 20_000, on=date(2026, 10, 15))  # gasto de antes do Abby Cash
+    assert await account_balance(session, acc.id) == 100_000  # já estava no saldo inicial
+    await _tx(session, a, acc, 5_000, on=date(2026, 11, 1))  # no dia da abertura já conta
+    assert await account_balance(session, acc.id) == 95_000
+    assert len(await list_transactions(session, viewer_id=a.id, space_id=a.default_space_id)) == 2
+
+
+async def test_transfer_before_opening_counts_only_where_the_account_has_no_cutoff(session):
+    a = await make_user(session, "a@x.com")
+    sp = a.default_space_id
+    one = await make_account(session, sp, name="Um", initial=1_000, opened_on=date(2026, 11, 1))
+    two = await make_account(session, sp, name="Dois")
+    await _tx(session, a, one, 500_000, type="transfer", counter=two, on=date(2026, 10, 1))
+    assert await account_balance(session, one.id) == 1_000
+    assert await account_balance(session, two.id) == 500_000  # destino sem data de abertura conta
+
+
+async def test_new_user_wallet_starts_with_an_opening_date(session):
+    from sqlalchemy import select
+
+    from app.core.dates import local_today
+    from app.domain.accounts.models import Account
+    from app.domain.users.service import create_admin, create_signup_invite, register_user
+
+    admin = await create_admin(
+        session, email="adm@x.com", name="Adm", password="correct horse battery"
+    )
+    inv = await create_signup_invite(session, created_by=admin.id)
+    u = await register_user(
+        session, email="n@x.com", name="N", password="correct horse battery", invite_code=inv.code
+    )
+    wallet = await session.scalar(select(Account).where(Account.space_id == u.default_space_id))
+    assert wallet.opened_on == local_today(u.tz)

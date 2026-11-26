@@ -129,7 +129,6 @@ async def _purge_space(session: AsyncSession, space_id: Any) -> list[str]:
         (Transaction, Transaction.card_id, cards),
         (Transaction, Transaction.invoice_id, invoices),
         (Transaction, Transaction.bill_id, bills),
-        (Goal, Goal.account_id, accs),
         (Loan, Loan.account_id, accs),
         (SpaceMember, SpaceMember.default_account_id, accs),
         (CreditCard, CreditCard.payment_account_id, accs),

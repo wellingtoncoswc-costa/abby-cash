@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -88,7 +88,17 @@ async def invoice_total(session: AsyncSession, invoice_id: UUID) -> int:
     return int(total or 0)
 
 
+async def _settled(session: AsyncSession, invoice_id: UUID) -> bool:
+    return bool(
+        await session.scalar(
+            select(Bill.settled_historical_at).where(Bill.invoice_id == invoice_id)
+        )
+    )
+
+
 async def invoice_remaining(session: AsyncSession, invoice_id: UUID) -> int:
+    if await _settled(session, invoice_id):  # baixa histórica: nada a pagar
+        return 0
     return await invoice_total(session, invoice_id) - await invoice_paid(session, invoice_id)
 
 
@@ -96,8 +106,9 @@ async def invoice_summary(session: AsyncSession, invoice: Invoice) -> dict[str, 
     total = await invoice_total(session, invoice.id)
     paid = await invoice_paid(session, invoice.id)
     bill = await session.scalar(select(Bill).where(Bill.invoice_id == invoice.id))
+    settled = bill is not None and bill.settled_historical_at is not None
     return {
-        "total_cents": total, "paid_cents": paid, "remaining_cents": total - paid,
+        "total_cents": total, "paid_cents": paid, "remaining_cents": 0 if settled else total - paid,
         "status": bill.status if bill else "open",
     }  # fmt: skip
 
@@ -141,6 +152,44 @@ async def sync_invoice_bill(session: AsyncSession, invoice: Invoice) -> None:
     bill.amount_cents = await invoice_total(session, invoice.id)
     bill.due_on = invoice.due_on
     await refresh_status(session, bill)
+
+
+async def _locked_invoice_bill(
+    session: AsyncSession, actor_id: UUID, invoice_id: UUID
+) -> tuple[Invoice, Bill]:
+    inv, _ = await visible_invoice(session, actor_id, invoice_id)  # 404 se não for membro
+    bill = await session.scalar(
+        select(Bill)
+        .where(Bill.invoice_id == inv.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    assert bill is not None
+    return inv, bill
+
+
+async def settle_invoice(session: AsyncSession, *, actor_id: UUID, invoice_id: UUID) -> Invoice:
+    """Baixa histórica: a fatura já estava paga antes do cadastro; sem lançamento. Idempotente."""
+    inv, bill = await _locked_invoice_bill(session, actor_id, invoice_id)
+    if bill.settled_historical_at is None:
+        if await invoice_paid(session, inv.id) > 0:
+            raise HTTPException(status_code=409, detail="invoice_paid_real")
+        bill.settled_historical_at = datetime.now(UTC)
+        bill.status = "paid"
+        audit(session, actor_id, "invoice.settle", "invoice", inv.id, {})
+        await session.commit()
+    return inv
+
+
+async def unsettle_invoice(session: AsyncSession, *, actor_id: UUID, invoice_id: UUID) -> Invoice:
+    """Desfaz a baixa histórica (volta a aberta). Idempotente."""
+    inv, bill = await _locked_invoice_bill(session, actor_id, invoice_id)
+    if bill.settled_historical_at is not None:
+        bill.settled_historical_at = None
+        await refresh_status(session, bill)
+        audit(session, actor_id, "invoice.unsettle", "invoice", inv.id, {})
+        await session.commit()
+    return inv
 
 
 async def register_card_purchase(
@@ -191,6 +240,24 @@ async def register_card_purchase(
     )
     await session.commit()
     return txs
+
+
+async def register_invoice_total(
+    session: AsyncSession, *, actor_id: UUID, card_id: UUID, year: int, month: int,
+    total_cents: int,
+) -> Invoice:  # fmt: skip
+    """Fatura pelo total: uma compra "Fatura MM/AAAA" no dia do fechamento (compra no dia do
+    fechamento cai na fatura que fecha). `month` = mês de FECHAMENTO."""
+    card = await use_card(session, actor_id, card_id)
+    dates = invoice_dates_for_month(card.closing_day, card.due_day, year, month)
+    txs = await register_card_purchase(
+        session, actor_id=actor_id, space_id=card.space_id, card_id=card.id,
+        amount_cents=total_cents, occurred_on=dates.closing,
+        description=f"Fatura {month:02d}/{year}",
+    )  # fmt: skip
+    inv = await session.get(Invoice, txs[0].invoice_id)
+    assert inv is not None
+    return inv
 
 
 async def invoice_statement(session: AsyncSession, viewer_id: UUID, invoice_id: UUID) -> Statement:

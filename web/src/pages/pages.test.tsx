@@ -9,13 +9,14 @@ const J = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status
 const routes: Record<string, (init: RequestInit) => Response> = {
   '/auth/refresh': () => J({ access_token: 't' }),
   '/spaces': () => J([{ id: SP, type: 'personal', name: 'x' }]),
-  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank' }]),
+  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank', balance_cents: 100000, pockets_cents: 0, available_cents: 100000 }]),
   [`/spaces/${SP}/bills`]: () => J([{ id: 'b1', space_id: SP, kind: 'bill', description: 'Aluguel', amount_cents: 150000, due_on: '2026-12-05', status: 'open', invoice_id: null }]),
   [`/spaces/${SP}/goals`]: () => J([]),
   '/channels': () => J([]),
   '/me': () => J({ id: 'u1', name: 'Ana', email: 'a@x.com', tz: 'America/Sao_Paulo', default_space_id: SP, preferred_channel: null, reminder_time: '09:00:00', weekly_digest: false, is_admin: false, totp_enabled: false }),
   [`/spaces/${SP}/categories`]: () => J([{ id: 'c1', space_id: SP, kind: 'expense', name: 'Mercado', icon: null, color: null }]),
   [`/spaces/${SP}/members`]: () => J([{ user_id: 'u1', name: 'Ana', role: 'owner', joined_at: '2026-11-01T00:00:00Z' }]),
+  '/cards/k1/panel': () => J({ invoice: null, limit_cents: null, used_cents: 0, available_cents: null, by_category: [], private_total_cents: 0, top: [], history: [] }),
   '/cards': () => J([{ id: 'k1', space_id: SP, name: 'Visa', closing_day: 5, due_day: 12, limit_cents: null, payment_account_id: null }]),
   [`/spaces/${SP}/card-purchases`]: () => J([1, 2].map((n) => ({ id: `p${n}`, invoice_id: `i${n}`, amount_cents: 5000, installment_number: n, installment_total: 2 })), 201),
   '/attachments/att1': () => new Response('x', { headers: { 'Content-Type': 'image/png' } }),
@@ -172,4 +173,181 @@ test('Admin: conectar WhatsApp mostra o QR e o status', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Gerar novo QR' }))
   expect(await screen.findByRole('button', { name: 'Desconectar número' })).toBeInTheDocument()
   await waitFor(() => expect(screen.queryByAltText('QR code para parear o WhatsApp')).toBeNull())
+})
+
+test('painel: passar o mouse numa categoria troca o centro da rosca', async () => {
+  go('/')
+  const centro = await screen.findByTestId('centro-rosca')
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+  await userEvent.hover(await screen.findByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Mercado')).toBeInTheDocument()
+  await userEvent.unhover(screen.getByRole('listitem', { name: /Mercado/ }))
+  expect(within(centro).getByText('Total')).toBeInTheDocument()
+})
+
+test('painel: seção mostra esqueleto enquanto carrega', async () => {
+  routes[`/spaces/${SP}/goals`] = () => new Promise(() => {}) as unknown as Response
+  go('/')
+  expect(await screen.findByLabelText('Carregando metas')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+test('painel: mapa de calor mostra o gasto de cada dia', async () => {
+  go('/')
+  const mapa = await screen.findByRole('img', { name: /Gastos por dia/ })
+  expect(within(mapa).getByLabelText('20/11: R$ 1.234,56')).toBeInTheDocument()
+})
+
+test('painel: meta batida ganha o selo', async () => {
+  routes[`/spaces/${SP}/goals`] = () => J([{ id: 'g1', name: 'Viagem', saved_cents: 100000, target_cents: 100000 }])
+  go('/')
+  expect(await screen.findByText('Meta batida')).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+const FATURA = { id: 'i1', card_id: 'k1', closing_on: '2026-08-05', due_on: '2026-08-12', total_cents: 20000, paid_cents: 0, remaining_cents: 20000, status: 'open' }
+
+test('fatura antiga: marcar como paga antes do cadastro e desfazer', async () => {
+  routes['/cards/k1/invoices'] = () => J([FATURA])
+  let baixada = false
+  const estado = () => (baixada ? { ...FATURA, status: 'paid', remaining_cents: 0 } : FATURA)
+  routes['/invoices/i1'] = () => J({ ...estado(), statement: { items: [], private_total_cents: 0, total_cents: 20000 } })
+  routes['/invoices/i1/settle'] = (init) => { baixada = init.method === 'POST'; return J(estado()) }
+  go('/cartoes')
+  await userEvent.click(await screen.findByRole('button', { name: /Fatura 05\/08\/2026/ }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Marcar como paga (paga antes do cadastro)' }))
+  const post = calls.find(([u, i]) => u === '/invoices/i1/settle' && i.method === 'POST')
+  expect(post).toBeDefined()
+  expect(await screen.findByRole('button', { name: 'Desfazer baixa' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Desfazer baixa' }))
+  expect(calls.some(([u, i]) => u === '/invoices/i1/settle' && i.method === 'DELETE')).toBe(true)
+})
+
+test('fatura paga aparece com o status na lista', async () => {
+  routes['/cards/k1/invoices'] = () => J([{ ...FATURA, status: 'paid', remaining_cents: 0 }])
+  go('/cartoes')
+  expect(await screen.findByText('paga')).toBeInTheDocument()
+})
+
+test('metas: conta já ligada a outra meta fica desabilitada', async () => {
+  const base = { saved_cents: 0, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem', account_ids: ['a1'] }, { ...base, id: 'g2', name: 'Carro', account_ids: [] }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  go('/metas')
+  const carro = within((await screen.findByRole('heading', { name: 'Carro' })).closest('section')!)
+  expect(await carro.findByLabelText(/Nubank/)).toBeDisabled()
+  expect(carro.getByText(/já na meta Viagem/)).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+const INV = {
+  assets: [{ id: 'i1', name: 'Petrobras', kind: 'stock', ticker: 'PETR4', quantity: '10', avg_price_cents: 3800, price_cents: 3850, quote_date: '2026-01-15', day_change_bp: 131, contributed_cents: 38000, value_cents: 38500, profit_cents: 500, profit_bp: 131 }],
+  by_kind: [{ kind: 'stock', value_cents: 38500 }],
+  series: [{ on: '2026-01-14', value_cents: 38000, contributed_cents: 38000 }, { on: '2026-01-15', value_cents: 38500, contributed_cents: 38000 }],
+  contributed_cents: 38000, current_cents: 38500, profit_cents: 500, profit_bp: 131,
+}
+
+test('investimentos: mostra totais, rentabilidade e ativos', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  go('/investimentos')
+  expect(await screen.findByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+  expect(screen.getAllByText(/R\$ 385,00/).length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/\+1,31%/).length).toBeGreaterThan(0)
+})
+
+test('investimentos: aportar em ação envia quantidade e conta', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J(INV)
+  routes['/investments/i1/buys'] = () => J({ id: 'm1' }, 201)
+  go('/investimentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Aportar em PETR4' }))
+  await userEvent.selectOptions(screen.getByLabelText('Conta'), 'a1')
+  await userEvent.type(screen.getByLabelText('Quantidade'), '10')
+  await userEvent.click(screen.getByRole('button', { name: 'Confirmar aporte' }))
+  const post = calls.find(([u]) => u === '/investments/i1/buys')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ account_id: 'a1', quantity: '10' })
+})
+
+test('investimentos: ativo recém-cadastrado aparece com o caminho para aportar', async () => {
+  routes[`/spaces/${SP}/investments/dashboard`] = () => J({
+    assets: [{ ...INV.assets[0], quantity: '0', avg_price_cents: null, contributed_cents: 0, value_cents: 0, profit_cents: 0, profit_bp: null }],
+    by_kind: [], series: [], contributed_cents: 0, current_cents: 0, profit_cents: 0, profit_bp: null,
+  })
+  go('/investimentos')
+  expect(await screen.findByText(/Sem aportes ainda/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Aportar em PETR4' })).toBeInTheDocument()
+})
+
+const PANEL = {
+  invoice: { id: 'i1', card_id: 'k1', closing_on: '2026-12-05', due_on: '2026-12-12', total_cents: 50000, paid_cents: 0, remaining_cents: 50000, status: 'open' },
+  limit_cents: 200000, used_cents: 50000, available_cents: 150000,
+  by_category: [{ category_id: 'c1', total_cents: 50000 }], private_total_cents: 0,
+  top: [{ description: 'Supermercado', merchant: null, amount_cents: 30000, occurred_on: '2026-11-20' }],
+  history: [{ invoice_id: 'i1', closing_on: '2026-12-05', due_on: '2026-12-12', total_cents: 50000 }],
+}
+const tile = async () => within((await screen.findByRole('heading', { name: 'Visa' })).closest('section')!)
+
+test('cartões: um card por cartão com resumo, limite e painel', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([PANEL.invoice])
+  go('/cartoes')
+  const card = await tile()
+  expect(await card.findByText(/Disponível R\$ 1\.500,00/)).toBeInTheDocument()
+  await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Mercado')).toBeInTheDocument()
+  expect(card.getByText(/Supermercado/)).toBeInTheDocument()
+})
+
+test('cartões: cadastrar fatura pelo total envia mês e valor', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([PANEL.invoice])
+  routes['/cards/k1/invoice-totals'] = () => J(PANEL.invoice, 201)
+  go('/cartoes')
+  const card = await tile()
+  await userEvent.click(await card.findByRole('button', { name: 'Cadastrar fatura' }))
+  await userEvent.type(card.getByLabelText('Mês de fechamento'), '2026-08')
+  await userEvent.type(card.getByLabelText('Valor total (R$)'), '1234,56')
+  await userEvent.click(card.getByRole('button', { name: 'Salvar fatura' }))
+  const post = calls.find(([u]) => u === '/cards/k1/invoice-totals')!
+  expect(JSON.parse(post[1].body as string)).toEqual({ month: '2026-08', total_cents: 123456 })
+})
+
+test('cartões: nova compra no cartão', async () => {
+  routes['/cards/k1/panel'] = () => J(PANEL)
+  routes['/cards/k1/invoices'] = () => J([])
+  go('/cartoes')
+  const card = await tile()
+  await userEvent.click(await card.findByRole('button', { name: 'Nova compra' }))
+  await userEvent.type(card.getByLabelText('Valor (R$)'), '45,00')
+  await userEvent.click(card.getByRole('button', { name: 'Registrar compra' }))
+  const post = calls.find(([u]) => u === `/spaces/${SP}/card-purchases`)!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ card_id: 'k1', amount_cents: 4500, installments: 1 })
+})
+
+const ACC_PANEL = {
+  month: '2026-11-01', is_default: false, income_cents: 500000, expense_cents: 40000, transfer_net_cents: -20000, private_total_cents: 0,
+  by_category: [{ category_id: 'c1', total_cents: 40000 }],
+  recent: [{ occurred_on: '2026-11-08', type: 'transfer', description: 'p/ outra', merchant: null, amount_cents: -20000 }],
+  pockets: [{ id: 'p1', name: 'Reserva', balance_cents: 15000 }], goals: [{ id: 'g1', name: 'Viagem' }],
+}
+const accTile = async () => within((await screen.findByRole('heading', { name: 'Nubank' })).closest('section')!)
+
+test('contas: um card por conta com saldo e painel do mês', async () => {
+  routes['/accounts/a1/panel'] = () => J(ACC_PANEL)
+  go('/contas-bancarias')
+  const card = await accTile()
+  await userEvent.click(await card.findByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Mercado')).toBeInTheDocument()
+  expect(card.getByText(/Reserva/)).toBeInTheDocument()
+  expect(card.getByText(/Viagem/)).toBeInTheDocument()
+  expect(card.getByText(/R\$ 5\.000,00/)).toBeInTheDocument()
+})
+
+test('contas: tornar padrão chama a API', async () => {
+  routes['/accounts/a1/panel'] = () => J(ACC_PANEL)
+  routes[`/spaces/${SP}/default-account`] = () => new Response(null, { status: 204 })
+  go('/contas-bancarias')
+  const card = await accTile()
+  await userEvent.click(await card.findByRole('button', { name: 'Tornar padrão' }))
+  const put = calls.find(([u]) => u === `/spaces/${SP}/default-account`)!
+  expect(JSON.parse(put[1].body as string)).toEqual({ account_id: 'a1' })
 })
