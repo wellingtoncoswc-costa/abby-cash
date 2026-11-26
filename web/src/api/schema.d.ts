@@ -971,6 +971,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{space_id}/projections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Projections */
+        get: operations["get_projections_spaces__space_id__projections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/spaces/{space_id}/recurring": {
         parameters: {
             query?: never;
@@ -2628,6 +2645,83 @@ export interface components {
             /** Yield Cents */
             yield_cents: number;
         };
+        /** ProjAveragesOut */
+        ProjAveragesOut: {
+            /** Estimated Income Cents */
+            estimated_income_cents: number;
+            /** Estimated Expense Cents */
+            estimated_expense_cents: number;
+            /** History Income Cents */
+            history_income_cents: number;
+            /** History Expense Cents */
+            history_expense_cents: number;
+        };
+        /** ProjHistoryOut */
+        ProjHistoryOut: {
+            /** Month */
+            month: string;
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Net Cents */
+            net_cents: number;
+            /** Balance Cents */
+            balance_cents: number;
+        };
+        /** ProjLoanEndOut */
+        ProjLoanEndOut: {
+            /**
+             * Loan Id
+             * Format: uuid
+             */
+            loan_id: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Last Due On
+             * Format: date
+             */
+            last_due_on: string;
+            /** Installment Cents */
+            installment_cents: number;
+            /** Remaining Count */
+            remaining_count: number;
+        };
+        /** ProjMonthOut */
+        ProjMonthOut: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Income Fixed Cents */
+            income_fixed_cents: number;
+            /** Income Estimated Cents */
+            income_estimated_cents: number;
+            /** Expense Fixed Cents */
+            expense_fixed_cents: number;
+            /** Expense Loans Cents */
+            expense_loans_cents: number;
+            /** Expense Cards Cents */
+            expense_cards_cents: number;
+            /** Expense Bills Cents */
+            expense_bills_cents: number;
+            /** Expense Estimated Cents */
+            expense_estimated_cents: number;
+            /** Net Committed Cents */
+            net_committed_cents: number;
+            /** Net Cents */
+            net_cents: number;
+            /** Projected Balance Committed Cents */
+            projected_balance_committed_cents: number;
+            /** Projected Balance Cents */
+            projected_balance_cents: number;
+            /** Commitment Bp */
+            commitment_bp: number | null;
+        };
         /** ProjectionMonthOut */
         ProjectionMonthOut: {
             /**
@@ -2639,6 +2733,8 @@ export interface components {
             income_cents: number;
             /** Expense Cents */
             expense_cents: number;
+            /** Expense Loans Cents */
+            expense_loans_cents: number;
             /** Net Cents */
             net_cents: number;
             /** Projected Balance Cents */
@@ -2650,6 +2746,18 @@ export interface components {
             months: components["schemas"]["ProjectionMonthOut"][];
             /** Upcoming */
             upcoming: components["schemas"]["UpcomingOut"][];
+        };
+        /** ProjectionsOut */
+        ProjectionsOut: {
+            /** Current Balance Cents */
+            current_balance_cents: number;
+            /** Months */
+            months: components["schemas"]["ProjMonthOut"][];
+            /** History */
+            history: components["schemas"]["ProjHistoryOut"][];
+            /** Loans Ending */
+            loans_ending: components["schemas"]["ProjLoanEndOut"][];
+            averages: components["schemas"]["ProjAveragesOut"];
         };
         /** PurchaseIn */
         PurchaseIn: {
@@ -5469,6 +5577,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CdiLatestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_projections_spaces__space_id__projections_get: {
+        parameters: {
+            query?: {
+                months?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                space_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectionsOut"];
                 };
             };
             /** @description Validation Error */

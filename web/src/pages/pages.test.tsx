@@ -455,7 +455,7 @@ test('lançamentos: salvar um lançamento envia e fecha o modal', async () => {
 
 const FIXO = { id: 'r1', space_id: SP, type: 'expense', description: 'Aluguel', amount_cents: 150000, account_id: 'a1', category_id: null, rule: { kind: 'monthly', day: 5, month: null, n: 1 }, starts_on: '2026-11-01', ends_on: null, active: true, next_due_on: '2026-12-05' }
 const PROJ = {
-  months: [{ month: '2026-11-01', income_cents: 500000, expense_cents: 150000, net_cents: 350000, projected_balance_cents: 1350000 }, { month: '2026-12-01', income_cents: 500000, expense_cents: 150000, net_cents: 350000, projected_balance_cents: 1700000 }],
+  months: [{ month: '2026-11-01', income_cents: 500000, expense_cents: 150000, expense_loans_cents: 0, net_cents: 350000, projected_balance_cents: 1350000 }, { month: '2026-12-01', income_cents: 500000, expense_cents: 230000, expense_loans_cents: 80000, net_cents: 270000, projected_balance_cents: 1620000 }],
   upcoming: [{ due_on: '2026-12-05', description: 'Aluguel', type: 'expense', amount_cents: 150000, account_id: 'a1', account_name: 'Nubank' }],
 }
 
@@ -466,7 +466,8 @@ test('fixos: projeção, cards com a conta e botão +', async () => {
   const card = within((await screen.findByRole('heading', { name: 'Aluguel' })).closest('section')!)
   expect(await card.findByText('Sai de Nubank')).toBeInTheDocument()
   expect(card.getByText(/Próxima data: 05\/12\/2026/)).toBeInTheDocument()
-  expect(await screen.findByText(/Saldo projetado R\$ 17\.000,00/)).toBeInTheDocument()
+  expect(await screen.findByText(/Saldo projetado R\$ 16\.200,00/)).toBeInTheDocument()
+  expect(screen.getByText(/financiamentos R\$ 800,00/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Novo fixo' })).toBeInTheDocument()
 })
 
@@ -523,4 +524,36 @@ test('metas: checkbox de vínculo tem tamanho fixo (não estica como os campos d
   const card = within((await screen.findByRole('heading', { name: 'Viagem' })).closest('section')!)
   expect(await card.findByRole('checkbox', { name: /Nubank/ })).toHaveClass('size-4', 'shrink-0')
   routes[`/spaces/${SP}/goals`] = () => J([])
+})
+
+const mes = (m: string, extra: Record<string, number | null> = {}) => ({ month: m, income_fixed_cents: 500000, income_estimated_cents: 30000, expense_fixed_cents: 150000, expense_loans_cents: 80000, expense_cards_cents: 30000, expense_bills_cents: 10000, expense_estimated_cents: 60000, net_committed_cents: 230000, net_cents: 200000, projected_balance_committed_cents: 1230000, projected_balance_cents: 1200000, commitment_bp: 5400, ...extra })
+const PROJECOES = {
+  current_balance_cents: 1000000,
+  months: [mes('2026-11-01'), mes('2026-12-01', { projected_balance_cents: 1400000 })],
+  history: Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String(i === 11 ? 12 : i + 1).padStart(2, '0')}`, income_cents: 400000, expense_cents: 300000, net_cents: 100000, balance_cents: 900000 + i * 1000 })),
+  loans_ending: [{ loan_id: 'l1', name: 'Carro', kind: 'financing', last_due_on: '2027-11-10', installment_cents: 80000, remaining_count: 12 }],
+  averages: { estimated_income_cents: 30000, estimated_expense_cents: 60000, history_income_cents: 400000, history_expense_cents: 300000 },
+}
+
+test('projeções: resumo, tabela mês a mês e fim dos financiamentos', async () => {
+  routes[`/spaces/${SP}/projections`] = () => J(PROJECOES)
+  go('/projecoes')
+  expect(await screen.findByText(/Saldo atual: R\$ 10\.000,00/)).toBeInTheDocument()
+  expect(screen.getByText(/Carro: termina em 10\/11\/2027/)).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: /Receitas e despesas/ })).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: /Saldo real e saldo projetado/ })).toBeInTheDocument()
+  const tabela = within(screen.getByRole('table'))
+  expect(tabela.getAllByText('R$ 5.300,00').length).toBe(2) // receitas com estimativa, 2 meses
+  expect(screen.getByText(/Financiamentos e consórcios R\$ 1\.600,00/)).toBeInTheDocument()
+})
+
+test('projeções: esconder a estimativa muda os totais e o horizonte vai na API', async () => {
+  routes[`/spaces/${SP}/projections`] = () => J(PROJECOES)
+  go('/projecoes')
+  await screen.findByText(/Saldo atual/)
+  await userEvent.click(screen.getByRole('checkbox', { name: /estimativa de variáveis/ }))
+  expect(within(screen.getByRole('table')).getAllByText('R$ 5.000,00').length).toBe(2)
+  expect(screen.queryByText(/Variáveis \(estimado\)/)).toBeNull()
+  await userEvent.selectOptions(screen.getByLabelText('Horizonte'), '6')
+  await waitFor(() => expect(calls.some(([u]) => u === `/spaces/${SP}/projections?months=6`)).toBe(true))
 })

@@ -21,7 +21,7 @@ function Projection({ spaceId }: { spaceId: string }) {
           <div className="flex justify-between"><span>{MONTH[Number(m.month.slice(5, 7)) - 1]}/{m.month.slice(2, 4)}</span><span className="tabular-nums">Saldo projetado {formatBRL(m.projected_balance_cents)}</span></div>
           <div className="h-2 rounded bg-muted" aria-hidden="true"><div className="h-2 rounded" style={{ width: `${Math.round((m.income_cents / max) * 100)}%`, background: 'var(--chart-1)' }} /></div>
           <div className="mt-1 h-2 rounded bg-muted" aria-hidden="true"><div className="h-2 rounded" style={{ width: `${Math.round((m.expense_cents / max) * 100)}%`, background: 'var(--chart-4)' }} /></div>
-          <div className="flex justify-between text-sm text-muted-foreground"><span>Receitas {formatBRL(m.income_cents)}</span><span>Despesas {formatBRL(m.expense_cents)}</span><span>Resultado {formatBRL(m.net_cents)}</span></div>
+          <div className="flex justify-between text-sm text-muted-foreground"><span>Receitas {formatBRL(m.income_cents)}</span><span>Despesas {formatBRL(m.expense_cents)}{m.expense_loans_cents > 0 ? ` (financiamentos ${formatBRL(m.expense_loans_cents)})` : ''}</span><span>Resultado {formatBRL(m.net_cents)}</span></div>
         </li>
       ))}</ul>
       <h3 className="mt-3 font-semibold">Próximos 30 dias</h3>
