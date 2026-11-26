@@ -13,6 +13,8 @@ from app.domain.accounts.models import Account
 from app.domain.audit import audit
 from app.domain.bills.recurrence import Recurrence, generate_occurrences
 from app.domain.errors import DomainError
+from app.domain.loans.models import Loan
+from app.domain.loans.service import list_installments
 from app.domain.recurring.models import RecurringItem, RecurringPosting
 from app.domain.spaces.access import require_member, require_owner
 from app.domain.transactions.rules import check_common
@@ -202,6 +204,7 @@ async def projection(
     }
     income = [0] * months
     expense = [0] * months
+    loans_m = [0] * months
     upcoming: list[dict[str, Any]] = []
     for i in items:
         for d in occurrences(i, today + timedelta(days=1), end):
@@ -216,13 +219,23 @@ async def projection(
                     "amount_cents": i.amount_cents, "account_id": i.account_id,
                     "account_name": names.get(i.account_id, ""),
                 })  # fmt: skip
+    # parcelas em aberto de financiamentos/consórcios são gasto (atrasadas caem no mês corrente)
+    for loan in await session.scalars(
+        select(Loan).where(Loan.space_id == space_id, Loan.canceled_at.is_(None))
+    ):
+        for inst in await list_installments(session, loan):
+            if inst.state == "open" and inst.due_on <= end:
+                idx = (inst.due_on.year - first.year) * 12 + inst.due_on.month - first.month
+                loans_m[max(0, idx)] += inst.amount_cents
     balance = sum([await account_balance(session, a) for a in names])
     rows = []
     for k, m in enumerate(starts):
-        balance += income[k] - expense[k]
+        out = expense[k] + loans_m[k]
+        balance += income[k] - out
         rows.append({
-            "month": m, "income_cents": income[k], "expense_cents": expense[k],
-            "net_cents": income[k] - expense[k], "projected_balance_cents": balance,
+            "month": m, "income_cents": income[k], "expense_cents": out,
+            "expense_loans_cents": loans_m[k],
+            "net_cents": income[k] - out, "projected_balance_cents": balance,
         })  # fmt: skip
     upcoming.sort(key=lambda u: (u["due_on"], u["description"]))
     return {"months": rows, "upcoming": upcoming[:10]}

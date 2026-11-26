@@ -150,3 +150,20 @@ async def test_privacy_purge_removes_investments_and_recurring_items(session):
     await session.commit()
     for model in (RecurringItem, Investment):
         assert await session.scalar(select(func.count()).select_from(model)) == 0
+
+
+async def test_projection_counts_loan_installments_as_expense(session):
+    from app.domain.loans.service import create_loan
+
+    a = await make_user(session, "a@x.com")
+    sp = a.default_space_id
+    acc = await make_account(session, sp, initial=1_000_000)
+    await create_loan(
+        session, actor_id=a.id, space_id=sp, kind="financing", name="Carro",
+        installment_cents=80_000, installments_total=12, first_due_on=date(2026, 12, 10),
+    )  # fmt: skip
+    p = await projection(session, viewer_id=a.id, space_id=sp, today=D)
+    nov, dez, jan = p["months"][0], p["months"][1], p["months"][2]
+    assert (nov["expense_loans_cents"], dez["expense_loans_cents"]) == (0, 80_000)
+    assert dez["expense_cents"] == 80_000 and dez["net_cents"] == -80_000
+    assert jan["projected_balance_cents"] == acc.initial_balance_cents - 160_000

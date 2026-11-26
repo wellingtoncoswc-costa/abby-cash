@@ -20,6 +20,7 @@ from app.api import (
     me,
     pockets,
     privacy,
+    projections,
     recurring,
     reports,
     spaces,
@@ -45,6 +46,7 @@ app.include_router(reports.router)
 app.include_router(goals.router)
 app.include_router(investments.router)
 app.include_router(pockets.router)
+app.include_router(projections.router)
 app.include_router(recurring.router)
 app.include_router(loans.router)
 app.include_router(categories.router)

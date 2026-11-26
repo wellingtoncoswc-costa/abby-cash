@@ -3,7 +3,8 @@ import { api, ApiError } from '../api/client'
 import type { Bill, Card as CardT, CardPanel, Invoice, S, Statement } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useCatName, useGet, useIsOwner, useSend, Modal, PlusButton } from '../ui'
+import { RecurringSection } from './recurring'
+import { AccountSelect, Btn, Card, CategorySelect, EditBox, Err, Field, br, centsText, today, useAccounts, useCatName, useCategories, useGet, useIsOwner, useSend, Modal, PlusButton } from '../ui'
 
 /** Formulário de pagamento: conta de origem obrigatória; valor vazio = o que falta (só contas). */
 function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultCents?: number; requireAmount?: boolean }) {
@@ -23,31 +24,58 @@ function PayForm({ path, defaultCents, requireAmount }: { path: string; defaultC
   )
 }
 
+const REPEAT: Record<string, string> = { none: 'Única (não repete)', monthly: 'Mensal', yearly: 'Anual', every_n_months: 'A cada N meses' }
+
+/** Conta única (bill) ou fixa/receita (recurring): sem término = fixo; com término = período. */
+function NewEntry({ onDone }: { onDone: () => void }) {
+  const { spaceId } = useSpace()
+  const accounts = useAccounts()
+  const cats = useCategories()
+  const [f, setF] = useState({ type: 'expense', description: '', amount: '', repeat: 'none', n: '2', account_id: '', category_id: '', start: today(), end: '' })
+  const set = (k: keyof typeof f, v: string) => setF({ ...f, [k]: v })
+  const cents = parseBRL(f.amount)
+  const single = f.type === 'expense' && f.repeat === 'none' // vira conta a pagar avulsa
+  const needsAccount = !single
+  const body = single
+    ? { description: f.description, amount_cents: cents!, due_on: f.start, category_id: f.category_id || null }
+    : {
+        type: f.type, description: f.description, amount_cents: cents!, account_id: f.account_id, category_id: f.category_id || null,
+        rule: { kind: f.repeat === 'none' ? 'monthly' : f.repeat, day: Number(f.start.slice(8, 10)), ...(f.repeat === 'yearly' ? { month: Number(f.start.slice(5, 7)) } : {}), ...(f.repeat === 'every_n_months' ? { n: Number(f.n) } : {}) },
+        starts_on: f.start, ends_on: f.repeat === 'none' ? f.start : f.end || null,
+      }
+  const send = useSend(() => api('POST', `/spaces/${spaceId}/${single ? 'bills' : 'recurring'}`, body), onDone)
+  const ok = !!cents && (!needsAccount || !!f.account_id)
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (ok) send.mutate() }}>
+      <Field label="Tipo"><select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value, category_id: '' })}><option value="expense">Despesa</option><option value="income">Receita</option></select></Field>
+      <Field label="Descrição"><input required maxLength={200} value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
+      <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => set('amount', e.target.value)} /></Field>
+      <Field label="Repetição"><select value={f.repeat} onChange={(e) => set('repeat', e.target.value)}>{Object.entries(REPEAT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+      {f.repeat === 'every_n_months' && <Field label="A cada quantos meses"><input type="number" min={1} max={120} required value={f.n} onChange={(e) => set('n', e.target.value)} /></Field>}
+      <div className="grid grid-cols-2 gap-2">
+        <Field label={f.repeat === 'none' ? 'Vencimento' : 'Início'}><input type="date" required value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
+        {f.repeat !== 'none' && <Field label="Término (vazio = fixo)"><input type="date" value={f.end} onChange={(e) => set('end', e.target.value)} /></Field>}
+      </div>
+      {needsAccount && <Field label={f.type === 'income' ? 'Entra em' : 'Sai de'}><AccountSelect accounts={accounts.data} value={f.account_id} onChange={(v) => set('account_id', v)} /></Field>}
+      <Field label="Categoria"><select value={f.category_id} onChange={(e) => set('category_id', e.target.value)}><option value="">Sem categoria</option>{cats.data.filter((c) => c.kind === f.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+      <p className="mb-2 text-sm text-muted-foreground">{single ? 'Conta única: fica em aberto até você pagar.' : 'Fixas e receitas são lançadas sozinhas na conta, no dia.'}</p>
+      <Err e={send.error} />
+      <Btn type="submit" disabled={send.isPending || !ok}>Salvar</Btn>
+    </form>
+  )
+}
+
 export function Billing() {
   const { spaceId } = useSpace()
   const bills = useGet<Bill[]>(`/spaces/${spaceId}/bills`)
   const [open, setOpen] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  const [f, setF] = useState({ description: '', amount: '', due_on: today() })
-  const cents = parseBRL(f.amount)
-  const create = useSend(
-    () => api('POST', `/spaces/${spaceId}/bills`, { description: f.description, amount_cents: cents!, due_on: f.due_on } satisfies S['BillIn']),
-    () => { setF({ ...f, description: '', amount: '' }); setAdding(false) },
-  )
   const label: Record<string, string> = { open: 'Em aberto', partial: 'Parcial', paid: 'Paga' }
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Contas a pagar</h1>
-      <div className="mb-4"><PlusButton label="Nova conta a pagar" caption="Conta a pagar" onClick={() => setAdding(true)} /></div>
-      {adding && <Modal title="Nova conta a pagar" onClose={() => setAdding(false)}>
-        <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
-          <Field label="Descrição"><input required maxLength={200} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
-          <Field label="Valor (R$)"><input inputMode="decimal" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
-          <Field label="Vencimento"><input type="date" required value={f.due_on} onChange={(e) => setF({ ...f, due_on: e.target.value })} /></Field>
-          <Err e={create.error} />
-          <Btn type="submit" disabled={create.isPending || !cents}>Adicionar</Btn>
-        </form>
-      </Modal>}
+      <div className="mb-4"><PlusButton label="Nova conta ou receita" caption="Conta ou receita" onClick={() => setAdding(true)} /></div>
+      {adding && <Modal title="Nova conta ou receita" onClose={() => setAdding(false)}><NewEntry onDone={() => setAdding(false)} /></Modal>}
       <Card>
         {(bills.data ?? []).length === 0 ? <p>Nenhuma conta cadastrada.</p> : (
           <ul className="divide-y divide-border">
@@ -62,6 +90,7 @@ export function Billing() {
         )}
         <Err e={bills.error} />
       </Card>
+      <RecurringSection />
     </>
   )
 }
