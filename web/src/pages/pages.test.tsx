@@ -99,7 +99,7 @@ test('detalhe do lançamento: comprovante, edição e exclusão', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
   expect(await screen.findByAltText('Comprovante')).toHaveAttribute('src', 'blob:x')
   expect(calls.find(([u]) => u === '/attachments/att1')![1].headers).toMatchObject({ Authorization: 'Bearer t' })
-  await userEvent.click(screen.getByRole('button', { name: 'Editar lançamento' }))
+  expect(await screen.findByRole('dialog', { name: 'Editar lançamento' })).toBeInTheDocument()
   await userEvent.clear(screen.getByLabelText('Descrição (edição)'))
   await userEvent.type(screen.getByLabelText('Descrição (edição)'), 'Feira')
   await userEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
@@ -113,7 +113,6 @@ test('lançamento de cartão/parcelado: sem valor e data, com aviso', async () =
     go('/lancamentos')
     await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
     expect(await screen.findByRole('note')).toHaveTextContent('não podem ser editados')
-    await userEvent.click(screen.getByRole('button', { name: 'Editar lançamento' }))
     expect(screen.queryByLabelText('Valor (R$) (edição)')).toBeNull()
     expect(screen.queryByLabelText('Data (edição)')).toBeNull()
   } finally { txExtra = {} }
@@ -388,4 +387,25 @@ test('investimentos: painel do ativo lista as movimentações', async () => {
   await userEvent.click(card.getByRole('button', { name: 'Ver painel' }))
   expect(await card.findByText(/10 cotas a R\$ 38,00/)).toBeInTheDocument()
   expect(card.getByRole('img', { name: 'Evolução de PETR4' })).toBeInTheDocument()
+})
+
+test('contas: nome do banco, saldo sem caixinhas e saldo negativo em destaque', async () => {
+  routes['/accounts'] = () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Principal', initial_balance_cents: 0, institution: 'nubank', balance_cents: 10000, pockets_cents: 15000, available_cents: -5000 }])
+  routes['/accounts/a1/panel'] = () => J({ month: '2026-11-01', is_default: false, income_cents: 0, expense_cents: 0, transfer_net_cents: 0, private_total_cents: 0, by_category: [], recent: [], pockets: [], goals: [] })
+  go('/contas-bancarias')
+  const card = within((await screen.findByRole('heading', { name: 'Principal' })).closest('section')!)
+  expect(card.getByText(/Nubank/)).toBeInTheDocument()
+  expect(card.getByText('-R$ 50,00')).toHaveClass('text-destructive')
+  expect(card.getByText(/Guardado em caixinhas \(fora do saldo\)/)).toBeInTheDocument()
+  expect(card.getByRole('note')).toHaveTextContent('Saldo negativo')
+  routes['/accounts'] = () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank', balance_cents: 100000, pockets_cents: 0, available_cents: 100000 }])
+})
+
+test('lançamento: abre em modal já em edição e fecha com Esc', async () => {
+  go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Abrir Mercado' }))
+  expect(await screen.findByRole('dialog', { name: 'Editar lançamento' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Descrição (edição)')).toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
