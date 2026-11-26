@@ -365,3 +365,17 @@ test('caixinhas: um card por caixinha com painel de rendimento', async () => {
   expect(card.getByText(/Depósito/)).toBeInTheDocument()
   expect(card.getByLabelText('11/26: R$ 1,20')).toBeInTheDocument()
 })
+
+test('metas: painel mostra a composição e o histórico de aportes', async () => {
+  const base = { saved_cents: 8000, target_cents: 100000, deadline: null, monthly_needed_cents: null, behind: false, account_ids: [], pocket_ids: [] }
+  routes[`/spaces/${SP}/goals`] = () => J([{ ...base, id: 'g1', name: 'Viagem' }])
+  routes[`/spaces/${SP}/pockets`] = () => J([])
+  routes['/goals/g1/panel'] = () => J({ total_cents: 58000, direct_cents: 8000, accounts: [{ id: 'a1', name: 'Ligada', balance_cents: 50000 }], pockets: [{ id: 'p1', name: 'Reserva', balance_cents: 20000, counted: false }], contributions: [{ occurred_on: '2026-11-10', direction: 'in', amount_cents: 10000 }] })
+  go('/metas')
+  const card = within((await screen.findByRole('heading', { name: 'Viagem' })).closest('section')!)
+  await userEvent.click(await card.findByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText(/Conta Ligada/)).toBeInTheDocument()
+  expect(card.getByText(/Reserva \(já na conta\)/)).toBeInTheDocument()
+  expect(card.getByText(/10\/11\/2026 Aporte/)).toBeInTheDocument()
+  routes[`/spaces/${SP}/goals`] = () => J([])
+})

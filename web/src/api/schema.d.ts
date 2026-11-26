@@ -680,6 +680,23 @@ export interface paths {
         patch: operations["patch_goals__goal_id__patch"];
         trace?: never;
     };
+    "/goals/{goal_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panel */
+        get: operations["panel_goals__goal_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/goals/{goal_id}/contributions": {
         parameters: {
             query?: never;
@@ -1789,6 +1806,18 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** GoalContributionOut */
+        GoalContributionOut: {
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Direction */
+            direction: string;
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** GoalIn */
         GoalIn: {
             /** Name */
@@ -1834,6 +1863,45 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** GoalPanelItemOut */
+        GoalPanelItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+        };
+        /** GoalPanelOut */
+        GoalPanelOut: {
+            /** Total Cents */
+            total_cents: number;
+            /** Direct Cents */
+            direct_cents: number;
+            /** Accounts */
+            accounts: components["schemas"]["GoalPanelItemOut"][];
+            /** Pockets */
+            pockets: components["schemas"]["GoalPanelPocketOut"][];
+            /** Contributions */
+            contributions: components["schemas"]["GoalContributionOut"][];
+        };
+        /** GoalPanelPocketOut */
+        GoalPanelPocketOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Counted */
+            counted: boolean;
         };
         /** GoalPatch */
         GoalPatch: {
@@ -4454,6 +4522,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoalProgressOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panel_goals__goal_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalPanelOut"];
                 };
             };
             /** @description Validation Error */

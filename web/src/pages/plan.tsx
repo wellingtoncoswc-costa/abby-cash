@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { Budget as BudgetT, Goal, Pocket, S } from '../api/types'
+import type { Budget as BudgetT, Goal, GoalPanel, Pocket, S } from '../api/types'
 import { formatBRL, parseBRL } from '../lib/money'
 import { useSpace } from '../space'
-import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, centsText, monthKey, today, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
+import { AccountSelect, Bar, Btn, Card, EditBox, Err, Field, br, centsText, monthKey, today, useAccounts, useCatName, useGet, useIsOwner, useSend } from '../ui'
 
 export function BudgetForm({ month }: { month: string }) {
   const { spaceId } = useSpace()
@@ -108,6 +108,37 @@ function GoalLinks({ goals, self, value, onChange }: { goals: Goal[]; self?: str
   )
 }
 
+function GoalPanelView({ g }: { g: Goal }) {
+  const p = useGet<GoalPanel>(`/goals/${g.id}/panel`)
+  const d = p.data
+  if (!d) return <p>Carregando…</p>
+  return (
+    <div className="mt-2">
+      <h3 className="font-semibold">De onde vem o progresso</h3>
+      <ul>
+        <li className="flex justify-between"><span>Aportes diretos</span><span>{formatBRL(d.direct_cents)}</span></li>
+        {d.accounts.map((a) => <li key={a.id} className="flex justify-between"><span>Conta {a.name}</span><span>{formatBRL(a.balance_cents)}</span></li>)}
+        {d.pockets.map((k) => <li key={k.id} className="flex justify-between"><span>Caixinha {k.name}{k.counted ? '' : ' (já na conta)'}</span><span>{formatBRL(k.balance_cents)}</span></li>)}
+        <li className="flex justify-between font-medium"><span>Total</span><span>{formatBRL(d.total_cents)}</span></li>
+      </ul>
+      <h3 className="mt-2 font-semibold">Aportes e retiradas</h3>
+      {d.contributions.length === 0 && <p>Nenhum aporte direto ainda.</p>}
+      <ul>{d.contributions.map((c, i) => <li key={i} className="flex justify-between"><span>{br(c.occurred_on)} {c.direction === 'in' ? 'Aporte' : 'Retirada'}</span><span>{c.direction === 'in' ? '' : '-'}{formatBRL(c.amount_cents)}</span></li>)}</ul>
+      <Err e={p.error} />
+    </div>
+  )
+}
+
+function GoalPanelToggle({ g }: { g: Goal }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Btn type="button" className="mt-2 bg-muted-foreground hover:bg-muted-foreground/90" onClick={() => setOpen(!open)}>{open ? 'Ocultar painel' : 'Ver painel'}</Btn>
+      {open && <GoalPanelView g={g} />}
+    </>
+  )
+}
+
 function GoalLinksEditor({ g, goals, canEdit }: { g: Goal; goals: Goal[]; canEdit: boolean }) {
   const [v, setV] = useState<Links>({ accounts: g.account_ids, pockets: g.pocket_ids })
   const save = useSend(() => api('PATCH', `/goals/${g.id}`, { account_ids: v.accounts, pocket_ids: v.pockets } satisfies S['GoalPatch']))
@@ -150,6 +181,7 @@ export function Goals() {
           <Bar value={g.saved_cents} max={g.target_cents} />
           {g.monthly_needed_cents != null && <p className={g.behind ? 'text-warning' : ''}>Necessário por mês: {formatBRL(g.monthly_needed_cents)}{g.behind ? ' (atrasada)' : ''}</p>}
           <GoalActions g={g} />
+          <GoalPanelToggle g={g} />
           <GoalLinksEditor g={g} goals={goals.data ?? []} canEdit={owner} />
           <EditBox
             what="meta"

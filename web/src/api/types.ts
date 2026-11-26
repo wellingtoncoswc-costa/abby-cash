@@ -33,3 +33,4 @@ export type InvDashboard = { assets: InvAsset[]; by_kind: { kind: string; value_
 export type CardPanel = S['CardPanelOut']
 export type AccountPanel = S['AccountPanelOut']
 export type PocketPanel = S['PocketPanelOut']
+export type GoalPanel = S['GoalPanelOut']
