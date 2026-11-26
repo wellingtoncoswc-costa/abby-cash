@@ -199,10 +199,12 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   )
 }
 
-/** Botão redondo só com o "+": o formulário de cadastro abre num Modal. */
-export const PlusButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
-  <button type="button" aria-label={label} title={label} onClick={onClick}
-    className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
-    <Plus aria-hidden="true" />
+/** Botão redondo com "+" e uma legenda curta; o formulário de cadastro abre num Modal. */
+export const PlusButton = ({ label, caption, onClick }: { label: string; caption?: string; onClick: () => void }) => (
+  <button type="button" aria-label={label} title={label} onClick={onClick} className="group flex w-24 flex-col items-center gap-1 text-center">
+    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm group-hover:bg-primary/90">
+      <Plus aria-hidden="true" />
+    </span>
+    <span aria-hidden="true" className="text-xs leading-tight">{caption ?? label}</span>
   </button>
 )

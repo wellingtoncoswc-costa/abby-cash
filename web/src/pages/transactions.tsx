@@ -202,8 +202,8 @@ export function Transactions() {
     <>
       <h1 className="mb-3 text-xl font-bold">Lançamentos</h1>
       <div className="mb-4 flex gap-3" role="group" aria-label="Novo registro">
-        {([['tx', 'Novo lançamento'], ['transfer', 'Nova transferência'], ['purchase', 'Nova compra no cartão']] as const).map(([k, label]) => (
-          <PlusButton key={k} label={label} onClick={() => setModal(k)} />
+        {([['tx', 'Novo lançamento', 'Lançamento'], ['transfer', 'Nova transferência', 'Transferência'], ['purchase', 'Nova compra no cartão', 'Compra no cartão']] as const).map(([k, label, caption]) => (
+          <PlusButton key={k} label={label} caption={caption} onClick={() => setModal(k)} />
         ))}
       </div>
       {modal === 'tx' && <Modal title="Novo lançamento" onClose={() => setModal(null)}><NewTxForm onDone={() => setModal(null)} /></Modal>}

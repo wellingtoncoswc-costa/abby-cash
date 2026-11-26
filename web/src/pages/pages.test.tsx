@@ -508,3 +508,9 @@ test.each([
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('dialog')).toBeNull()
 })
+
+test('lançamentos: cada botão + tem legenda curta visível', async () => {
+  go('/lancamentos')
+  await screen.findByRole('button', { name: 'Novo lançamento' })
+  for (const t of ['Lançamento', 'Transferência', 'Compra no cartão']) expect(screen.getByText(t)).toBeInTheDocument()
+})

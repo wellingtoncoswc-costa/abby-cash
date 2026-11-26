@@ -148,7 +148,7 @@ export function Loans() {
           />
         </Card>
       ))}
-      <div className="mb-4"><PlusButton label="Novo financiamento ou consórcio" onClick={() => setAdding(true)} /></div>
+      <div className="mb-4"><PlusButton label="Novo financiamento ou consórcio" caption="Financiamento" onClick={() => setAdding(true)} /></div>
       {adding && <Modal title="Novo financiamento ou consórcio" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (ok) create.mutate() }}>
           <Field label="Tipo">

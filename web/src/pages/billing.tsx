@@ -38,7 +38,7 @@ export function Billing() {
   return (
     <>
       <h1 className="mb-3 text-xl font-bold">Contas a pagar</h1>
-      <div className="mb-4"><PlusButton label="Nova conta a pagar" onClick={() => setAdding(true)} /></div>
+      <div className="mb-4"><PlusButton label="Nova conta a pagar" caption="Conta a pagar" onClick={() => setAdding(true)} /></div>
       {adding && <Modal title="Nova conta a pagar" onClose={() => setAdding(false)}>
         <form onSubmit={(e) => { e.preventDefault(); if (cents) create.mutate() }}>
           <Field label="Descrição"><input required maxLength={200} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
