@@ -103,3 +103,27 @@ async def test_goal_links_conflict_over_http(client, session):
     assert r.status_code == 422 and r.json() == {"detail": "already_linked"}
     p = await client.patch(f"/goals/{g1['id']}", headers=h, json={"account_ids": []})
     assert p.status_code == 200 and p.json()["account_ids"] == []
+
+
+async def test_goal_panel_over_http(client, session):
+    a = await make_user(session, "gp@x.com")
+    h, sp = auth(a), str(a.default_space_id)
+    acc = await make_account(session, a.default_space_id, initial=100_000)
+    g = (
+        await client.post(
+            f"/spaces/{sp}/goals", headers=h, json={"name": "V", "target_cents": 50_000}
+        )
+    ).json()
+    await client.post(
+        f"/goals/{g['id']}/contributions",
+        headers=h,
+        json={"from_account_id": str(acc.id), "amount_cents": 5_000},
+    )
+    p = await client.get(f"/goals/{g['id']}/panel", headers=h)
+    assert p.status_code == 200 and p.json()["direct_cents"] == 5_000
+    assert [c["direction"] for c in p.json()["contributions"]] == ["in"]
+    other = await make_user(session, "gq@x.com")
+    assert (await client.get(f"/goals/{g['id']}/panel", headers=auth(other))).status_code in (
+        403,
+        404,
+    )

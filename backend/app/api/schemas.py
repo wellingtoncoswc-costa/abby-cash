@@ -273,6 +273,30 @@ class GoalOut(Out):
     created_at: datetime
 
 
+class GoalPanelItemOut(Out):
+    id: UUID
+    name: str
+    balance_cents: int
+
+
+class GoalPanelPocketOut(GoalPanelItemOut):
+    counted: bool
+
+
+class GoalContributionOut(Out):
+    occurred_on: date
+    direction: str
+    amount_cents: int
+
+
+class GoalPanelOut(Out):
+    total_cents: int
+    direct_cents: int
+    accounts: list[GoalPanelItemOut]
+    pockets: list[GoalPanelPocketOut]
+    contributions: list[GoalContributionOut]
+
+
 class GoalProgressOut(GoalOut):
     saved_cents: int
     monthly_needed_cents: int | None
