@@ -120,6 +120,7 @@ test('lançamento de cartão/parcelado: sem valor e data, com aviso', async () =
 
 test('compra parcelada mostra o impacto nas faturas', async () => {
   go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Nova compra no cartão' }))
   await userEvent.selectOptions(await screen.findByLabelText('Cartão'), 'k1')
   await userEvent.type(screen.getByLabelText('Valor total (R$)'), '100,00')
   await userEvent.clear(screen.getByLabelText('Parcelas'))
@@ -423,4 +424,30 @@ test('cartões: lançar crédito e fatura negativa em destaque', async () => {
   await userEvent.click(card.getByRole('button', { name: 'Registrar crédito' }))
   const post = calls.find(([u]) => u === '/cards/k1/credits')!
   expect(JSON.parse(post[1].body as string)).toMatchObject({ amount_cents: 5000 })
+})
+
+test('lançamentos: só os botões + na tela; o formulário abre em modal', async () => {
+  go('/lancamentos')
+  const novo = await screen.findByRole('button', { name: 'Novo lançamento' })
+  expect(screen.getByRole('button', { name: 'Nova transferência' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Nova compra no cartão' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('Valor (R$)')).toBeNull() // sem formulário solto na página
+  await userEvent.click(novo)
+  expect(await screen.findByRole('dialog', { name: 'Novo lançamento' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Valor (R$)')).toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('lançamentos: salvar um lançamento envia e fecha o modal', async () => {
+  routes['/spaces/s1/transactions'] = (init) => init.method !== 'POST' ? J([]) : J({ id: 't9', space_id: SP, type: 'expense', amount_cents: 4500, occurred_on: '2026-11-25', description: '', merchant: null, category_id: null, account_id: 'a1', counter_account_id: null, installment_total: null }, 201)
+  go('/lancamentos')
+  await userEvent.click(await screen.findByRole('button', { name: 'Novo lançamento' }))
+  await userEvent.type(await screen.findByLabelText('Valor (R$)'), '45,00')
+  await userEvent.selectOptions(screen.getByLabelText('Conta'), 'a1')
+  await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  const post = calls.find(([u, i]) => u === `/spaces/${SP}/transactions` && i.method === 'POST')!
+  expect(JSON.parse(post[1].body as string)).toMatchObject({ type: 'expense', amount_cents: 4500, account_id: 'a1' })
+  delete routes['/spaces/s1/transactions']
 })
