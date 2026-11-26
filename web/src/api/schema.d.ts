@@ -301,6 +301,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/accounts/{account_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panel */
+        get: operations["panel_accounts__account_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/accounts/{account_id}/statement": {
         parameters: {
             query?: never;
@@ -1308,6 +1325,22 @@ export interface components {
             /** Institution */
             institution?: string | null;
         };
+        /** AccountMoveOut */
+        AccountMoveOut: {
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Type */
+            type: string;
+            /** Description */
+            description: string;
+            /** Merchant */
+            merchant: string | null;
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** AccountOut */
         AccountOut: {
             /**
@@ -1334,6 +1367,54 @@ export interface components {
             pockets_cents: number;
             /** Available Cents */
             available_cents: number;
+        };
+        /** AccountPanelGoalOut */
+        AccountPanelGoalOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** AccountPanelOut */
+        AccountPanelOut: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Income Cents */
+            income_cents: number;
+            /** Expense Cents */
+            expense_cents: number;
+            /** Transfer Net Cents */
+            transfer_net_cents: number;
+            /** Private Total Cents */
+            private_total_cents: number;
+            /** By Category */
+            by_category: components["schemas"]["PanelCategoryOut"][];
+            /** Recent */
+            recent: components["schemas"]["AccountMoveOut"][];
+            /** Pockets */
+            pockets: components["schemas"]["AccountPanelPocketOut"][];
+            /** Goals */
+            goals: components["schemas"]["AccountPanelGoalOut"][];
+        };
+        /** AccountPanelPocketOut */
+        AccountPanelPocketOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
         };
         /** AccountPatch */
         AccountPatch: {
@@ -3234,6 +3315,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panel_accounts__account_id__panel_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPanelOut"];
+                };
             };
             /** @description Validation Error */
             422: {

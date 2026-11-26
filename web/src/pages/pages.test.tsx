@@ -9,7 +9,7 @@ const J = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status
 const routes: Record<string, (init: RequestInit) => Response> = {
   '/auth/refresh': () => J({ access_token: 't' }),
   '/spaces': () => J([{ id: SP, type: 'personal', name: 'x' }]),
-  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank' }]),
+  '/accounts': () => J([{ id: 'a1', space_id: SP, type: 'checking', name: 'Nubank', initial_balance_cents: 100000, institution: 'nubank', balance_cents: 100000, pockets_cents: 0, available_cents: 100000 }]),
   [`/spaces/${SP}/bills`]: () => J([{ id: 'b1', space_id: SP, kind: 'bill', description: 'Aluguel', amount_cents: 150000, due_on: '2026-12-05', status: 'open', invoice_id: null }]),
   [`/spaces/${SP}/goals`]: () => J([]),
   '/channels': () => J([]),
@@ -321,4 +321,33 @@ test('cartões: nova compra no cartão', async () => {
   await userEvent.click(card.getByRole('button', { name: 'Registrar compra' }))
   const post = calls.find(([u]) => u === `/spaces/${SP}/card-purchases`)!
   expect(JSON.parse(post[1].body as string)).toMatchObject({ card_id: 'k1', amount_cents: 4500, installments: 1 })
+})
+
+const ACC_PANEL = {
+  month: '2026-11-01', is_default: false, income_cents: 500000, expense_cents: 40000, transfer_net_cents: -20000, private_total_cents: 0,
+  by_category: [{ category_id: 'c1', total_cents: 40000 }],
+  recent: [{ occurred_on: '2026-11-08', type: 'transfer', description: 'p/ outra', merchant: null, amount_cents: -20000 }],
+  pockets: [{ id: 'p1', name: 'Reserva', balance_cents: 15000 }], goals: [{ id: 'g1', name: 'Viagem' }],
+}
+const accTile = async () => within((await screen.findByRole('heading', { name: 'Nubank' })).closest('section')!)
+
+test('contas: um card por conta com saldo e painel do mês', async () => {
+  routes['/accounts/a1/panel'] = () => J(ACC_PANEL)
+  go('/contas-bancarias')
+  const card = await accTile()
+  await userEvent.click(await card.findByRole('button', { name: 'Ver painel' }))
+  expect(await card.findByText('Mercado')).toBeInTheDocument()
+  expect(card.getByText(/Reserva/)).toBeInTheDocument()
+  expect(card.getByText(/Viagem/)).toBeInTheDocument()
+  expect(card.getByText(/R\$ 5\.000,00/)).toBeInTheDocument()
+})
+
+test('contas: tornar padrão chama a API', async () => {
+  routes['/accounts/a1/panel'] = () => J(ACC_PANEL)
+  routes[`/spaces/${SP}/default-account`] = () => new Response(null, { status: 204 })
+  go('/contas-bancarias')
+  const card = await accTile()
+  await userEvent.click(await card.findByRole('button', { name: 'Tornar padrão' }))
+  const put = calls.find(([u]) => u === `/spaces/${SP}/default-account`)!
+  expect(JSON.parse(put[1].body as string)).toEqual({ account_id: 'a1' })
 })
